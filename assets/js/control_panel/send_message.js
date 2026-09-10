@@ -3,432 +3,342 @@ const btnHistory = document.getElementById("history");
 var historyOfText = [];
 var historyOfBibleVerse = [];
 const songVerseDiv = document.getElementById("song");
-const songElements = songVerseDiv.querySelectorAll("p");
-let songVerses = Array.from(songElements);
 let currentSongIndex = 0;
 let currentVerseIndex = -1;
 var btnCopy = document.getElementById("copyHistoryButton");
 
+let currentSectionIndex = -1;
+let currentLineIndex = -1;
+let isSongRunning = false;
+let songIntervalId = null;
 
 function processMessage(inputMessage) {
-  let unEditedMessage = inputMessage;
-  let regexBold = /\*(.*?)\*/g;
-  let regexItalic = /_(.*?)_/g;
-  unEditedMessage = unEditedMessage.replace(regexBold, '<span>$1</span>');
-  result = unEditedMessage.replace(regexItalic, '<em>$1</em>');
-  return result;
+  return sanitizeAndFormatMessage(inputMessage);
 }
 
 function sendMessage(senderChannel, message){
   let fadeInCheckbox = document.getElementById("fade-in-checkbox");
   let messageToSend = {
-    fadein: fadeInCheckbox.checked,
+    fadein: fadeInCheckbox ? fadeInCheckbox.checked : false,
     messageContent: message
   };
-  localStorage.setItem("obs-bible-fadein-checkbox", fadeInCheckbox.checked);
+  if (fadeInCheckbox) {
+    localStorage.setItem("obs-bible-fadein-checkbox", fadeInCheckbox.checked);
+  }
   senderChannel.postMessage(messageToSend);
 }
 
-document.getElementById("sendButton").addEventListener("click", () => {
-  let messageInput = document.getElementById("messageInput").value;
+document.getElementById("sendButton")?.addEventListener("click", () => {
+  let messageInput = document.getElementById("messageInput")?.value || '';
   const message = processMessage(messageInput);
   sendMessage(channel, message);
   historyOfText.push(message);
 });
 
-
 function doc_keyUp(e) {
   let lastSavedTab = localStorage.getItem("selectedTab");
 
-  // this would test for whichever key is 40 (down arrow) and the ctrl key at the same time
   if (e.ctrlKey && e.code === 'ArrowDown' && lastSavedTab === "text") {
-    let messageInput = document.getElementById("messageInput").value;
+    let messageInput = document.getElementById("messageInput")?.value || '';
     const message = processMessage(messageInput);
     sendMessage(channel, message);
     historyOfText.push(message);
   }
 }
-
 
 function doc_spaceBarUp(e) {
   let lastSavedTab = localStorage.getItem("selectedTab");
   let spaceBarCheckBox = document.getElementById("spacebar-checkbox");
-  localStorage.setItem("obs-bible-spacebar-checkbox", spaceBarCheckBox.checked);
+  if (spaceBarCheckBox) {
+    localStorage.setItem("obs-bible-spacebar-checkbox", spaceBarCheckBox.checked);
+  }
 
-  // this would test for whichever key is 40 (down arrow) and the ctrl key at the same time
-  if (e.code === 'Space' && lastSavedTab === "text" && spaceBarCheckBox.checked === true) {
-    let messageInput = document.getElementById("messageInput").value;
+  if (e.code === 'Space' && lastSavedTab === "text" && spaceBarCheckBox && spaceBarCheckBox.checked === true) {
+    let messageInput = document.getElementById("messageInput")?.value || '';
     const message = processMessage(messageInput);
     sendMessage(channel, message);
     historyOfText.push(message);
   }
 }
 
+// Helper to check if user is currently typing in an input
+const isEditableActive = () => {
+    const active = document.activeElement;
+    if (!active) return false;
+    const tag = active.tagName;
+    return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || active.isContentEditable;
+};
 
-// songVerses.forEach((verse, index) => {
-//   verse.addEventListener("click", (event) => {
-//     if (event.target.tagName === "P") {
-//       const message = processMessage(event.target.textContent);
-//       sendMessage(channel, message);
-
-//     }
-//   });
-// });
-
-
-
-// +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-// +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-// +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-const displaySongVerseByVerse = () => {
-    let songDiv = document.getElementById("song-display");
-
-    let divElements = songDiv.querySelectorAll("div");
-
-    let songVerses = Array.from(divElements);
-
-    let currentSongVerse = null;
-    let currentSongVerseIndex= -1;
-    var songIntervalId;
-    var isSongRunning = false;
-
-    songVerses.forEach((verse, index) => {
-      
-      verse.addEventListener("click", (event) => {
-        let displayLineByLine = document.getElementById("obs-bible-display-song-line-by-line");
-        
-        if (displayLineByLine.checked === false){
-          currentSongVerse = verse;
-          currentSongVerseIndex = index;
-          
-          let verseMessage = processMessage(verse.innerHTML);
-          sendMessage(channel, verseMessage);
-          verse.classList.add("selected");
-
-          songVerses.forEach((v, i) => {
-            if (i !== index) {
-              v.classList.remove("selected");
-            }
-          });
-        }
-      });
-    });
-
-    let moveToPreviousVerse = ()=>{
-      if(currentSongVerseIndex > 0){
-        currentSongVerseIndex--;
-        const message = songVerses[currentSongVerseIndex].innerHTML;
-        sendMessage(channel, message);
-
-        // get the height of the display area
-        const displayVerse = document.getElementById('song');
-
-        const currentVerse = songVerses[currentSongVerseIndex];
-        const nextVerse = songVerses[currentSongVerseIndex + 1];
-
-        const parentNode = currentVerse.parentNode;
-
-        // change the backgroundColor of the current verse
-        nextVerse.classList.remove("selected");
-        currentVerse.classList.add("selected");
-
-        const lineHeight = songVerses[currentSongVerseIndex].offsetHeight;
-        const parentTop = parentNode.offsetTop;
-
-        // Calculate scrollTop to center the current line in the parent container
-        const scrollTop = parentTop + currentVerse.offsetTop - (lineHeight / 2);
-
-        displayVerse.scrollTop = scrollTop;
-      }else{
-        currentSongVerseIndex = 0;
-      }
-    }
-
-    // Event listener for Previous button
-    document.getElementById("prev-line").addEventListener("click", () => {
-      moveToPreviousVerse();
-    });
-
-    let moveToNextVerse = ()=>{
-      if(currentSongVerseIndex < songVerses.length -1){
-        currentSongVerseIndex++;
-        const message = songVerses[currentSongVerseIndex].innerHTML;
-        sendMessage(channel, message);
-
-        // get the height of the display area
-        const displayVerse = document.getElementById('song');
-
-        const currentVerse = songVerses[currentSongVerseIndex];
-        const previousVerse = songVerses[currentSongVerseIndex - 1];
-
-        const parentNode = currentVerse.parentNode;
-
-        // change the backgroundColor of the current verse
-        if (currentSongVerseIndex !== 0){
-          previousVerse.classList.remove("selected");
-        }
-        currentVerse.classList.add("selected");
-
-        const lineHeight = songVerses[currentSongVerseIndex].offsetHeight;
-        const parentTop = parentNode.offsetTop;
-
-        const scrollTop = parentTop + currentVerse.offsetTop - (lineHeight / 2);
-        displayVerse.scrollTop = scrollTop;
-
-
-      }else{
-        currentSongVerseIndex = 0;
-        const message = songVerses[currentSongVerseIndex].innerHTML;
-        sendMessage(channel, message);
-        const currentVerse = songVerses[currentSongVerseIndex];
-        const previousVerse = songVerses[songVerses.length - 1];
-        previousVerse.classList.remove("selected");
-        currentVerse.classList.add("selected");
-      }
-    }
-
+function scrollToElement(element) {
+    const songContainer = document.getElementById('song');
+    const displayContainer = document.getElementById('song-display');
+    if (!songContainer || !displayContainer || !element) return;
     
-    document.getElementById("next-line").addEventListener("click", () => {
-      moveToNextVerse();
+    const containerHeight = songContainer.offsetHeight;
+    const elementTop = element.offsetTop;
+    const elementHeight = element.offsetHeight;
+    
+    const scrollTop = elementTop - (containerHeight / 2) + (elementHeight / 2);
+    songContainer.scrollTop = scrollTop;
+}
+
+function selectSection(index, scroll = true, take = true) {
+    const sections = Array.from(document.querySelectorAll('#song-display .song-section'));
+    if (sections.length === 0) return;
+    
+    if (index < 0) index = 0;
+    if (index >= sections.length) index = sections.length - 1;
+    
+    currentSectionIndex = index;
+    currentLineIndex = -1;
+    
+    sections.forEach((s, idx) => {
+        s.classList.toggle('selected', idx === index);
+        s.querySelectorAll('p').forEach(p => p.classList.remove('selected'));
     });
-
-    document.getElementById("start-song-button").addEventListener("click", (event) => {
-    let timer = parseInt(document.getElementById("song-line-duration").value, 10);
-
-    if(timer > 0){
-      if (!isSongRunning) {
-        let timerValue = timer;
-        const timerElement = document.getElementById("countdown-timer");
-        if (timerElement) timerElement.innerText = timerValue + "s";
-        
-        songIntervalId = setInterval(() => {
-          timerValue--;
-          if (timerValue <= 0) {
-            moveToNextVerse();
-            timerValue = parseInt(document.getElementById("song-line-duration").value, 10) || timer;
-          }
-          if (timerElement) timerElement.innerText = timerValue + "s";
-        }, 1000);
-        document.getElementById("start-song-button").value = "Stop";
-        isSongRunning = true;
-      } else {
-        clearInterval(songIntervalId);
-        document.getElementById("start-song-button").value = "Start";
-        const timerElement = document.getElementById("countdown-timer");
-        if (timerElement) timerElement.innerText = "0s";
-        isSongRunning = false;
-      }
+    
+    const activeSection = sections[index];
+    activeSection.focus({ preventScroll: true });
+    if (take) {
+        const text = activeSection.innerText;
+        sendMessage(channel, sanitizeAndFormatMessage(text));
+        sections.forEach((section, sectionIndex) => section.classList.toggle('live', sectionIndex === index));
     }
-
-  });
-
-  document.addEventListener("keydown", function(event) {
-    let lastSavedTab = localStorage.getItem("selectedTab");
-    if (event.key === "ArrowDown" && lastSavedTab === "songs") {
-      moveToNextVerse();
-    } else if (event.key === "ArrowUp" && lastSavedTab === "songs") {
-      moveToPreviousVerse();
+    
+    if (scroll) {
+        scrollToElement(activeSection);
     }
-  });
 }
 
-// +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+function selectLine(index, scroll = true, take = true) {
+    const lines = Array.from(document.querySelectorAll('#song-display p'));
+    if (lines.length === 0) return;
+    
+    if (index < 0) index = 0;
+    if (index >= lines.length) index = lines.length - 1;
+    
+    currentLineIndex = index;
+    
+    lines.forEach((l, idx) => {
+        l.classList.toggle('selected', idx === index);
+    });
+    
+    const activeLine = lines[index];
+    const parentSection = activeLine.closest('.song-section');
+    const sections = Array.from(document.querySelectorAll('#song-display .song-section'));
+    sections.forEach(s => {
+        s.classList.toggle('selected', s === parentSection);
+    });
+    
+    if (parentSection) {
+        currentSectionIndex = sections.indexOf(parentSection);
+    }
+    
+    activeLine.focus({ preventScroll: true });
+    if (take) {
+        const text = activeLine.innerText;
+        sendMessage(channel, sanitizeAndFormatMessage(text));
+        lines.forEach((line, lineIndex) => line.classList.toggle('live', lineIndex === index));
+    }
+    
+    if (scroll) {
+        scrollToElement(activeLine);
+    }
+}
 
-
-// Function to display songs
-const displaySongLineByLine = ()=>{
-  let songDiv = document.getElementById("song-display");
-
-  let pElements = songDiv.querySelectorAll("p");
-
-  let songLines = Array.from(pElements);
-
-  let currentLine = null;
-  let currentLineIndex = -1;
-  var songIntervalId;
-  var isSongRunning = false;
-
-  songLines.forEach((line, index) => {
-
-    line.addEventListener("click", (event) => {
-      const displayLineByLine = document.getElementById("obs-bible-display-song-line-by-line");
-      
-      if (displayLineByLine.checked === true){
-        currentLine = line;
-        currentLineIndex = index;
-        
-        if (event.target.tagName === "P") {
-          const message = processMessage(event.target.innerHTML);
-          sendMessage(channel, message);
-          event.target.classList.add("selected");
+function handleNext(take = false) {
+    const isLineByLine = document.getElementById("obs-bible-display-song-line-by-line")?.checked === true;
+    if (isLineByLine) {
+        const lines = document.querySelectorAll('#song-display p');
+        if (lines.length === 0) return;
+        if (currentLineIndex === -1) {
+            selectLine(0, true, take);
+        } else if (currentLineIndex < lines.length - 1) {
+            selectLine(currentLineIndex + 1, true, take);
         }
-        songLines.forEach((v, i) => {
-          if (i !== index) {
-            v.classList.remove("selected");
-          }
-        });
-      }
-    }, true);
-  });
-
-  const moveToPreviousLine = ()=>{
-    if(currentLineIndex > 0){
-      currentLineIndex--;
-      const message = songLines[currentLineIndex].innerText;
-      sendMessage(channel, message);
-
-      // get the height of the display area
-      const displayLine = document.getElementById('song');
-
-      const currentLine = songLines[currentLineIndex];
-      const nextLine = songLines[currentLineIndex + 1];
-
-      const parentNode = currentLine.parentNode;
-
-      // change the backgroundColor of the current verse
-      nextLine.classList.remove("selected");
-      currentLine.classList.add("selected");
-
-      const lineHeight = songLines[currentLineIndex].offsetHeight;
-      const parentTop = parentNode.offsetTop;
-
-      // Calculate scrollTop to center the current line in the parent container
-      const scrollTop = parentTop + currentLine.offsetTop - (lineHeight / 2);
-
-      displayLine.scrollTop = scrollTop;
-    }else{
-      currentLineIndex = 0;
+    } else {
+        const sections = document.querySelectorAll('#song-display .song-section');
+        if (sections.length === 0) return;
+        if (currentSectionIndex === -1) {
+            selectSection(0, true, take);
+        } else if (currentSectionIndex < sections.length - 1) {
+            selectSection(currentSectionIndex + 1, true, take);
+        }
     }
-  }
-
-  const moveToNextLine = ()=>{
-    if (currentLineIndex < songLines.length -2){
-      currentLineIndex++;
-      const message = songLines[currentLineIndex].innerText;
-      sendMessage(channel, message);
-
-      // get the height of the display area
-      const displayLine = document.getElementById('song');
-
-      const currentLine = songLines[currentLineIndex];
-      const previousLine = songLines[currentLineIndex - 1];
-
-      const parentNode = currentLine.parentNode;
-
-      // change the backgroundColor of the current verse
-      if (currentLineIndex !== 0){
-        previousLine.classList.remove("selected");
-      }
-      currentLine.classList.add("selected");
-
-      const lineHeight = songLines[currentLineIndex].offsetHeight;
-      const parentTop = parentNode.offsetTop;
-
-      const scrollTop = parentTop + currentLine.offsetTop - (lineHeight / 2);
-      displayLine.scrollTop = scrollTop;
-    }else{
-      currentLineIndex = 0;
-      const message = songLines[currentLineIndex].innerText;
-      sendMessage(channel, message);
-      const currentLine = songLines[currentLineIndex];
-      const previousLine = songLines[songLines.length - 1];
-      previousLine.classList.remove("selected");
-      currentLine.classList.add("selected");
-    }
-  
-  }
-
-  // Event listener for Previous button
-  document.getElementById("prev-line").addEventListener("click", () => {
-    moveToPreviousLine();
-  });
-
-  // Event listener Next button
-  document.getElementById("next-line").addEventListener("click", () => {
-    moveToNextLine();
-  });
-
-
-
-  document.getElementById("start-song-button").addEventListener("click", (event) => {
-    let timer = parseInt(document.getElementById("song-line-duration").value, 10);
-
-    if(timer > 0){
-      if (!isSongRunning) {
-        let timerValue = timer;
-        const timerElement = document.getElementById("countdown-timer");
-        if (timerElement) timerElement.innerText = timerValue + "s";
-        
-        songIntervalId = setInterval(() => {
-          timerValue--;
-          if (timerValue <= 0) {
-            moveToNextLine();
-            timerValue = parseInt(document.getElementById("song-line-duration").value, 10) || timer;
-          }
-          if (timerElement) timerElement.innerText = timerValue + "s";
-        }, 1000);
-        document.getElementById("start-song-button").value = "Stop";
-        isSongRunning = true;
-      } else {
-        clearInterval(songIntervalId);
-        document.getElementById("start-song-button").value = "Start";
-        const timerElement = document.getElementById("countdown-timer");
-        if (timerElement) timerElement.innerText = "0s";
-        isSongRunning = false;
-      }
-    }
-
-  });
-
-  document.addEventListener("keydown", function(event) {
-    let lastSavedTab = localStorage.getItem("selectedTab");
-    if (event.key === "ArrowDown" && lastSavedTab === "songs") {
-      moveToNextLine();
-    } else if (event.key === "ArrowUp" && lastSavedTab === "songs") {
-      moveToPreviousLine();
-    }
-  });
 }
 
+function handlePrev(take = false) {
+    const isLineByLine = document.getElementById("obs-bible-display-song-line-by-line")?.checked === true;
+    if (isLineByLine) {
+        const lines = document.querySelectorAll('#song-display p');
+        if (lines.length === 0) return;
+        if (currentLineIndex === -1) {
+            selectLine(0, true, take);
+        } else if (currentLineIndex > 0) {
+            selectLine(currentLineIndex - 1, true, take);
+        }
+    } else {
+        const sections = document.querySelectorAll('#song-display .song-section');
+        if (sections.length === 0) return;
+        if (currentSectionIndex === -1) {
+            selectSection(0, true, take);
+        } else if (currentSectionIndex > 0) {
+            selectSection(currentSectionIndex - 1, true, take);
+        }
+    }
+}
 
-// +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-// +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-// +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+function handleHome() {
+    const isLineByLine = document.getElementById("obs-bible-display-song-line-by-line")?.checked === true;
+    if (isLineByLine) {
+        selectLine(0);
+    } else {
+        selectSection(0);
+    }
+}
 
-let activeSongMode = null;
-let songIntervalId = null;
+function handleEnd() {
+    const isLineByLine = document.getElementById("obs-bible-display-song-line-by-line")?.checked === true;
+    if (isLineByLine) {
+        const lines = document.querySelectorAll('#song-display p');
+        if (lines.length > 0) {
+            selectLine(lines.length - 1);
+        }
+    } else {
+        const sections = document.querySelectorAll('#song-display .song-section');
+        if (sections.length > 0) {
+            selectSection(sections.length - 1);
+        }
+    }
+}
 
-const clearSongListeners = () => {
-    document.getElementById("prev-line")?.replaceWith(document.getElementById("prev-line").cloneNode(true));
-    document.getElementById("next-line")?.replaceWith(document.getElementById("next-line").cloneNode(true));
-    document.getElementById("start-song-button")?.replaceWith(document.getElementById("start-song-button").cloneNode(true));
+function toggleAutoAdvance() {
+    const startBtn = document.getElementById('start-song-button');
+    const durationInput = document.getElementById('song-line-duration');
+    const timerElement = document.getElementById('countdown-timer');
+    if (!startBtn || !durationInput) return;
+    
+    const timer = parseInt(durationInput.value, 10);
+    if (isNaN(timer) || timer <= 0) return;
+    
+    if (!isSongRunning) {
+        isSongRunning = true;
+        startBtn.value = 'Stop';
+        
+        let timeLeft = timer;
+        if (timerElement) timerElement.innerText = timeLeft + 's';
+        
+        songIntervalId = setInterval(() => {
+            timeLeft--;
+            if (timeLeft <= 0) {
+                handleNext(true);
+                timeLeft = parseInt(durationInput.value, 10) || timer;
+            }
+            if (timerElement) timerElement.innerText = timeLeft + 's';
+        }, 1000);
+    } else {
+        stopAutoAdvance();
+    }
+}
 
+function stopAutoAdvance() {
+    isSongRunning = false;
+    const startBtn = document.getElementById('start-song-button');
+    if (startBtn) startBtn.value = 'Play Lyrics';
+    
     if (songIntervalId) {
         clearInterval(songIntervalId);
         songIntervalId = null;
     }
-    const timerElement = document.getElementById("countdown-timer");
-    if (timerElement) {
-        timerElement.innerText = "0s";
-    }
+    const timerElement = document.getElementById('countdown-timer');
+    if (timerElement) timerElement.innerText = '0s';
+}
+
+const clearSongListeners = () => {
+    stopAutoAdvance();
 };
 
 const initializeSongDisplayMode = () => {
-    const songElements = document.getElementById("song-display");
-    const displayLineByLine = document.getElementById("obs-bible-display-song-line-by-line");
-
-    if (!songElements || !displayLineByLine || songElements.children.length === 0) {
+    stopAutoAdvance();
+    
+    const songDisplay = document.getElementById("song-display");
+    if (!songDisplay) return;
+    
+    const sections = Array.from(songDisplay.querySelectorAll('.song-section'));
+    const lines = Array.from(songDisplay.querySelectorAll('p'));
+    const isLineByLine = document.getElementById("obs-bible-display-song-line-by-line")?.checked === true;
+    
+    if (sections.length === 0) {
+        currentSectionIndex = -1;
+        currentLineIndex = -1;
         return;
     }
+    
+    sections.forEach((section, index) => {
+        const newSection = section.cloneNode(true);
+        section.parentNode.replaceChild(newSection, section);
+        newSection.tabIndex = isLineByLine ? -1 : 0;
+        newSection.setAttribute('role', 'button');
+        
+        newSection.addEventListener('click', () => {
+            const isLineByLine = document.getElementById("obs-bible-display-song-line-by-line")?.checked === true;
+            if (!isLineByLine) {
+                selectSection(index);
+            }
+        });
+        newSection.addEventListener('keydown', event => activateSharedCue(event, newSection));
+    });
+    
+    const newSections = Array.from(songDisplay.querySelectorAll('.song-section'));
+    const newLines = Array.from(songDisplay.querySelectorAll('p'));
+    
+    newLines.forEach((line, index) => {
+        line.tabIndex = isLineByLine ? 0 : -1;
+        line.setAttribute('role', 'button');
+        line.addEventListener('click', (event) => {
+            const isLineByLine = document.getElementById("obs-bible-display-song-line-by-line")?.checked === true;
+            if (isLineByLine) {
+                event.stopPropagation();
+                selectLine(index);
+            }
+        });
+        line.addEventListener('keydown', event => activateSharedCue(event, line));
+    });
+    
+    const prevBtn = document.getElementById("prev-line");
+    const nextBtn = document.getElementById("next-line");
+    const startBtn = document.getElementById("start-song-button");
 
-    clearSongListeners();
+    if (prevBtn) {
+        const newPrev = prevBtn.cloneNode(true);
+        prevBtn.parentNode.replaceChild(newPrev, prevBtn);
+        newPrev.addEventListener('click', handlePrev);
+    }
 
-    if (displayLineByLine.checked === true) {
-        activeSongMode = "line-by-line";
-        displaySongLineByLine();
+    if (nextBtn) {
+        const newNext = nextBtn.cloneNode(true);
+        nextBtn.parentNode.replaceChild(newNext, nextBtn);
+        newNext.addEventListener('click', handleNext);
+    }
+
+    if (startBtn) {
+        const newStart = startBtn.cloneNode(true);
+        startBtn.parentNode.replaceChild(newStart, startBtn);
+        newStart.addEventListener('click', toggleAutoAdvance);
+    }
+
+    if (isLineByLine) {
+        if (currentLineIndex < 0 || currentLineIndex >= newLines.length) {
+            selectLine(0, false);
+        } else {
+            selectLine(currentLineIndex, false);
+        }
     } else {
-        activeSongMode = "verse-by-verse";
-        displaySongVerseByVerse();
+        if (currentSectionIndex < 0 || currentSectionIndex >= newSections.length) {
+            selectSection(0, false);
+        } else {
+            selectSection(currentSectionIndex, false);
+        }
     }
 };
 
@@ -440,135 +350,131 @@ document.getElementById("obs-bible-display-song-line-by-line")?.addEventListener
     initializeSongDisplayMode();
 });
 
-
-
 // +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 // +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 // +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 function displayBible() {
   let bibleVerseDiv = document.getElementById("bible-verse");
+  if (!bibleVerseDiv) return;
   let pElements = bibleVerseDiv.querySelectorAll("p");
   let bibleVerses = Array.from(pElements);
 
   bibleVerses.forEach((verse, index) => {
-    verse.addEventListener("click", (event) => {
-      if (event.target.tagName === "P") {
-        currentVerseIndex = index;
-        const message = event.target.innerHTML;
-        sendMessage(channel, message);
-        event.target.classList.add("selected");
-
-        historyOfBibleVerse.push({name: event.target.id, verse: message});
-        historyOfText.push(message);
-
-        const maxHistorySize = 20;
-        if (historyOfBibleVerse.length > maxHistorySize) {
-          historyOfBibleVerse.shift();
-        }
-
-      }
-
-      // Set background color of all verses to #222222
-      bibleVerses.forEach((v, i) => {
-        if (i !== index) {
-          v.classList.remove("selected");
-        }
-      });
-
-    });
+    verse.tabIndex = 0;
+    verse.setAttribute('role', 'button');
+    verse.setAttribute('aria-label', `Show ${verse.textContent.trim()}`);
+    verse.addEventListener("click", () => selectBibleVerse(index, true));
+    verse.addEventListener('keydown', event => activateSharedCue(event, verse));
   });
 }
 
+function selectBibleVerse(index, take = false) {
+  const bibleVerseDiv = document.getElementById("bible-verse");
+  const bibleVerses = Array.from(bibleVerseDiv?.querySelectorAll("p") || []);
+  if (index < 0 || index >= bibleVerses.length) return;
 
-  // Event listener for Previous button
-  document.getElementById("prev-verse").addEventListener("click", (event) => {
-    moveToPreviousVerse(event);
-  });
+  currentVerseIndex = index;
+  const currentVerse = bibleVerses[index];
+  bibleVerses.forEach((verse, verseIndex) => verse.classList.toggle("selected", verseIndex === index));
+  currentVerse.focus({ preventScroll: true });
 
-  // Event listener for Next button
-  document.getElementById("next-verse").addEventListener("click", (event) => {
-    moveToNextVerse(event);
-  });
+  const displayVerse = document.getElementById('bible');
+  const verseHeight = currentVerse.offsetHeight;
+  if (displayVerse) displayVerse.scrollTop = currentVerse.offsetTop - (verseHeight * 2);
+
+  if (!take) return;
+
+  const message = currentVerse.innerHTML;
+  sendMessage(channel, message);
+  bibleVerses.forEach((verse, verseIndex) => verse.classList.toggle("live", verseIndex === index));
+  historyOfBibleVerse.push({ name: currentVerse.id, verse: message });
+  historyOfText.push(message);
+  if (historyOfBibleVerse.length > 20) historyOfBibleVerse.shift();
+}
+
+function ensureSharedOutputVisible() {
+  const toggle = document.getElementById('toggle-display');
+  if (toggle && !toggle.checked) document.getElementById('toggle-button-display')?.click();
+}
+
+function activateSharedCue(event, cue) {
+  if (event.key !== 'Enter' && event.key !== ' ') return;
+  event.preventDefault();
+  event.stopPropagation();
+  const toggle = document.getElementById('toggle-display');
+  if (cue.classList.contains('selected') && toggle?.checked) {
+    document.getElementById('toggle-button-display')?.click();
+    return;
+  }
+  cue.click();
+  ensureSharedOutputVisible();
+}
+
+document.getElementById("prev-verse")?.addEventListener("click", (event) => {
+  moveToPreviousVerse(event);
+});
+
+document.getElementById("next-verse")?.addEventListener("click", (event) => {
+  moveToNextVerse(event);
+});
 
 function moveToNextVerse(event){
   let bibleVerseDiv = document.getElementById("bible-verse");
+  if (!bibleVerseDiv) return;
   let pElements = bibleVerseDiv.querySelectorAll("p");
   let bibleVerses = Array.from(pElements);
 
-  if(currentVerseIndex < bibleVerses.length - 1){
-    currentVerseIndex++;
-    const message = bibleVerses[currentVerseIndex].innerHTML;
-    sendMessage(channel, message);
-
-    const displayVerse = document.getElementById('bible');
-    const currentVerse = bibleVerses[currentVerseIndex];
-
-    const previousVerse = bibleVerses[currentVerseIndex - 1];
-
-    // change the backgroundColor of the current verse
-    if(currentVerseIndex !== 0){
-      previousVerse.classList.remove("selected");
-    }
-    currentVerse.classList.add("selected");
-
-    // Calculate the scroll position to ensure the selected item is visible
-    const verseHeight = bibleVerses[currentVerseIndex].offsetHeight;
-    const scrollTop = currentVerse.offsetTop - (verseHeight * 2); // Adjust as needed
-    displayVerse.scrollTop = scrollTop;
-
-    historyOfBibleVerse.push({name: event.target.id, verse: message});
-    historyOfText.push(message);
-    const maxHistorySize = 20;
-    if (historyOfBibleVerse.length > maxHistorySize) {
-      historyOfBibleVerse.shift();
-    }
-  }
+  if (bibleVerses.length === 0) return;
+  const nextIndex = currentVerseIndex < 0 ? 0 : Math.min(currentVerseIndex + 1, bibleVerses.length - 1);
+  selectBibleVerse(nextIndex, false);
 }
 
 function moveToPreviousVerse(event){
   let bibleVerseDiv = document.getElementById("bible-verse");
+  if (!bibleVerseDiv) return;
   let pElements = bibleVerseDiv.querySelectorAll("p");
   let bibleVerses = Array.from(pElements);
 
-  if(currentVerseIndex > 0){
-    currentVerseIndex--;
-    const message = bibleVerses[currentVerseIndex].innerHTML;
-    sendMessage(channel, message);
-    const displayVerse = document.getElementById('bible');
-    const currentVerse = bibleVerses[currentVerseIndex];
-
-    const nextVerse = bibleVerses[currentVerseIndex + 1];
-
-    // change the backgroundColor of the current verse
-    nextVerse.classList.remove("selected");
-    currentVerse.classList.add("selected");
-
-    // Calculate the scroll position to ensure the selected item is visible
-    const verseHeight = bibleVerses[currentVerseIndex].offsetHeight;
-    const scrollTop = currentVerse.offsetTop - (verseHeight * 2); // Adjust as needed
-    displayVerse.scrollTop = scrollTop;
-
-    historyOfBibleVerse.push({name: event.target.id, verse: message});
-    historyOfText.push(message);
-    const maxHistorySize = 20;
-    if (historyOfBibleVerse.length > maxHistorySize) {
-      historyOfBibleVerse.shift();
-    }
-  }
+  if (bibleVerses.length === 0) return;
+  const previousIndex = currentVerseIndex < 0 ? 0 : Math.max(currentVerseIndex - 1, 0);
+  selectBibleVerse(previousIndex, false);
 }
 
 document.addEventListener("keydown", function(event) {
+  if (isEditableActive()) {
+    return;
+  }
+  
   let lastSavedTab = localStorage.getItem("selectedTab");
-  if (event.key === "ArrowRight" && lastSavedTab === "bibleText") {
-    moveToNextVerse(event);
-  } else if (event.key === "ArrowLeft" && lastSavedTab === "bibleText") {
-    moveToPreviousVerse(event);
+  if (lastSavedTab === "bibleText") {
+    if (event.key === "ArrowRight") {
+      event.preventDefault();
+      moveToNextVerse(event);
+    } else if (event.key === "ArrowLeft") {
+      event.preventDefault();
+      moveToPreviousVerse(event);
+    }
+  } else if (lastSavedTab === "songs") {
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      handleNext();
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault();
+      handlePrev();
+    } else if (event.key === "Home") {
+      event.preventDefault();
+      handleHome();
+    } else if (event.key === "End") {
+      event.preventDefault();
+      handleEnd();
+    }
   }
 });
 
-
-btnHistory.addEventListener("click", function () {
+btnHistory?.addEventListener("click", function () {
+  let bblVerseDiv = document.getElementById("bible-verse");
+  if (!bblVerseDiv) return;
   bblVerseDiv.innerHTML = "";
   historyOfBibleVerse.forEach(entry => {
     const pElement = document.createElement('p');
@@ -579,38 +485,20 @@ btnHistory.addEventListener("click", function () {
   });
 });
 
-
-btnCopy.addEventListener("click", function () {
+btnCopy?.addEventListener("click", function () {
     let textToCopy;
     textToCopy = historyOfText.join("\n");
 
-    // Remove HTML tags using a regular expression
     textToCopy = textToCopy.replace(/<\/?[^>]+>/gi, '');
 
     let textarea = document.getElementById("messageInput");
-    textarea.value = textToCopy;
+    if (textarea) textarea.value = textToCopy;
 });
 
-
-btnCopy.addEventListener("dblclick", function () {
+btnCopy?.addEventListener("dblclick", function () {
   historyOfText = []
 });
 
 displayBible();
 document.addEventListener('keyup', doc_keyUp, false);
 document.addEventListener('keyup', doc_spaceBarUp, false);
-
-
-
-
-
-
-
-
-
-
-
-document.addEventListener("click", function(event) {
-    // Get the element that was clicked
-    const clickedElement = event.target;
-});

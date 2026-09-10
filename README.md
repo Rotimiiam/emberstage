@@ -1,113 +1,161 @@
-# OBS BIBLE PLUGIN
+# Emberstage
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+Emberstage is a local-first OBS service operator for Scripture, songs, manual text,
+videos, pictures, and cameras. Operators select content privately, review it,
+then use an explicit **Take** action. The local service workflow does not depend
+on a cloud login.
 
-This is a free bible plugin that you can use to display bible passages in Open Broadcasting Studio.
-I made it with the intention of helping me to display Bible passages since I could not find a free plugin to display Bible.
-You can modify it for your use.
+> Status: runnable local MVP plus an isolated commercial control-plane MVP.
+> Provider OAuth, Stripe checkout, and managed streaming require your own test
+> credentials and are not configured by this repository.
 
-# ANNOUNCEMENT
-## BIBLE DISPLAY  SOFTWARE
-I have made a software for displaying Bible. It is called Bible Display Software. You can download it at bibleds.vercel.app  [bibleds.vercel.app](https://bibleds.vercel.app).
-I will like feed back from it. The trial version lasts for 30 days while the paid version is free for life. You are also entitled to minor updates for free.
+## Operator docks
 
-Please contribute to my project. It is what helps me to continue developing this plugin for free. God bless yoiu.
+| Dock | File | Purpose |
+| --- | --- | --- |
+| Text | `control_panel.html` | Manual text, Scripture, songs, and text style |
+| Media | `media_dock.html` | Videos and pictures in one dock |
+| Cameras | `camera_dock.html` | Camera switching inside the mapped scene |
+| Streaming | `streaming_dock.html` | Workspace pairing, destination selection, and stream status |
 
-[!["Buy Me A Coffee"](https://www.buymeacoffee.com/assets/img/custom_images/orange_img.png)](https://www.buymeacoffee.com/tosin789)  
+The redundant Setup dock is no longer installed; upgrades remove only its app-owned dock entry.
 
-I am available for hire. I am skilled in python, Javascript, HTML and CSS. Thank you for your assistance.
+The older `video_mixer.html` and `picture_picker.html` URLs remain as compatibility
+views. Media and Cameras share the configured OBS output scene. Text output uses
+the transparent `browser_source.html` overlay.
 
-OBS Bible Plugin is now available in the following versions.
+## Safety model
 
-1. Authorized King James Version (KJV)
-2. New King James Version (NKJV)
-3. Louis Segond 1920 (French Version)
-4. Reina-Valera Revision 1960 (RV60) (Spanish Version)
+- Selecting, searching, importing, and changing tabs do **not** publish.
+- **Take** is the explicit text/video/camera output action.
+- **Hide text** affects only the shared text overlay.
+- Media and camera actions change source visibility in the selected scene; they
+  do not switch the current OBS scene.
+- No media hotkey is assigned automatically. Native hotkeys are disabled until
+  the Lua script is armed in OBS.
+- Existing OBS profiles, scenes, stream settings, and unrelated docks are
+  preserved by the installer.
 
-![alt text](https://github.com/Tosin-JD/obs-bible-plugin/blob/main/Screenshot_20230918_110233.png)  
+## Local setup
 
+1. Back up the OBS profile and scene collection you intend to use.
+2. Run the installer in dry-run mode first:
 
-# How to Install the plugin
-1. Download the **[obs_bible_plugin.zip](https://github.com/Tosin-JD/obs-bible-plugin/releases)** from the release page.
-2. Extract the zip file.
-3. Copy the **obs-bible-plugin** or which ever version folder to a safe location in your computer.
-4. Open the **obs-bible-plugin** folder.
-5. Copy the URL or PATH of the **control_panel.html**.
-6. Click on **Docks** > **Custom Browser Docks**
-7. Paste the URL or PATH of the **control_panel.html**.
-8. On the Dialog Box that pops up, Under **Dock Name** enter the name of the Dock, example: **Bible Plugin** or any name of your choice.
-9. Copy the URL or PATH of the **browser_source.html**.
-10. Click on Add Source or the **+** button.
-11. Click on **Browser**.
-12. Paste the URL or PATH of the **browser_source.html** in the input box for URL.
-_Please, make sure that you do not check **checkbox** for **Local file**._ (Leave it off.)
-13. Specify the width and height of the Browser to your preference.
-14. Click on **OK**.
-15. You can type on the textbox to display text and you can click on bible passages to display it.
+   **Windows:**
+   ```powershell
+   pwsh -NoProfile -File .\scripts\install-media-deck.ps1
+   ```
 
+   **macOS / Linux:**
+   ```bash
+   ./scripts/install-media-deck.sh
+   ```
 
-## Shortcuts
-Added some shortcuts in OBS
-The following are shortcuts
-1. Ctrl + arrowup Toggle Display
-2. Ctrl + arrowdown Display Text
-3. Ctrl + B Color text
-4. Ctrl + I Italic
-5. Shift + L Left Align
-6. Shift + R Right Align
-7. Shift + E Center Align
-8. Shift + J Justify Align
+3. Review the printed plan, then apply it explicitly:
 
+   **Windows:**
+   ```powershell
+   pwsh -NoProfile -File .\scripts\install-media-deck.ps1 -Apply
+   ```
 
-## How to Display A Bible Passage
-1. Go to the Bible tab
-2. Search for the Bible Passage with name such is **John 1:1** or with a passage from the scripture as: **Love your neighbor as yourself**
-3. Click on the Bible Verse to display it.
+   **macOS / Linux:**
+   ```bash
+   ./scripts/install-media-deck.sh --apply
+   ```
 
-## How to Display A Song
-You can display song in two ways.  
-a. Line by line  
-b. verse by verse   
+4. Start OBS yourself and arrange the four Emberstage docks. Text and media use
+   their Emberstage browser outputs; Cameras enumerates local video devices.
+5. Add `browser_source.html` as an OBS Browser Source for Scripture, songs, and
+   manual text. Leave **Local file** off and use the file URL.
 
-### How to display a song line by line
-1. Go to the **Song** Tab
-2. Upload the song that you want to display. See the section below on how to upload a song.
-3. In order to display a song line by line, go to the **Settings** Tab, under **General** Check **Display Song Line by Line**.  
-4. Then go to the **Songs** Tab and click on the line that you want to display.  
+The installer creates a timestamped backup and prints its rollback instructions. It
+does not start OBS, switch scenes, change source visibility, or start streaming.
 
-### How to display a song verse by verse
-1. In order to display a song verse by verse, go to the **Settings** Tab, under **General** Uncheck **Display Song Line by Line**.  
-2. Then go to the **Songs** Tab and click on the verse that you want to display.
+For camera access, fully quit OBS and start it with the matching reviewed launcher:
+`scripts/start-obs-camera-mode-macos.command`,
+`scripts/start-obs-camera-mode-linux.sh`, or
+`scripts\start-obs-camera-mode-windows.cmd`. These launch OBS with
+`--enable-media-stream`; they refuse to start a second OBS instance.
 
-## How to Add Song
-In order to add song
-1. Go to the **Song** tab
-2. Click on **Choose File** to upload a song a txt file that contains a song: **Example:** **song.txt**
-3. If you want to differentiate the chorus, make sure that the first line of the chorus is the word "CHORUS"
-4. Click on any line to display it.
+## Native media hotkeys
 
-### Your _song.txt_ file should be arranged in this format.
-1.
-O soul, are you weary and troubled?  
-No light in the darkness you see?  
-There’s light for a look at the Savior,  
-And life more abundant and free!  
-CHORUS  
-Turn your eyes upon Jesus,  
-Look full in His wonderful face,  
-And the things of earth will grow strangely dim,  
-In the light of His glory and grace.  
-2.
-Through death into life everlasting  
-He passed, and we follow Him there;  
-O’er us sin no more hath dominion—  
-For more than conqu’rors we are!  
-3.
-His Word shall not fail you—He promised;  
-Believe Him, and all will be well:  
-Then go to a world that is dying,  
-His perfect salvation to tell!
+The installer registers its installed copy of `media-deck-hotkeys.lua` in the
+active OBS scene collection.
+In OBS:
 
-I hope that as time goes on, we would be able to add more translations. Thank you. God bless you.
+1. Open **Tools → Scripts** and load the Lua script if needed.
+2. Choose the output scene.
+3. Open **Settings → Hotkeys** and search for `Emberstage`.
+4. Assign only the keys you want, then arm the script.
 
-Made with ❤️.
+The script controls mapped video, picture, and camera sources only. It does not
+create sources, reload browser docks, switch scenes, or start/stop the stream.
+
+## Demo mode
+
+To inspect Media or Cameras without connecting OBS:
+
+```text
+media_dock.html?demo=1
+camera_dock.html?demo=1
+```
+
+## Marketing demo
+
+The static landing page is under `site/`:
+
+```bash
+python3 -m http.server 4173
+```
+
+Open `http://127.0.0.1:4173/site/`.
+
+## Commercial control plane
+
+`server/` contains the separate account, workspace, device, entitlement,
+billing, usage, and streaming-destination control plane. It is intentionally
+separate from the offline local core.
+
+```bash
+cd server
+cp .env.example .env
+npm test
+npm start
+```
+
+Important boundaries:
+
+- Product authentication licenses server-backed commercial features.
+- Streaming provider OAuth is only for connecting the owner's selected Twitch,
+  YouTube channel, or Facebook Page to managed streaming setup.
+- Instagram remains unavailable unless an official supported integration is
+  proven.
+- Browser HTML/JavaScript on a user-owned machine cannot be made tamper-proof.
+  Hiding buttons in a dock is not licensing. Every paid action must be enforced
+  again by the control plane.
+- Archived OBS credentials are private migration evidence and are never reused.
+
+See `server/README.md` for the API and configuration details.
+
+## Verification
+
+```bash
+node --test tests/*.test.cjs
+pwsh -NoProfile -File tests/install-contract.ps1
+python3 tests/install-contract.py
+cd server && npm test
+```
+
+## Scripture translations and licensing
+
+The bundled Scripture datasets are treated as licensed for this project. The
+distribution includes AMP, KJV, RVR1909, ESV, Hausa, Igbo, Diodati, Nuova
+Diodati, LSG1910, NKJV, NIV, Russian, Swahili, and Yoruba translations. Preserve
+the applicable license records and attribution when distributing Emberstage.
+See [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) for the project policy and
+operator content responsibilities.
+
+## Attribution
+
+Emberstage builds on the open-source OBS Bible Plugin by Tosin-JD. Preserve the
+upstream license and attribution when redistributing derived code.

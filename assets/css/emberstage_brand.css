@@ -1,0 +1,102 @@
+:root {
+  --ember-brand-deep: #0d1014;
+  --ember-brand-charcoal: #171b22;
+  --ember-brand-surface: rgba(22, 26, 33, 0.92);
+  --ember-brand-line: rgba(230, 177, 90, 0.18);
+  --ember-brand-line-strong: rgba(242, 201, 125, 0.34);
+  --ember-brand-gold: #e6b15a;
+  --ember-brand-gold-bright: #f2c97d;
+  --ember-brand-text: #f3f4f6;
+  --ember-brand-muted: #b7bfca;
+  --ember-brand-shadow: 0 20px 48px rgba(0, 0, 0, 0.34);
+}
+
+.ember-brand-lockup,
+.brand-lockup--svg,
+.dock-brand-lockup {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.9rem;
+  min-width: 0;
+}
+
+.ember-brand-lockup img,
+.brand-lockup--svg img,
+.dock-brand-lockup img {
+  display: block;
+  max-width: 100%;
+}
+
+.ember-brand-logo,
+.brand-logo {
+  width: 48px;
+  height: 48px;
+  flex: 0 0 auto;
+  filter: drop-shadow(0 10px 18px rgba(0, 0, 0, 0.25));
+}
+
+.ember-brand-wordmark,
+.brand-wordmark {
+  width: auto;
+  height: 34px;
+  max-width: min(100%, 290px);
+}
+
+.dock-brand-lockup {
+  gap: 0.65rem;
+}
+
+.dock-brand-lockup .ember-brand-logo {
+  width: 26px;
+  height: 26px;
+}
+
+.dock-brand-lockup .ember-brand-wordmark {
+  height: 18px;
+  max-width: 138px;
+}
+
+.dock-brand-stack,
+.brand-support-copy {
+  display: grid;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.dock-brand-kicker,
+.brand-support-copy {
+  color: var(--ember-brand-gold-bright);
+  font-size: 0.7rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.dock-brand-note {
+  color: var(--ember-brand-muted);
+  font-size: 0.74rem;
+  line-height: 1.4;
+}
+
+.ember-favicon-reset {
+  background: transparent;
+}
+
+@media (max-width: 760px) {
+  .ember-brand-wordmark,
+  .brand-wordmark {
+    height: 28px;
+    max-width: min(100%, 220px);
+  }
+
+  .ember-brand-logo,
+  .brand-logo {
+    width: 42px;
+    height: 42px;
+  }
+}
+
+@media (max-width: 460px) {
+  .dock-brand-lockup .ember-brand-wordmark {
+    max-width: 108px;
+  }
+}

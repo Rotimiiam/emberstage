@@ -59,7 +59,7 @@ const gradientAddSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448
 
 function getDefaultGradientColors() {
     const savedRaw = localStorage.getItem("rawBgColor");
-    const firstColor = savedRaw || "#553355";
+    const firstColor = savedRaw || "#000000";
     return [
         { color: firstColor, opacity: 1 },
         { color: "#000000", opacity: 1 }
@@ -91,7 +91,7 @@ function getBackgroundMode() {
     if (savedMode === "plain" || savedMode === "gradient") {
         return savedMode;
     }
-    return localStorage.getItem(gradientStorageKeys.css) ? "gradient" : "plain";
+    return "plain";
 }
 
 function syncBackgroundModeRadios() {
@@ -120,7 +120,7 @@ function syncBackgroundOpacityControls(rawValue) {
 }
 
 function updateBackgroundOpacityPreview() {
-    const rawColor = localStorage.getItem("rawBgColor") || bgColorInput?.value || "#553355";
+    const rawColor = localStorage.getItem("rawBgColor") || bgColorInput?.value || "#000000";
     const transparent = hexToRgba(rawColor, 0);
     const solid = hexToRgba(rawColor, 1);
 
@@ -130,7 +130,7 @@ function updateBackgroundOpacityPreview() {
 }
 
 function getSolidBackgroundCss() {
-    const rawColor = localStorage.getItem("rawBgColor") || bgColorInput?.value || "#553355";
+    const rawColor = localStorage.getItem("rawBgColor") || bgColorInput?.value || "#000000";
     return hexToRgba(rawColor, getBackgroundOpacityValue());
 }
 
@@ -404,7 +404,7 @@ function applyBackgroundOpacity(rawValue) {
     let currentOpacity = Number(rawValue) / BACKGROUND_OPACITY_STEPS;
     localStorage.setItem('savedOpacity', rawValue);
     syncBackgroundOpacityControls(String(rawValue));
-    const rawColor = localStorage.getItem("rawBgColor") || bgColorInput?.value || "#553355";
+    const rawColor = localStorage.getItem("rawBgColor") || bgColorInput?.value || "#000000";
     let newColor = hexToRgba(rawColor, currentOpacity);
 
     let settingsChannel = new BroadcastChannel("settings");

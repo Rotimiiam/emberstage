@@ -1,0 +1,17 @@
+<svg width="546" height="144" viewBox="174 25 546 144" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="emberstageWordmarkTitle emberstageWordmarkDesc">
+  <title id="emberstageWordmarkTitle">Emberstage wordmark</title>
+  <desc id="emberstageWordmarkDesc">Emberstage for OBS wordmark, paired with the separate Emberstage emblem.</desc>
+  <defs>
+    <linearGradient id="wordmark-gold" x1="0" y1="0" x2="0" y2="120" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFE0A8"/>
+      <stop offset="0.45" stop-color="#F2C97D"/>
+      <stop offset="1" stop-color="#DA9D45"/>
+    </linearGradient>
+    <linearGradient id="wordmark-sub" x1="0" y1="0" x2="160" y2="0" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#DDE1E7"/>
+      <stop offset="1" stop-color="#AEB6C2"/>
+    </linearGradient>
+  </defs>
+  <text x="182" y="96" fill="url(#wordmark-gold)" font-size="74" font-family="Iowan Old Style, Palatino Linotype, Book Antiqua, Georgia, serif" font-weight="600" letter-spacing="0.5">Emberstage</text>
+  <text x="186" y="145" fill="url(#wordmark-sub)" font-size="30" font-family="Avenir Next, Segoe UI, Trebuchet MS, sans-serif" font-weight="650" letter-spacing="7.5">FOR OBS</text>
+</svg>

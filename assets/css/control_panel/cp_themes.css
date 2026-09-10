@@ -20,43 +20,43 @@
 }
 
 [data-theme="obs-bible-dark"] {
-    --color-bg: #222222;
-    --color-mid-bg: #343434;
+    --color-bg: #121316;
+    --color-mid-bg: #1b1d22;
     --chorus-bg: #272233;
     --chorus-fg: #ffffff;
-    --danger-btn-bg: #181818;
+    --danger-btn-bg: #332115;
     --danger-btn-fg: #ffffff;
-    --primary-btn-bg: #191919;
-    --primary-btn-fg: #ffffff;
-    --warning-btn-bg: #555555;
+    --primary-btn-bg: #8f5f1f;
+    --primary-btn-fg: #fff7ea;
+    --warning-btn-bg: #2a2d34;
     --warning-btn-fg: #ffffff;
-    --highlighted-bg-color: #02020a;
-    --selected-bg-color: #111111;
-    --selected-fg-color: #ffffff;
-    --slide-bg: #c9c9c9;
-    --slide-fg: #636363;
-    --hover-bg-color: #a1a1a1;
+    --highlighted-bg-color: #2a1d12;
+    --selected-bg-color: #2c1f11;
+    --selected-fg-color: #ffd38a;
+    --slide-bg: #62656b;
+    --slide-fg: #202227;
+    --hover-bg-color: #3a3e47;
     --hover-fg-color: #ffffff;
     --color-fg: #ffffff;
 }
 
 [data-theme="obs-bible-grey"] {
-    --color-bg: #343434;
-    --color-mid-bg: #222222;
-    --chorus-bg: #272233;
+    --color-bg: #1b1c1f;
+    --color-mid-bg: #26282d;
+    --chorus-bg: #343041;
     --chorus-fg: #ffffff;
-    --danger-btn-bg: #181818;
+    --danger-btn-bg: #3a2314;
     --danger-btn-fg: #ffffff;
-    --primary-btn-bg: #191919;
-    --primary-btn-fg: #ffffff;
-    --warning-btn-bg: #555555;
+    --primary-btn-bg: #a36b24;
+    --primary-btn-fg: #fff8ec;
+    --warning-btn-bg: #363941;
     --warning-btn-fg: #ffffff;
-    --highlighted-bg-color: #2c2c2c;
-    --selected-bg-color: #151515;
-    --selected-fg-color: #ffffff;
-    --slide-bg: #c9c9c9;
-    --slide-fg: #636363;
-    --hover-bg-color: #284CB8;
+    --highlighted-bg-color: #2f2319;
+    --selected-bg-color: #302315;
+    --selected-fg-color: #ffd38a;
+    --slide-bg: #7c818a;
+    --slide-fg: #202227;
+    --hover-bg-color: #474c56;
     --hover-fg-color: #fffefe;
     --color-fg: #ffffff;
 }
@@ -125,22 +125,22 @@
 }
 
 [data-theme="obs-bible-default-yami"] {
-    --color-bg: #333642;
-    --color-mid-bg: #26272e;
-    --chorus-bg: #4663ba;
+    --color-bg: #14151a;
+    --color-mid-bg: #1c1e25;
+    --chorus-bg: #3a3043;
     --chorus-fg: #ffffff;
-    --danger-btn-bg: #0f4bbd;
+    --danger-btn-bg: #3b2412;
     --danger-btn-fg: #ffffff;
-    --primary-btn-bg: #0f4bbd;
-    --primary-btn-fg: #284Cee;
-    --warning-btn-bg: #3C404D;
+    --primary-btn-bg: #a87025;
+    --primary-btn-fg: #fff7eb;
+    --warning-btn-bg: #272a33;
     --warning-btn-fg: #ffffff;
-    --highlighted-bg-color: #3C404D;
-    --selected-bg-color: #13141A;
-    --selected-fg-color: #284Cee;
-    --slide-bg: #4e87d1;
-    --slide-fg: #3C404D;
-    --hover-bg-color: #2c66d3;
+    --highlighted-bg-color: #32251a;
+    --selected-bg-color: #2a1f14;
+    --selected-fg-color: #ffd38a;
+    --slide-bg: #707684;
+    --slide-fg: #262a33;
+    --hover-bg-color: #353944;
     --hover-fg-color: #ffffff;
     --color-fg: #ffffff;
 }
@@ -163,7 +163,7 @@ body, .main-bg {
     color: var(--color-fg);
 }
 
-div, .selected-setting-tab, .settings-tab-button.selected-setting-tab{
+.settings-tab-button.selected-setting-tab{
     background-color: var(--color-bg);
     color: var(--color-fg);
 }
@@ -210,7 +210,14 @@ p:active, .tab-button:active, .song p:active, .color-picker:active,
     background-color: var(--selected-bg-color);
 }
 
-.activated, .selected, .selected-tab, .tab-area, .container, 
+.activated,
+.tab-button.selected-tab,
+#suggestions li.selected,
+#suggestions li.activated,
+.song p.selected,
+.bible-container p.selected,
+.song-verse > div.selected,
+.song-verse > div:has(p.selected),
 .spacebar-toggle-input:checked + .spacebar-toggle-label,
  .fade-in-toggle-input:checked + .fade-in-toggle-label {
     color: var(--selected-fg-color) !important;

@@ -1,0 +1,11 @@
+.DS_Store
+.agent-screenshots/
+obs-bundle-audit.json
+obs-bundle-streaming-history.txt
+server/.env
+server/data/
+server/*.db
+server/*.db-shm
+server/*.db-wal
+deploy/nango/.env
+deploy/nango/nango-data/

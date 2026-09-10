@@ -3,8 +3,10 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" type="image/svg+xml" href="assets/brand/favicon.svg">
+  <link rel="shortcut icon" href="assets/brand/favicon.svg">
   <link rel="stylesheet" href="assets/css/browser/browser_style.css">
-  <title>Receiver</title>
+  <title>Emberstage Text Overlay</title>
 </head>
 <body>
   <div class="bg-container" id="bg-container">
@@ -43,15 +45,20 @@
           if (event.data.opacityColor){
             bgContainer.style.backgroundColor = event.data.opacityColor;
             localStorage.setItem('bgColor', event.data.opacityColor);
+            localStorage.setItem('obs-bible-background-mode', 'plain');
           }
           if (event.data.gradientBackground){
             bgContainer.style.backgroundImage = event.data.gradientBackground;
             bgContainer.style.backgroundColor = "transparent";
             localStorage.setItem('obs-bible-gradient-css', event.data.gradientBackground);
+            localStorage.setItem('obs-bible-background-mode', 'gradient');
           }
           if (event.data.clearGradient){
             bgContainer.style.backgroundImage = "none";
             localStorage.removeItem('obs-bible-gradient-css');
+            if (localStorage.getItem('obs-bible-background-mode') === 'gradient') {
+              localStorage.removeItem('obs-bible-background-mode');
+            }
           }
           if (event.data.roundedCorner){
             bgContainer.style.borderRadius = event.data.roundedCorner + "px";
@@ -60,6 +67,7 @@
           if (event.data.selectedBgColor){
             bgContainer.style.backgroundColor = event.data.selectedBgColor;
             localStorage.setItem('bgColor', event.data.selectedBgColor);
+            localStorage.setItem('obs-bible-background-mode', 'plain');
           }
           if (event.data.selectedFontColor){
             bgContainer.style.color = event.data.selectedFontColor;
@@ -174,15 +182,15 @@
               animationContainer.classList.remove(type);
             }, duration * 1000);
           } else if (display === 'flex') {
+            // Measure at the real rendered dimensions before the entrance animation.
+            // Messages received while hidden otherwise get fitted against a 1px box
+            // and flash at the minimum font size when the source is shown.
+            animationContainer.style.display = 'flex';
+            animationContainer.classList.remove(type);
+            adjustFontSizeBasedOnScroll();
+            void animationContainer.offsetWidth;
             animationContainer.style.animationDirection = "normal";
             animationContainer.classList.add(type);
-            animationContainer.style.display = 'flex';
-            
-            while(animatedElement.offsetHeight > animationContainer.offsetHeight){
-              let tempFontSize = Number(animatedElement.style.fontSize.replace(/px/i, ''));
-              tempFontSize -= 1;
-              animatedElement.style.fontSize = `${tempFontSize}px`;
-            }
 
             setTimeout(() => {
               adjustFontSizeBasedOnScroll();

@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" type="image/svg+xml" href="/assets/brand/favicon.svg">
+  <link rel="shortcut icon" href="/assets/brand/favicon.svg">
+  <link rel="stylesheet" href="/assets/css/emberstage_brand.css">
+  <title>Emberstage Portal</title>
+  <link rel="stylesheet" href="/app/app.css">
+</head>
+<body>
+  <div id="app-container">
+    <div class="portal-shell">
+      <div class="portal-backdrop" aria-hidden="true"></div>
+
+      <div id="portal-loading" class="portal-loading panel" role="status" aria-live="polite">
+        <span class="loading-mark" aria-hidden="true"></span>
+        <div><strong>Opening Emberstage</strong><small>Checking your local session…</small></div>
+      </div>
+
+      <div id="auth-view" class="auth-layout" style="display: none;">
+        <section class="auth-intro panel panel-ornate" aria-label="Portal introduction">
+          <div class="brand-lockup brand-lockup--svg">
+            <img class="brand-logo" src="/assets/brand/emberstage-logo.svg" alt="">
+            <div>
+              <p class="eyebrow">Local-first workspace portal</p>
+              <h1>
+                <span class="sr-only">Emberstage for OBS</span>
+                <img class="brand-wordmark" src="/assets/brand/emberstage-wordmark.svg" alt="">
+              </h1>
+            </div>
+          </div>
+
+          <div class="hero-copy">
+            <h2>One control room for encoder setup, channels, and explicit broadcast moments</h2>
+            <p>
+              Sign in to pair devices, keep OBS pointed at the right ingest, connect destinations,
+              and manage YouTube broadcasts without turning the workspace into a scattered setup checklist.
+            </p>
+          </div>
+
+          <div class="intro-grid">
+            <article class="intro-card">
+              <p class="intro-label">Encoder</p>
+              <p>Keep one RTMP server, one reusable device key, and one honest setup path for each OBS box.</p>
+            </article>
+            <article class="intro-card">
+              <p class="intro-label">Channels</p>
+              <p>Connect providers, add RTMP relays, and turn destinations on or off before the live session starts.</p>
+            </article>
+            <article class="intro-card">
+              <p class="intro-label">Broadcasts</p>
+              <p>Choose or create the right YouTube broadcast, then approve that channel to auto-go-live when OBS starts streaming. Privacy still stays private, unlisted, or public as configured.</p>
+            </article>
+          </div>
+        </section>
+
+        <section class="auth-card panel" aria-labelledby="auth-title">
+          <div class="auth-card-head">
+            <p class="eyebrow">Portal access</p>
+            <h2 id="auth-title">Emberstage Sign In</h2>
+            <p class="auth-subcopy">Use the owner account for your workspace.</p>
+          </div>
+
+          <div id="auth-alert" class="alert alert-danger" style="display: none;"></div>
+
+          <div class="auth-methods">
+            <button type="button" id="auth0-auth-button" class="btn btn-secondary btn-auth0" hidden>
+              <span class="oauth-mark" aria-hidden="true">A</span>
+              <span>Continue with Auth0</span>
+            </button>
+            <button type="button" id="google-auth-button" class="btn btn-secondary btn-google" hidden style="display: none !important;">
+              <span class="oauth-mark" aria-hidden="true">G</span>
+              <span>Continue with Google</span>
+            </button>
+            <div class="auth-divider"><span>or continue with email</span></div>
+          </div>
+
+          <form id="auth-form">
+            <div class="form-group" id="workspace-group">
+              <label for="reg-workspace">Workspace Name</label>
+              <input type="text" id="reg-workspace" class="form-control" placeholder="Acme Streamers">
+            </div>
+            <div class="form-group">
+              <label for="auth-email">Email Address</label>
+              <input type="email" id="auth-email" class="form-control" required placeholder="name@domain.com">
+            </div>
+            <div class="form-group">
+              <label for="auth-password">Password</label>
+              <input type="password" id="auth-password" class="form-control" required placeholder="••••••••">
+            </div>
+
+            <button type="submit" id="auth-submit-btn" class="btn btn-block">Sign In</button>
+            <p class="auth-toggle-row">
+              <a href="#" id="auth-toggle-link">Create an account instead</a>
+            </p>
+          </form>
+
+          <p class="auth-footnote support-copy">
+            Product account sign-in may support email/password and optional OAuth. Provider OAuth remains a separate destination setup step.
+          </p>
+        </section>
+      </div>
+
+      <div id="app-view" style="display: none;">
+        <header class="app-header panel panel-ornate">
+          <div class="brand-lockup brand-lockup--svg brand-lockup--compact">
+            <img class="brand-logo" src="/assets/brand/emberstage-logo.svg" alt="">
+            <div>
+              <p class="eyebrow">Workspace portal</p>
+              <h1>
+                <span class="sr-only">Emberstage Portal</span>
+                <img class="brand-wordmark" src="/assets/brand/emberstage-wordmark.svg" alt="">
+              </h1>
+            </div>
+          </div>
+
+          <div class="header-meta">
+            <div class="identity-card">
+              <div class="identity-row">
+                <span class="identity-label">Workspace</span>
+                <strong id="header-workspace-name">--</strong>
+              </div>
+              <div class="identity-row">
+                <span class="identity-label">User</span>
+                <span id="header-user-email">--</span>
+              </div>
+            </div>
+            <div class="header-actions">
+              <button id="refresh-portal-btn" class="btn btn-secondary" type="button">Refresh</button>
+              <button id="logout-btn" class="btn btn-secondary" type="button">Sign Out</button>
+            </div>
+          </div>
+        </header>
+
+        <div id="app-alert" class="alert" style="display: none;"></div>
+
+        <section class="command-stage panel panel-ornate" aria-labelledby="command-stage-title">
+          <div class="section-head section-head--hero">
+            <div>
+              <p class="eyebrow">Live control</p>
+              <h2 id="command-stage-title">Your stream, at a glance.</h2>
+            </div>
+            <div class="hero-actions">
+              <span id="active-session-chip" class="status-chip status-chip-muted">Checking session</span>
+            </div>
+          </div>
+          <p class="section-copy command-copy">
+            Configure OBS once, then approve your channels and broadcasts. Start Streaming in OBS to go live; track each stage of delivery below.
+          </p>
+          <div id="command-stage-grid" class="command-stage-grid"></div>
+        </section>
+
+        <div class="app-primary-grid">
+          <section class="card panel" aria-labelledby="encoder-title">
+            <div class="section-head">
+              <div>
+                <p class="eyebrow">Encoder setup</p>
+                <h2 id="encoder-title">Connect OBS</h2>
+              </div>
+            </div>
+            <div id="encoder-panel"></div>
+          </section>
+
+          <section class="card panel" aria-labelledby="channels-title">
+            <div class="section-head">
+              <div>
+                <p class="eyebrow">Destinations</p>
+                <h2 id="channels-title">Manage your channels</h2>
+              </div>
+            </div>
+            <div id="channels-panel"></div>
+          </section>
+        </div>
+
+        <div class="app-secondary-grid">
+          <section class="card panel youtube-studio-panel" aria-labelledby="youtube-studio-title">
+            <div class="section-head">
+              <div>
+                <p class="eyebrow">YouTube studio</p>
+                <h2 id="youtube-studio-title">Prepare your broadcast</h2>
+              </div>
+            </div>
+            <div id="youtube-studio-panel"></div>
+          </section>
+
+          <div class="secondary-stack">
+            <details class="subordinate-shell card panel" open>
+              <summary>
+                <span>
+                  <span class="eyebrow">Pairing &amp; device admin</span>
+                  <strong>Devices &amp; Pairings</strong>
+                </span>
+                <span class="summary-hint">Pair new OBS hardware or rotate access later</span>
+              </summary>
+              <div id="devices-panel" class="subordinate-body"></div>
+            </details>
+
+            <details class="subordinate-shell card panel">
+              <summary>
+                <span>
+                  <span class="eyebrow">Billing &amp; limits</span>
+                  <strong>Workspace &amp; Subscription</strong>
+                </span>
+                <span class="summary-hint">Keep plan controls out of the way until needed</span>
+              </summary>
+              <div id="subscription-panel" class="subordinate-body"></div>
+            </details>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="portal-modal" class="modal-backdrop" style="display: none;" aria-hidden="true">
+    <div class="modal-card modal-card-wide" role="dialog" aria-modal="true" aria-labelledby="portal-modal-title">
+      <button id="portal-modal-close" class="modal-close" type="button" aria-label="Close dialog">×</button>
+      <div id="portal-modal-content"></div>
+    </div>
+  </div>
+
+  <script src="/app/app.js"></script>
+</body>
+</html>

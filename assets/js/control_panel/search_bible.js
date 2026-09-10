@@ -14,9 +14,10 @@ function ensureEndsWithColon(str) {
 function searchBible(query, bible_data) {
   bblVerseDiv.innerHTML = "";
   let savedBibleVerse = [];
+  query = normalizeBibleReference(query);
   const lowercaseQuery = query.toLowerCase();
 
-  if (lowercaseQuery.includes('-')) {
+  if (/^.+\s+\d+\s*:\s*\d+\s*-\s*\d+$/.test(lowercaseQuery)) {
     // for searches like John 1: 1-5
     savedBibleVerse = [];
     const [bookAndChapter, verseRange] = lowercaseQuery.split(':');
@@ -33,7 +34,7 @@ function searchBible(query, bible_data) {
         const pElement = document.createElement('p');
         const cleanedName = matchingVerse.name.replace(/:/g, '-').replace(/\s/g, '').toLowerCase();
         pElement.id = cleanedName;
-        pElement.innerHTML = `<span>${matchingVerse.name.toUpperCase()}</span> ${matchingVerse.verse}`;
+        pElement.innerHTML = buildVerseMarkup(matchingVerse.name, matchingVerse.verse);
         bblVerseDiv.appendChild(pElement);
       }
     }
@@ -53,7 +54,7 @@ function searchBible(query, bible_data) {
         const pElement = document.createElement('p');
         pElement.classList.add("verse");
         pElement.id = cleanedName;
-        pElement.innerHTML = `<span>${name.toUpperCase()}</span> ${bible_data[i].verse}`;
+        pElement.innerHTML = buildVerseMarkup(bible_data[i].name, bible_data[i].verse);
 
         bblVerseDiv.appendChild(pElement);
       }
@@ -82,7 +83,7 @@ function searchBible(query, bible_data) {
             const pElement = document.createElement('p');
             pElement.classList.add("verse");
             pElement.id = cleanedName;
-            pElement.innerHTML = `<span>${name.toUpperCase()}</span> ${bible_data[i].verse}`;
+            pElement.innerHTML = buildVerseMarkup(bible_data[i].name, bible_data[i].verse);
             const ariParts = bible_data[i].ari;
             savedBibleVerse.push(ariParts);
 
@@ -98,7 +99,7 @@ function searchBible(query, bible_data) {
         const name = bible_data[i].name.toLowerCase();
         const verse = bible_data[i].verse.toLowerCase();
 
-        if (name.includes(lowercaseQueryWithColon) || verse.includes(lowercaseQueryWithColon)) {
+        if (name.startsWith(lowercaseQueryWithColon)) {
           const cleanedName = bible_data[i].name.replace(/:/g, '-').replace(/\s/g, '').toLowerCase();
           const ariParts = bible_data[i].ari;
           const middleAriPart = ariParts[2];
@@ -106,7 +107,7 @@ function searchBible(query, bible_data) {
 
           const pElement = document.createElement('p');
           pElement.id = cleanedName;
-          pElement.innerHTML = `<span>${name.toUpperCase()}</span> ${bible_data[i].verse}`;
+          pElement.innerHTML = buildVerseMarkup(bible_data[i].name, bible_data[i].verse);
           bblVerseDiv.appendChild(pElement);
         }
       }
@@ -128,7 +129,7 @@ function getBibeAri(query) {
         const pElement = document.createElement('p');
         const cleanedName = matchingVerse.name.replace(/:/g, '-').replace(/\s/g, '').toLowerCase();
         pElement.id = cleanedName;
-        pElement.innerHTML = `<span>${matchingVerse.name.toUpperCase()}</span> ${matchingVerse.verse}`;
+        pElement.innerHTML = buildVerseMarkup(matchingVerse.name, matchingVerse.verse);
         bblVerseDiv.appendChild(pElement);
       }
     }

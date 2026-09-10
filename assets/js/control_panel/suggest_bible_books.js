@@ -18,7 +18,7 @@ function updateInput(index) {
 
     // Calculate the scroll position to ensure the selected item is visible
     const suggestionHeight = selectedSuggestion.offsetHeight;
-    const scrollTop = selectedSuggestion.offsetTop - (suggestionHeight * 2);74
+    const scrollTop = selectedSuggestion.offsetTop - (suggestionHeight * 2);
     suggestionsList.scrollTop = scrollTop;
   }
 }
@@ -26,17 +26,27 @@ function updateInput(index) {
 bibleInput.addEventListener("input", function() {
 
   const inputValue = bibleInput.value.toLowerCase();
-  // const filteredBooks = Array.from(bibleIndex.keys()).filter(book =>book.toLowerCase().includes(inputValue));
-  const filteredBooks = Array.from(bibleIndex.keys()).filter(book => 
+  
+  if (/\s\d/.test(inputValue)) {
+    suggestionsList.innerHTML = "";
+    return;
+  }
+
+  let filteredBooks = Array.from(bibleIndex.keys()).filter(book => 
     fuzzySearch(inputValue, book.toLowerCase())
   );
+
+  const resolvedName = getResolvedBookNameFromAlias(inputValue);
+  if (resolvedName && !filteredBooks.includes(resolvedName)) {
+    filteredBooks.unshift(resolvedName);
+  }
 
   suggestionsList.innerHTML = "";
   if(inputValue.length > 0){
 
     filteredBooks.forEach((book, index) => {
       const listItem = document.createElement("li");
-      listItem.innerHTML = `${book} `;
+      listItem.textContent = `${book} `;
       // Add a click event listener to each suggestion
       listItem.addEventListener("click", () => {
         updateInput(index);

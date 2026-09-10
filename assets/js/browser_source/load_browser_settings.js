@@ -1,3 +1,15 @@
+const BACKGROUND_MODE_STORAGE_KEY = 'obs-bible-background-mode';
+
+function shouldApplySavedBackground() {
+  const savedMode = localStorage.getItem(BACKGROUND_MODE_STORAGE_KEY);
+  return savedMode === 'plain' || savedMode === 'gradient';
+}
+
+function resetBackgroundToTransparent() {
+  bgContainer.style.backgroundColor = 'transparent';
+  bgContainer.style.backgroundImage = 'none';
+}
+
 // Check if a background color is saved in localStorage
 const savedBgColor = localStorage.getItem('bgColor');
 const savedGradientCss = localStorage.getItem('obs-bible-gradient-css');
@@ -65,11 +77,13 @@ if (savedMessage){
     messageDisplay.innerHTML = savedMessage;
 }
 
-if (savedGradientCss) {
+if (shouldApplySavedBackground() && savedGradientCss) {
     bgContainer.style.backgroundImage = savedGradientCss;
     bgContainer.style.backgroundColor = "transparent";
-} else if (savedBgColor) {
+} else if (shouldApplySavedBackground() && savedBgColor) {
     bgContainer.style.backgroundColor = savedBgColor;
+} else {
+    resetBackgroundToTransparent();
 }
 
 if (savedFontFamily) {

@@ -1,0 +1,2188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" type="image/svg+xml" href="assets/brand/favicon.svg">
+  <link rel="shortcut icon" href="assets/brand/favicon.svg">
+  <link rel="stylesheet" href="assets/css/emberstage_brand.css">
+  <title>Emberstage – Streaming</title>
+  <style>
+    :root {
+      --bg-deep: #0b0d12;
+      --bg-surface: rgba(20, 24, 31, 0.96);
+      --bg-card: rgba(28, 32, 41, 0.94);
+      --bg-card-soft: rgba(35, 40, 51, 0.78);
+      --bg-highlight: rgba(225, 175, 84, 0.1);
+      --bg-highlight-strong: rgba(225, 175, 84, 0.16);
+      --border: rgba(228, 198, 149, 0.18);
+      --border-strong: rgba(228, 198, 149, 0.34);
+      --text-main: #f3efe7;
+      --text-muted: #bcb4a5;
+      --text-subtle: #8f8777;
+      --amber: #e1af54;
+      --amber-soft: #efc878;
+      --green: #8dc9aa;
+      --red: #db7477;
+      --blue: #89a8d7;
+      --shadow: 0 20px 48px rgba(0, 0, 0, 0.34);
+      --shadow-soft: 0 12px 28px rgba(0, 0, 0, 0.22);
+      --display-font: Georgia, "Iowan Old Style", "Times New Roman", serif;
+      --body-font: "Avenir Next", "Segoe UI", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      background: var(--bg-deep);
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--text-main);
+      font: 13px/1.4 var(--body-font);
+      background:
+        radial-gradient(circle at top left, rgba(114, 43, 55, 0.2), transparent 30%),
+        radial-gradient(circle at top right, rgba(225, 175, 84, 0.12), transparent 24%),
+        linear-gradient(180deg, #12161e 0%, #0b0d12 100%);
+      overflow: hidden;
+    }
+
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background-image:
+        linear-gradient(rgba(255, 255, 255, 0.015) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.012) 1px, transparent 1px);
+      background-size: 58px 58px;
+      opacity: 0.28;
+    }
+
+    .shell {
+      position: relative;
+      min-height: 100vh;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .hero-glow {
+      position: absolute;
+      inset: 8px 12px auto;
+      height: 88px;
+      border-radius: 20px;
+      background:
+        radial-gradient(circle at 18% 32%, rgba(225, 175, 84, 0.18), transparent 22%),
+        linear-gradient(135deg, rgba(225, 175, 84, 0.08), rgba(115, 47, 57, 0.14));
+      filter: blur(0.4px);
+      pointer-events: none;
+    }
+
+    .topbar {
+      position: relative;
+      z-index: 1;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 2px 2px 0;
+    }
+
+    .brand-copy {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      min-width: 0;
+      flex: 1;
+    }
+
+    .brand-copy > div { min-width: 0; }
+
+    .brand-copy .dock-brand-stack {
+      gap: 4px;
+    }
+
+    .brand-copy .ember-brand-logo {
+      width: 32px;
+      height: 32px;
+      margin-top: 2px;
+    }
+
+    .brand-copy .ember-brand-wordmark {
+      height: 22px;
+      max-width: 168px;
+    }
+
+    .eyebrow {
+      text-transform: uppercase;
+      letter-spacing: 0.16em;
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--amber);
+    }
+
+    h1 {
+      margin: 2px 0 0;
+      font: 600 20px/1 var(--display-font);
+      letter-spacing: 0.01em;
+    }
+
+    .subtitle {
+      margin-top: 5px;
+      color: var(--text-muted);
+      font-size: 11.5px;
+    }
+
+    .topbar-meta {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 6px;
+      min-width: 112px;
+    }
+
+    .topbar-links {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 10px;
+      white-space: nowrap;
+    }
+
+    .status-pill,
+    .mini-pill,
+    .target-state {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 4px 9px;
+      font-size: 10.5px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      white-space: nowrap;
+      background: rgba(255, 255, 255, 0.03);
+      color: var(--text-muted);
+    }
+
+    .status-pill::before,
+    .mini-pill::before,
+    .target-state::before {
+      content: "";
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: currentColor;
+      box-shadow: 0 0 10px currentColor;
+      opacity: 0.9;
+    }
+
+    .tone-paired { color: var(--blue); }
+    .tone-ready { color: var(--green); }
+    .tone-warning { color: var(--amber); }
+    .tone-danger { color: var(--red); }
+    .tone-muted { color: var(--text-subtle); }
+
+    .view {
+      position: relative;
+      z-index: 1;
+      flex: 1;
+      min-height: 0;
+    }
+
+    .card {
+      background: linear-gradient(180deg, var(--bg-card), rgba(22, 26, 34, 0.96));
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      box-shadow: var(--shadow-soft);
+    }
+
+    .pair-shell {
+      height: 100%;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      align-content: start;
+    }
+
+    .pair-card {
+      position: relative;
+      overflow: hidden;
+      padding: 18px;
+      display: grid;
+      gap: 14px;
+      background:
+        radial-gradient(circle at top right, rgba(225, 175, 84, 0.12), transparent 24%),
+        linear-gradient(180deg, rgba(31, 36, 46, 0.96), rgba(17, 20, 27, 0.98));
+    }
+
+    .pair-card::after {
+      content: "";
+      position: absolute;
+      inset: auto -22px -34px auto;
+      width: 132px;
+      height: 132px;
+      border-radius: 50%;
+      border: 1px solid rgba(225, 175, 84, 0.12);
+      opacity: 0.9;
+    }
+
+    .pair-header {
+      display: grid;
+      gap: 8px;
+      max-width: 520px;
+    }
+
+    .pair-title {
+      font: 600 26px/0.98 var(--display-font);
+      letter-spacing: 0.01em;
+    }
+
+    .pair-title span {
+      color: var(--amber);
+    }
+
+    .pair-copy {
+      color: var(--text-muted);
+      max-width: 48ch;
+    }
+
+    .pair-steps {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .pair-step {
+      padding: 12px;
+      border-radius: 12px;
+      background: var(--bg-card-soft);
+      border: 1px solid var(--border);
+      display: grid;
+      gap: 5px;
+      min-width: 0;
+    }
+
+    .step-number {
+      color: var(--amber);
+      font-size: 10px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      font-weight: 800;
+    }
+
+    .step-copy {
+      color: var(--text-main);
+      font-size: 12px;
+    }
+
+    .support-copy {
+      color: var(--text-subtle);
+      font-size: 11px;
+    }
+
+    .pair-actions {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 10px;
+    }
+
+    button {
+      appearance: none;
+      border: none;
+      border-radius: 999px;
+      padding: 11px 16px;
+      font: 700 12px/1 var(--body-font);
+      cursor: pointer;
+      transition: transform 180ms ease, opacity 180ms ease, background 180ms ease, border-color 180ms ease;
+    }
+
+    .btn-link {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 999px;
+      padding: 11px 16px;
+      font: 700 12px/1 var(--body-font);
+      text-decoration: none;
+      cursor: pointer;
+      transition: transform 180ms ease, opacity 180ms ease, background 180ms ease, border-color 180ms ease;
+    }
+
+    button:hover:not(:disabled),
+    .btn-link:hover {
+      transform: translateY(-1px);
+    }
+
+    button:disabled {
+      cursor: not-allowed;
+      opacity: 0.48;
+      transform: none;
+    }
+
+    .btn-primary {
+      color: #1b1408;
+      background: linear-gradient(180deg, var(--amber-soft), var(--amber));
+      box-shadow: 0 12px 24px rgba(225, 175, 84, 0.18);
+    }
+
+    .btn-secondary {
+      color: var(--text-main);
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--border);
+    }
+
+    .portal-link {
+      color: var(--amber-soft);
+      background: rgba(225, 175, 84, 0.08);
+      border: 1px solid rgba(225, 175, 84, 0.28);
+    }
+
+    .btn-danger {
+      color: #ffe9ea;
+      background: linear-gradient(180deg, rgba(219, 116, 119, 0.88), rgba(179, 72, 77, 0.88));
+    }
+
+    .btn-ghost {
+      padding: 0;
+      border-radius: 0;
+      background: transparent;
+      color: var(--text-subtle);
+      font-weight: 600;
+    }
+
+    .main-layout {
+      height: 100%;
+      display: grid;
+      grid-template-columns: minmax(0, 1.2fr) minmax(240px, 0.9fr);
+      gap: 10px;
+      min-height: 0;
+    }
+
+    .stack {
+      display: grid;
+      gap: 10px;
+      min-height: 0;
+    }
+
+    .summary-card,
+    .destinations-card,
+    .controls-card,
+    .notice {
+      padding: 12px 14px;
+    }
+
+    .summary-top {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: flex-start;
+    }
+
+    .summary-copy {
+      display: grid;
+      gap: 6px;
+      min-width: 0;
+    }
+
+    .summary-label {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.16em;
+      color: var(--amber);
+      font-weight: 700;
+    }
+
+    .workspace-name {
+      font: 600 20px/1 var(--display-font);
+      word-break: break-word;
+    }
+
+    .identity-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 10px;
+    }
+
+    .identity-cell {
+      padding: 10px 11px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.02);
+      min-width: 0;
+    }
+
+    .identity-cell strong {
+      display: block;
+      margin-top: 4px;
+      color: var(--text-main);
+      font-size: 12.5px;
+      word-break: break-word;
+    }
+
+    .identity-cell span {
+      display: block;
+      margin-top: 4px;
+      color: var(--text-muted);
+      font-size: 11px;
+    }
+
+    .destinations-card {
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+      min-height: 0;
+    }
+
+    .section-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+
+    .section-head h2,
+    .controls-card h2,
+    .notice h2 {
+      margin: 0;
+      font: 600 16px/1 var(--display-font);
+    }
+
+    .section-head p,
+    .controls-card p,
+    .notice p {
+      margin: 4px 0 0;
+      color: var(--text-subtle);
+      font-size: 11px;
+    }
+
+    .destinations-list {
+      min-height: 0;
+      overflow: auto;
+      display: grid;
+      align-content: start;
+      gap: 8px;
+      padding-right: 2px;
+    }
+
+    .destination-row {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      gap: 10px;
+      align-items: center;
+      padding: 10px 11px;
+      border-radius: 14px;
+      border: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.03);
+      transition: border-color 180ms ease, background 180ms ease, transform 180ms ease;
+    }
+
+    .destination-row:hover {
+      border-color: var(--border-strong);
+      background: rgba(255, 255, 255, 0.045);
+    }
+
+    .destination-mark {
+      width: 34px;
+      height: 34px;
+      border-radius: 11px;
+      display: grid;
+      place-items: center;
+      color: var(--amber);
+      font: 700 11px/1 var(--body-font);
+      letter-spacing: 0.1em;
+      border: 1px solid rgba(225, 175, 84, 0.26);
+      background: linear-gradient(180deg, rgba(225, 175, 84, 0.14), rgba(225, 175, 84, 0.05));
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    }
+
+    .destination-copy {
+      min-width: 0;
+      display: grid;
+      gap: 3px;
+    }
+
+    .destination-name {
+      font-weight: 700;
+      font-size: 12.5px;
+      color: var(--text-main);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .destination-meta {
+      font-size: 11px;
+      color: var(--text-muted);
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      align-items: center;
+    }
+
+    .destination-detail {
+      color: var(--text-subtle);
+    }
+
+    .destination-actions {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .destination-broadcast {
+      color: var(--text-main);
+      font-size: 11px;
+      line-height: 1.35;
+    }
+
+    .destination-broadcast strong {
+      font-weight: 700;
+    }
+
+    .destination-row-selected {
+      border-color: var(--border-strong);
+      background: rgba(225, 175, 84, 0.05);
+    }
+
+    .destination-row-dormant {
+      opacity: 0.84;
+    }
+
+    .switch {
+      position: relative;
+      width: 42px;
+      height: 24px;
+      flex: 0 0 auto;
+    }
+
+    .switch input {
+      position: absolute;
+      opacity: 0;
+      inset: 0;
+      cursor: pointer;
+      margin: 0;
+    }
+
+    .slider {
+      position: absolute;
+      inset: 0;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.12);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      transition: background 160ms ease, border-color 160ms ease;
+    }
+
+    .slider::after {
+      content: "";
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: #f7f2e8;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.26);
+      transition: transform 160ms ease;
+    }
+
+    .switch input:checked + .slider {
+      background: linear-gradient(180deg, rgba(225, 175, 84, 0.86), rgba(201, 145, 44, 0.86));
+      border-color: rgba(225, 175, 84, 0.44);
+    }
+
+    .switch input:checked + .slider::after {
+      transform: translateX(18px);
+    }
+
+    .switch input:disabled + .slider {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .controls-card {
+      display: grid;
+      gap: 10px;
+    }
+
+    .readiness-block {
+      padding: 11px 12px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.03);
+      display: grid;
+      gap: 7px;
+    }
+
+    .readiness-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .readiness-copy {
+      color: var(--text-main);
+      font-size: 12px;
+    }
+
+    .readiness-note {
+      color: var(--text-subtle);
+      font-size: 11px;
+    }
+
+    .controls-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .controls-grid button {
+      width: 100%;
+    }
+
+    .notice {
+      display: none;
+      gap: 5px;
+      border-radius: 14px;
+    }
+
+    .notice.show {
+      display: grid;
+      animation: dockFade 180ms ease;
+    }
+
+    .notice-info {
+      background: rgba(137, 168, 215, 0.08);
+      border: 1px solid rgba(137, 168, 215, 0.24);
+    }
+
+    .notice-error {
+      background: rgba(219, 116, 119, 0.09);
+      border: 1px solid rgba(219, 116, 119, 0.24);
+    }
+
+    .notice-warning {
+      background: rgba(225, 175, 84, 0.09);
+      border: 1px solid rgba(225, 175, 84, 0.24);
+    }
+
+    .notice-title {
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--amber);
+    }
+
+    .credential-list {
+      display: grid;
+      gap: 7px;
+    }
+
+    .credential-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 7px;
+      align-items: center;
+    }
+
+    .credential-copy {
+      min-width: 0;
+      padding: 8px 9px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: rgba(8, 10, 14, 0.5);
+    }
+
+    .credential-copy span {
+      display: block;
+      color: var(--text-subtle);
+      font-size: 9px;
+      font-weight: 800;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    .credential-copy code {
+      display: block;
+      margin-top: 2px;
+      overflow: hidden;
+      color: var(--text-main);
+      font: 11px/1.25 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .copy-btn {
+      padding: 9px 11px;
+    }
+
+    .setup-actions {
+      display: flex;
+      justify-content: flex-end;
+    }
+
+    .empty-state {
+      min-height: 110px;
+      display: grid;
+      place-items: center;
+      text-align: center;
+      border: 1px dashed var(--border);
+      border-radius: 14px;
+      color: var(--text-subtle);
+      padding: 18px;
+    }
+
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(6, 8, 12, 0.72);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 12px;
+      z-index: 20;
+      backdrop-filter: blur(6px);
+    }
+
+    .modal-backdrop.show {
+      display: flex;
+      animation: dockFade 180ms ease;
+    }
+
+    .modal-card {
+      width: min(420px, 100%);
+      padding: 16px;
+      border-radius: 18px;
+      background: linear-gradient(180deg, rgba(30, 35, 45, 0.98), rgba(18, 21, 28, 0.98));
+      border: 1px solid var(--border-strong);
+      box-shadow: var(--shadow);
+      display: grid;
+      gap: 12px;
+    }
+
+    .modal-card h2 {
+      margin: 0;
+      font: 600 20px/1 var(--display-font);
+    }
+
+    .modal-card p {
+      margin: 0;
+      color: var(--text-muted);
+    }
+
+    .field {
+      display: grid;
+      gap: 6px;
+    }
+
+    .field label {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.14em;
+      color: var(--amber);
+      font-weight: 700;
+    }
+
+    .field input {
+      width: 100%;
+      padding: 12px 13px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: rgba(11, 14, 19, 0.86);
+      color: var(--text-main);
+      font: 700 18px/1 var(--body-font);
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      outline: none;
+    }
+
+    .field input:focus {
+      border-color: var(--border-strong);
+      box-shadow: 0 0 0 4px rgba(225, 175, 84, 0.08);
+    }
+
+    .field input::placeholder {
+      color: rgba(188, 180, 165, 0.42);
+      letter-spacing: 0.14em;
+    }
+
+    .modal-actions {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 8px;
+    }
+
+    .modal-note {
+      color: var(--text-subtle);
+      font-size: 11px;
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+
+    @keyframes dockFade {
+      from { opacity: 0; transform: translateY(4px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    @media (max-width: 560px), (min-width: 320px) and (max-width: 460px) {
+      .shell {
+        padding: 10px;
+      }
+
+      .main-layout,
+      .pair-steps,
+      .identity-grid,
+      .modal-actions {
+        grid-template-columns: minmax(0, 1fr);
+      }
+
+      .controls-grid {
+        grid-template-columns: minmax(0, 1fr);
+      }
+
+      .workspace-name {
+        font-size: 18px;
+      }
+
+      .pair-title {
+        font-size: 24px;
+      }
+
+      .topbar-meta {
+        min-width: 0;
+        flex-direction: row;
+        align-items: center;
+        justify-content: space-between;
+      }
+
+      .topbar-links {
+        align-items: center;
+        gap: 12px;
+      }
+
+      .topbar {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        gap: 8px;
+      }
+
+      .topbar .subtitle { display: none; }
+
+      .brand-copy .dock-brand-kicker {
+        display: none;
+      }
+    }
+
+    @media (min-width: 600px) and (max-width: 680px) and (max-height: 420px) {
+      .main-layout {
+        grid-template-columns: minmax(0, 1.14fr) minmax(210px, 0.82fr);
+        gap: 8px;
+      }
+
+      .stack {
+        overflow: auto;
+        align-content: start;
+        padding-right: 2px;
+      }
+
+      .summary-card,
+      .controls-card,
+      .notice {
+        padding: 10px 11px;
+      }
+
+      .summary-top,
+      .controls-card,
+      .stack {
+        gap: 8px;
+      }
+
+      #workspace-subtitle,
+      .controls-card > div:first-child p {
+        display: none;
+      }
+
+      .workspace-name {
+        font-size: 18px;
+      }
+
+      .identity-grid {
+        gap: 8px;
+        margin-top: 8px;
+      }
+
+      .identity-cell {
+        padding: 8px 9px;
+      }
+
+      .readiness-block {
+        padding: 9px 10px;
+        gap: 6px;
+      }
+
+      .destination-row {
+        padding: 8px 9px;
+      }
+    }
+
+    @media (min-width: 600px) and (max-height: 320px) {
+      .shell {
+        padding: 8px;
+        gap: 8px;
+      }
+
+      .hero-glow {
+        inset: 6px 8px auto;
+        height: 72px;
+      }
+
+      .topbar {
+        align-items: center;
+      }
+
+      h1 {
+        font-size: 17px;
+      }
+
+      .subtitle {
+        margin-top: 3px;
+        font-size: 10.5px;
+      }
+
+      .brand-copy .ember-brand-logo {
+        width: 26px;
+        height: 26px;
+      }
+
+      .brand-copy .ember-brand-wordmark {
+        height: 18px;
+      }
+
+      .pair-card {
+        padding: 12px;
+        gap: 10px;
+      }
+
+      .pair-steps {
+        display: none;
+      }
+
+      .pair-title {
+        font-size: 20px;
+      }
+
+      .pair-copy,
+      .support-copy,
+      .step-copy,
+      .pair-actions .support-copy {
+        font-size: 10.5px;
+      }
+
+      .pair-steps {
+        gap: 8px;
+      }
+
+      .pair-step,
+      .summary-card,
+      .destinations-card,
+      .controls-card,
+      .notice {
+        padding: 10px;
+      }
+
+      .main-layout {
+        grid-template-columns: minmax(0, 1.42fr) minmax(220px, 0.88fr);
+        gap: 8px;
+      }
+
+      .summary-card {
+        display: none;
+      }
+
+      .stack {
+        overflow: hidden;
+      }
+
+      .controls-card {
+        height: 100%;
+        align-content: start;
+      }
+
+      .controls-card > div:first-child p,
+      .readiness-note {
+        display: none;
+      }
+
+      .readiness-block {
+        padding: 8px 9px;
+        gap: 4px;
+      }
+
+      #main-view.stream-active .controls-card {
+        display: none;
+      }
+
+      #main-view.stream-active #stream-setup {
+        height: 100%;
+        align-content: start;
+      }
+
+      #main-view.stream-active #stream-setup-copy {
+        display: none;
+      }
+
+      .credential-list {
+        gap: 5px;
+      }
+
+      .credential-row {
+        gap: 5px;
+      }
+
+      .credential-copy {
+        padding: 4px 7px;
+      }
+
+      .credential-copy span {
+        font-size: 8px;
+      }
+
+      .copy-btn,
+      .setup-actions button {
+        padding: 7px 10px;
+      }
+
+      .identity-grid {
+        margin-top: 8px;
+      }
+
+      .identity-cell {
+        padding: 8px 9px;
+      }
+
+      .workspace-name {
+        font-size: 17px;
+      }
+
+      .destination-row {
+        padding: 8px 9px;
+      }
+
+      .destination-mark {
+        width: 30px;
+        height: 30px;
+      }
+
+      .destinations-list {
+        gap: 6px;
+      }
+
+      .controls-card,
+      .stack {
+        gap: 8px;
+      }
+
+      button {
+        padding: 9px 13px;
+        font-size: 11px;
+      }
+
+      .btn-link {
+        padding: 9px 13px;
+        font-size: 11px;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation: none !important;
+        transition: none !important;
+        scroll-behavior: auto !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <div class="hero-glow"></div>
+
+    <header class="topbar">
+      <div class="brand-copy">
+        <img class="ember-brand-logo" src="assets/brand/emberstage-logo.svg" alt="">
+        <div>
+          <div class="eyebrow">Emberstage for OBS</div>
+          <h1>Streaming dock</h1>
+          <div class="subtitle">Pair once, manage setup in Portal, then use this dock as a safe live monitor inside OBS.</div>
+        </div>
+      </div>
+      <div class="topbar-meta">
+        <div id="connection-pill" class="status-pill tone-muted">Unpaired</div>
+        <div class="topbar-links">
+          <a id="portal-link" class="btn-ghost" href="http://127.0.0.1:3000/app" target="_blank" rel="noopener">Open portal</a>
+          <button id="open-pair-btn" class="btn-ghost" type="button">Enter code</button>
+        </div>
+      </div>
+    </header>
+
+    <section id="pair-view" class="view pair-shell">
+      <div class="card pair-card">
+        <div class="pair-header">
+          <div class="eyebrow">Connect this OBS</div>
+          <div class="pair-title">Pair <span>Emberstage</span> once.</div>
+          <div class="pair-copy">Use the short link code from Emberstage Portal. Configure OBS once there, then this dock tracks every live session automatically.</div>
+        </div>
+
+        <div class="pair-actions">
+          <a id="pair-portal-link" class="btn-link portal-link" href="http://127.0.0.1:3000/app" target="_blank" rel="noopener">Open portal</a>
+          <button id="hero-pair-btn" class="btn-primary" type="button">Enter code</button>
+          <div class="support-copy">Portal → Devices &amp; Pairings → Create pairing code.</div>
+        </div>
+      </div>
+    </section>
+
+    <section id="main-view" class="view hidden">
+      <div class="main-layout">
+        <div class="card destinations-card">
+          <div class="section-head">
+            <div>
+              <h2>Delivery monitor</h2>
+              <p>Portal controls approval. This dock only shows which destinations are approved to join when OBS starts and what each one is actually doing.</p>
+            </div>
+            <div id="selected-pill" class="mini-pill tone-muted">No approved channels</div>
+          </div>
+          <div id="destinations-list" class="destinations-list"></div>
+        </div>
+
+        <div class="stack">
+          <div class="card summary-card">
+            <div class="summary-top">
+              <div class="summary-copy">
+                <div class="summary-label">Paired workspace</div>
+                <div id="workspace-name" class="workspace-name">—</div>
+                <div id="workspace-subtitle" class="support-copy">Managed in Emberstage Portal</div>
+              </div>
+              <div id="workspace-pill" class="status-pill tone-paired">Paired</div>
+            </div>
+
+            <div class="identity-grid">
+              <div class="identity-cell">
+                <div class="eyebrow">Workspace</div>
+                <strong id="workspace-id">—</strong>
+                <span id="workspace-account-copy">Account details are intentionally hidden from the dock.</span>
+              </div>
+              <div class="identity-cell">
+                <div class="eyebrow">Device</div>
+                <strong id="device-name">—</strong>
+                <span id="device-id">—</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="card controls-card">
+            <div>
+              <h2>Operator status</h2>
+              <p>Use Start Streaming in OBS separately. Approved channels should join automatically. This dock still reports ingest, relay, provider receiving, and live broadcast state separately.</p>
+            </div>
+
+            <div class="readiness-block">
+              <div class="readiness-head">
+                <div id="readiness-pill" class="status-pill tone-muted">Checking</div>
+                <button id="refresh-readiness-btn" class="btn-ghost" type="button">Refresh</button>
+              </div>
+              <div id="readiness-copy" class="readiness-copy">Loading paired destinations…</div>
+              <div id="readiness-note" class="readiness-note">Select at least one ready destination.</div>
+            </div>
+
+            <div class="controls-grid">
+              <button id="end-live-btn" class="btn-danger" type="button" disabled>End</button>
+              <button id="refresh-btn" class="btn-secondary" type="button">Reload</button>
+              <button id="disconnect-btn" class="btn-secondary" type="button">Disconnect</button>
+            </div>
+          </div>
+
+          <div id="stream-setup" class="card notice notice-info">
+            <div id="stream-setup-title" class="notice-title">Configure OBS once</div>
+            <div id="stream-setup-copy">Open Emberstage Portal to generate this device's reusable OBS stream settings.</div>
+            <div class="setup-actions">
+              <a id="setup-portal-link" class="btn-secondary" href="http://127.0.0.1:3000/app" target="_blank" rel="noopener">Open portal</a>
+              <button id="setup-end-btn" class="btn-danger" type="button">End stream</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="info-notice" class="notice notice-info">
+      <div class="notice-title">Update</div>
+      <div id="info-copy"></div>
+    </section>
+
+    <section id="error-notice" class="notice notice-error">
+      <div class="notice-title">Attention</div>
+      <div id="error-copy"></div>
+    </section>
+  </div>
+
+  <div id="pair-modal" class="modal-backdrop" aria-hidden="true">
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="pair-modal-title">
+      <div>
+        <h2 id="pair-modal-title">Enter link code</h2>
+        <p>Use the short code from Emberstage Portal → Devices &amp; Pairings.</p>
+      </div>
+
+      <div class="field">
+        <label for="link-code-input">Link code</label>
+        <input id="link-code-input" type="text" inputmode="text" autocomplete="one-time-code" spellcheck="false" maxlength="12" placeholder="A1B2C3D4">
+      </div>
+
+      <div class="modal-note">This code expires after ten minutes and can only be used once.</div>
+
+      <div class="modal-actions">
+        <button id="pair-submit-btn" class="btn-primary" type="button">Pair now</button>
+        <button id="pair-cancel-btn" class="btn-secondary" type="button">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      'use strict';
+
+      var STORAGE_KEY = 'emberstage_streaming_dock_session_v2';
+      var LEGACY_KEYS = {
+        baseUrl: 'emberstage_base_url',
+        accessToken: 'emberstage_device_token',
+        refreshToken: 'emberstage_device_refresh_token'
+      };
+      var DEFAULT_BASE_URLS = ['http://127.0.0.1:3000', 'http://localhost:3000'];
+      var state = {
+        session: null,
+        activeStream: null,
+        workspace: null,
+        device: null,
+        destinations: [],
+        readiness: {
+          tone: 'muted',
+          label: 'Checking',
+          copy: 'Loading paired destinations…',
+          note: 'Select at least one ready destination.',
+          eligible: false,
+          selectedIds: []
+        },
+        busy: {
+          pairing: false,
+          loading: false,
+          togglingId: '',
+          refreshingReadiness: false,
+          starting: false,
+          stopping: false,
+          disconnecting: false
+        }
+      };
+      var statusTimer = null;
+      var modalRestoreFocus = null;
+      var FOCUSABLE_SELECTOR = [
+        'a[href]',
+        'button:not([disabled])',
+        'textarea:not([disabled])',
+        'input:not([disabled])',
+        'select:not([disabled])',
+        '[tabindex]:not([tabindex="-1"])'
+      ].join(', ');
+
+      var ui = {
+        pairView: document.getElementById('pair-view'),
+        mainView: document.getElementById('main-view'),
+        pairModal: document.getElementById('pair-modal'),
+        linkCodeInput: document.getElementById('link-code-input'),
+        heroPairButton: document.getElementById('hero-pair-btn'),
+        openPairButton: document.getElementById('open-pair-btn'),
+        portalLinks: [document.getElementById('portal-link'), document.getElementById('pair-portal-link'), document.getElementById('setup-portal-link')],
+        pairSubmitButton: document.getElementById('pair-submit-btn'),
+        pairCancelButton: document.getElementById('pair-cancel-btn'),
+        connectionPill: document.getElementById('connection-pill'),
+        workspacePill: document.getElementById('workspace-pill'),
+        workspaceName: document.getElementById('workspace-name'),
+        workspaceSubtitle: document.getElementById('workspace-subtitle'),
+        workspaceId: document.getElementById('workspace-id'),
+        workspaceAccountCopy: document.getElementById('workspace-account-copy'),
+        deviceName: document.getElementById('device-name'),
+        deviceId: document.getElementById('device-id'),
+        destinationsList: document.getElementById('destinations-list'),
+        selectedPill: document.getElementById('selected-pill'),
+        readinessPill: document.getElementById('readiness-pill'),
+        readinessCopy: document.getElementById('readiness-copy'),
+        readinessNote: document.getElementById('readiness-note'),
+        refreshReadinessButton: document.getElementById('refresh-readiness-btn'),
+        refreshButton: document.getElementById('refresh-btn'),
+        disconnectButton: document.getElementById('disconnect-btn'),
+        endLiveButton: document.getElementById('end-live-btn'),
+        streamSetup: document.getElementById('stream-setup'),
+        streamSetupTitle: document.getElementById('stream-setup-title'),
+        streamSetupCopy: document.getElementById('stream-setup-copy'),
+        setupEndButton: document.getElementById('setup-end-btn'),
+        infoNotice: document.getElementById('info-notice'),
+        infoCopy: document.getElementById('info-copy'),
+        errorNotice: document.getElementById('error-notice'),
+        errorCopy: document.getElementById('error-copy')
+      };
+
+      function safeParse(json, fallback) {
+        try {
+          return JSON.parse(json);
+        } catch (_) {
+          return fallback;
+        }
+      }
+
+      function sanitizeBaseUrl(raw) {
+        if (!raw) return null;
+        var trimmed = String(raw).trim().replace(/\/$/, '');
+        if (!trimmed) return null;
+        try {
+          var parsed = new URL(trimmed);
+          if (parsed.protocol === 'https:') return parsed.origin;
+          if (parsed.protocol === 'http:' && (parsed.hostname === '127.0.0.1' || parsed.hostname === 'localhost')) {
+            return parsed.origin;
+          }
+          return null;
+        } catch (_) {
+          return null;
+        }
+      }
+
+      function loadSession() {
+        var migrated = migrateLegacySession();
+        if (migrated) return migrated;
+        var raw = localStorage.getItem(STORAGE_KEY);
+        var parsed = safeParse(raw, null);
+        if (!parsed) return null;
+        if (!sanitizeBaseUrl(parsed.baseUrl) || !parsed.accessToken || !parsed.refreshToken) return null;
+        var session = {
+          baseUrl: sanitizeBaseUrl(parsed.baseUrl),
+          accessToken: parsed.accessToken,
+          refreshToken: parsed.refreshToken
+        };
+        if (parsed.activeStream && parsed.activeStream.id) session.activeStream = parsed.activeStream;
+        return session;
+      }
+
+      function migrateLegacySession() {
+        var baseUrl = sanitizeBaseUrl(localStorage.getItem(LEGACY_KEYS.baseUrl));
+        var accessToken = localStorage.getItem(LEGACY_KEYS.accessToken);
+        var refreshToken = localStorage.getItem(LEGACY_KEYS.refreshToken);
+        if (!baseUrl || !accessToken || !refreshToken) return null;
+        var session = { baseUrl: baseUrl, accessToken: accessToken, refreshToken: refreshToken };
+        saveSession(session);
+        localStorage.removeItem(LEGACY_KEYS.baseUrl);
+        localStorage.removeItem(LEGACY_KEYS.accessToken);
+        localStorage.removeItem(LEGACY_KEYS.refreshToken);
+        return session;
+      }
+
+      function saveSession(session) {
+        state.session = {
+          baseUrl: sanitizeBaseUrl(session.baseUrl),
+          accessToken: session.accessToken,
+          refreshToken: session.refreshToken
+        };
+        if (session.activeStream || state.activeStream) {
+          state.session.activeStream = session.activeStream || state.activeStream;
+        }
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(state.session));
+      }
+
+      function saveActiveStream(activeStream) {
+        state.activeStream = activeStream || null;
+        if (!state.session) return;
+        if (state.activeStream) state.session.activeStream = state.activeStream;
+        else delete state.session.activeStream;
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(state.session));
+      }
+
+      function clearSession() {
+        state.session = null;
+        state.activeStream = null;
+        state.workspace = null;
+        state.device = null;
+        state.destinations = [];
+        state.readiness = {
+          tone: 'muted',
+          label: 'Checking',
+          copy: 'Loading paired destinations…',
+          note: 'Select at least one ready destination.',
+          eligible: false,
+          selectedIds: []
+        };
+        localStorage.removeItem(STORAGE_KEY);
+      }
+
+      function getUrlCandidates() {
+        var params = new URLSearchParams(window.location.search);
+        var candidates = [];
+        var seen = {};
+
+        function push(value) {
+          var sanitized = sanitizeBaseUrl(value);
+          if (!sanitized || seen[sanitized]) return;
+          seen[sanitized] = true;
+          candidates.push(sanitized);
+        }
+
+        if (state.session && state.session.baseUrl) push(state.session.baseUrl);
+        push(params.get('controlPlane'));
+        push(params.get('baseUrl'));
+        push(params.get('apiBaseUrl'));
+        if (window.location.protocol === 'https:' || window.location.protocol === 'http:') {
+          push(window.location.origin);
+        }
+        for (var i = 0; i < DEFAULT_BASE_URLS.length; i += 1) push(DEFAULT_BASE_URLS[i]);
+
+        return candidates;
+      }
+
+      function updatePortalLinks() {
+        var candidates = getUrlCandidates();
+        var portalUrl = (candidates[0] || DEFAULT_BASE_URLS[0]) + '/app';
+        ui.portalLinks.forEach(function (link) {
+          link.href = portalUrl;
+        });
+      }
+
+      async function pairWithLinkCode(baseUrl, linkCode) {
+        var response = await fetch(baseUrl + '/api/devices/pair', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ link_code: linkCode })
+        });
+        var data = safeParse(await response.text(), {});
+        return { response: response, data: data };
+      }
+
+      var refreshPromise = null;
+
+      async function refreshDeviceSession() {
+        if (refreshPromise) {
+          return refreshPromise;
+        }
+
+        refreshPromise = (async function () {
+          if (!state.session || !state.session.refreshToken) {
+            throw new Error('This device session has expired. Pair again from the Emberstage Portal.');
+          }
+
+          var response = await fetch(state.session.baseUrl + '/api/devices/refresh', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ refreshToken: state.session.refreshToken })
+          });
+          var data = safeParse(await response.text(), {});
+          if (!response.ok || !data.accessToken || !data.refreshToken) {
+            throw new Error(data.error || 'This device session could not be refreshed. Pair again from the Emberstage Portal.');
+          }
+
+          saveSession({
+            baseUrl: state.session.baseUrl,
+            accessToken: data.accessToken,
+            refreshToken: data.refreshToken
+          });
+
+          return state.session.accessToken;
+        })();
+
+        try {
+          return await refreshPromise;
+        } finally {
+          refreshPromise = null;
+        }
+      }
+
+      async function deviceFetch(path, options) {
+        options = options || {};
+        if (!state.session || !state.session.baseUrl || !state.session.accessToken) {
+          throw new Error('This dock is not paired yet.');
+        }
+
+        function send(token) {
+          var headers = {};
+          var sourceHeaders = options.headers || {};
+          for (var key in sourceHeaders) headers[key] = sourceHeaders[key];
+          headers.Authorization = 'Bearer ' + token;
+          return fetch(state.session.baseUrl + path, {
+            method: options.method || 'GET',
+            headers: headers,
+            body: options.body
+          });
+        }
+
+        var response = await send(state.session.accessToken);
+        if (response.status !== 401) return response;
+        var newToken = await refreshDeviceSession();
+        return send(newToken);
+      }
+
+      function selectedDestinations() {
+        return state.destinations.filter(function (destination) {
+          return destination.selected;
+        });
+      }
+
+      function updateButtonStates() {
+        var paired = !!state.session;
+        var hasStream = !!state.activeStream;
+
+        ui.heroPairButton.disabled = state.busy.pairing;
+        ui.openPairButton.disabled = state.busy.pairing;
+        ui.pairSubmitButton.disabled = state.busy.pairing;
+        ui.refreshReadinessButton.disabled = !paired || state.busy.loading || state.busy.refreshingReadiness;
+        ui.refreshButton.disabled = !paired || state.busy.loading;
+        ui.disconnectButton.disabled = !paired || state.busy.disconnecting;
+        ui.endLiveButton.disabled = !hasStream || state.busy.stopping;
+        ui.setupEndButton.disabled = !hasStream || state.busy.stopping;
+
+        ui.endLiveButton.textContent = state.busy.stopping ? 'Ending…' : 'End';
+        ui.setupEndButton.textContent = state.busy.stopping ? 'Ending…' : 'End stream';
+        ui.pairSubmitButton.textContent = state.busy.pairing ? 'Pairing…' : 'Pair now';
+        ui.refreshButton.textContent = state.busy.loading ? 'Loading…' : 'Reload';
+        ui.refreshReadinessButton.textContent = state.busy.refreshingReadiness ? 'Refreshing…' : 'Refresh';
+        ui.disconnectButton.textContent = state.busy.disconnecting ? 'Disconnecting…' : 'Disconnect';
+      }
+
+      function setPill(element, label, tone) {
+        element.className = 'status-pill tone-' + tone;
+        element.textContent = label;
+      }
+
+      function setMiniPill(element, label, tone) {
+        element.className = 'mini-pill tone-' + tone;
+        element.textContent = label;
+      }
+
+      function showInfo(message) {
+        ui.infoCopy.textContent = message;
+        ui.infoNotice.className = 'notice notice-info show';
+      }
+
+      function hideInfo() {
+        ui.infoNotice.className = 'notice notice-info';
+        ui.infoCopy.textContent = '';
+      }
+
+      function showError(message) {
+        ui.errorCopy.textContent = message;
+        ui.errorNotice.className = 'notice notice-error show';
+      }
+
+      function hideError() {
+        ui.errorNotice.className = 'notice notice-error';
+        ui.errorCopy.textContent = '';
+      }
+
+      function hideAlerts() {
+        hideInfo();
+        hideError();
+      }
+
+      function relayTone(stateValue) {
+        if (stateValue === 'relaying') return 'ready';
+        if (stateValue === 'starting') return 'warning';
+        if (stateValue === 'failed' || stateValue === 'stalled') return 'danger';
+        return 'muted';
+      }
+
+      function receivingTone(stateValue) {
+        if (stateValue === 'active') return 'ready';
+        if (stateValue === 'ready' || stateValue === 'created') return 'warning';
+        if (stateValue === 'error' || stateValue === 'inactive') return 'danger';
+        return 'muted';
+      }
+
+      function broadcastTone(stateValue) {
+        var normalized = String(stateValue || '').toLowerCase();
+        if (normalized === 'live' || normalized === 'livestarting') return 'danger';
+        if (normalized === 'ready' || normalized === 'testing' || normalized === 'teststarting') return 'warning';
+        return 'muted';
+      }
+
+      function titleCase(value) {
+        return String(value || '')
+          .replace(/[_-]+/g, ' ')
+          .replace(/\b\w/g, function (match) { return match.toUpperCase(); });
+      }
+
+      function createStatePill(label, tone) {
+        var span = document.createElement('span');
+        span.className = 'target-state tone-' + tone;
+        span.textContent = label;
+        return span;
+      }
+
+      function describeCheckedAt(destination) {
+        if (!destination.delivery || !destination.delivery.checkedAt) return '';
+        var checkedAt = new Date(destination.delivery.checkedAt);
+        if (Number.isNaN(checkedAt.getTime())) return '';
+        return 'Checked ' + checkedAt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+      }
+
+      function showPairModal() {
+        modalRestoreFocus = document.activeElement;
+        ui.pairModal.classList.add('show');
+        ui.pairModal.setAttribute('aria-hidden', 'false');
+        window.setTimeout(function () { ui.linkCodeInput.focus(); }, 20);
+      }
+
+      function hidePairModal() {
+        ui.pairModal.classList.remove('show');
+        ui.pairModal.setAttribute('aria-hidden', 'true');
+        ui.linkCodeInput.value = '';
+        if (modalRestoreFocus && typeof modalRestoreFocus.focus === 'function') modalRestoreFocus.focus();
+        modalRestoreFocus = null;
+      }
+
+      function trapPairModalFocus(event) {
+        if (!ui.pairModal.classList.contains('show') || event.key !== 'Tab') return;
+        var focusable = Array.prototype.slice.call(ui.pairModal.querySelectorAll(FOCUSABLE_SELECTOR)).filter(function (element) {
+          return !element.hasAttribute('hidden') && element.offsetParent !== null;
+        });
+        if (!focusable.length) return;
+        var first = focusable[0];
+        var last = focusable[focusable.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first.focus();
+        }
+      }
+
+      function renderStreamSetup() {
+        if (!state.activeStream) {
+          ui.streamSetup.className = 'card notice notice-info show';
+          var configured = state.device && state.device.hasIngestKey;
+          ui.streamSetupTitle.textContent = configured ? 'Ready in OBS' : 'Configure OBS once';
+          ui.streamSetupCopy.textContent = configured
+            ? 'This OBS device is already configured in Emberstage Portal. Use Start Streaming in OBS when you are ready. Approved channels should follow automatically.'
+            : 'Open Emberstage Portal to generate this device\'s reusable OBS stream settings.';
+          return;
+        }
+
+        var isLive = state.activeStream.status === 'streaming';
+        ui.streamSetup.className = 'card notice ' + (isLive ? 'notice-error' : 'notice-info') + ' show';
+        ui.streamSetupTitle.textContent = isLive ? 'Live now' : 'Starting relays';
+        ui.streamSetupCopy.textContent = isLive
+          ? 'OBS is sending to Emberstage. Check each destination row for relay, provider receiving, and broadcast live state.'
+          : 'Emberstage accepted the OBS feed. Relay and provider state may still be catching up per destination.';
+      }
+
+      function renderSummary() {
+        if (!state.workspace || !state.device) return;
+
+        ui.workspaceName.textContent = state.workspace.name || state.workspace.id || 'Emberstage workspace';
+        ui.workspaceSubtitle.textContent = 'Managed through Emberstage Portal';
+        ui.workspaceId.textContent = state.workspace.id || '—';
+        ui.workspaceAccountCopy.textContent = 'A device-safe account identity endpoint is not available yet, so the dock shows workspace and device only.';
+        ui.deviceName.textContent = state.device.name || 'Paired device';
+        ui.deviceId.textContent = state.device.id || '—';
+
+        setPill(ui.workspacePill, 'Paired', 'paired');
+      }
+
+      function createTargetState(destination) {
+        if (destination.selected && destination.ready) return createStatePill('Approved', 'ready');
+        if (destination.selected) return createStatePill('Needs setup', 'warning');
+        return createStatePill('Ignored', 'muted');
+      }
+
+      function initialsForDestination(destination) {
+        var label = destination.provider || destination.name || 'EM';
+        return label.replace(/[^A-Za-z0-9]/g, '').substring(0, 2).toUpperCase() || 'EM';
+      }
+
+      function renderDestinations() {
+        ui.destinationsList.innerHTML = '';
+        var selected = selectedDestinations();
+        var tone = selected.length ? (state.readiness.eligible ? 'ready' : 'warning') : 'muted';
+        setMiniPill(ui.selectedPill, selected.length ? (selected.length + ' approved') : 'No approved channels', tone);
+
+        if (!state.destinations.length) {
+          var empty = document.createElement('div');
+          empty.className = 'empty-state';
+          empty.innerHTML = 'No destinations are connected yet.<br><span class="support-copy">Connect channels or add Custom RTMP targets in Emberstage Portal.</span>';
+          ui.destinationsList.appendChild(empty);
+          return;
+        }
+
+        var ordered = state.destinations.slice().sort(function (left, right) {
+          if (!!left.selected === !!right.selected) return String(left.name || '').localeCompare(String(right.name || ''));
+          return left.selected ? -1 : 1;
+        });
+
+        ordered.forEach(function (destination) {
+          var row = document.createElement('div');
+          row.className = 'destination-row' + (destination.selected ? ' destination-row-selected' : ' destination-row-dormant');
+
+          var mark = document.createElement('div');
+          mark.className = 'destination-mark';
+          mark.textContent = initialsForDestination(destination);
+
+          var copy = document.createElement('div');
+          copy.className = 'destination-copy';
+
+          var name = document.createElement('div');
+          name.className = 'destination-name';
+          name.textContent = destination.name;
+
+          var meta = document.createElement('div');
+          meta.className = 'destination-meta';
+
+          var provider = document.createElement('span');
+          provider.textContent = destination.provider || (destination.type === 'custom' ? 'Custom RTMP' : 'Provider');
+          meta.appendChild(provider);
+
+          if (destination.detail) {
+            var detail = document.createElement('span');
+            detail.className = 'destination-detail';
+            detail.textContent = '· ' + destination.detail;
+            meta.appendChild(detail);
+          }
+
+          copy.appendChild(name);
+          copy.appendChild(meta);
+
+          if (destination.broadcast && destination.broadcast.title) {
+            var broadcast = document.createElement('div');
+            broadcast.className = 'destination-broadcast';
+            var strong = document.createElement('strong');
+            strong.textContent = 'Broadcast:';
+            broadcast.appendChild(strong);
+            var text = document.createTextNode(' ' + destination.broadcast.title + ' · ' + titleCase(destination.broadcast.lifeCycleStatus || 'ready'));
+            broadcast.appendChild(text);
+            copy.appendChild(broadcast);
+          }
+
+          var checkedCopy = describeCheckedAt(destination);
+          if (checkedCopy) {
+            var checked = document.createElement('div');
+            checked.className = 'destination-detail';
+            checked.textContent = checkedCopy;
+            copy.appendChild(checked);
+          }
+
+          var actions = document.createElement('div');
+          actions.className = 'destination-actions';
+          actions.appendChild(createTargetState(destination));
+
+          if (destination.delivery) {
+            actions.appendChild(createStatePill('Relay ' + titleCase(destination.delivery.relayState || 'unknown'), relayTone(destination.delivery.relayState || 'unknown')));
+            if (String(destination.provider || '').toLowerCase() === 'youtube') {
+              actions.appendChild(createStatePill('Receiving ' + titleCase(destination.delivery.streamStatus || 'unknown'), receivingTone(destination.delivery.streamStatus || 'unknown')));
+              actions.appendChild(createStatePill('Live ' + titleCase(destination.delivery.broadcastStatus || 'unknown'), broadcastTone(destination.delivery.broadcastStatus || 'unknown')));
+            }
+          } else if (String(destination.provider || '').toLowerCase() === 'youtube') {
+            actions.appendChild(createStatePill('Receiving Unknown', 'muted'));
+            actions.appendChild(createStatePill('Live Unknown', 'muted'));
+          } else {
+            actions.appendChild(createStatePill('No active relay', 'muted'));
+          }
+
+          row.appendChild(mark);
+          row.appendChild(copy);
+          row.appendChild(actions);
+          ui.destinationsList.appendChild(row);
+        });
+      }
+
+      function renderReadiness() {
+        setPill(ui.readinessPill, state.readiness.label, state.readiness.tone);
+        ui.readinessCopy.textContent = state.readiness.copy;
+        ui.readinessNote.textContent = state.readiness.note;
+      }
+
+      function renderConnection() {
+        if (!state.session) {
+          setPill(ui.connectionPill, 'Unpaired', 'muted');
+          ui.openPairButton.textContent = 'Enter link code';
+          return;
+        }
+
+        var isLive = state.activeStream && state.activeStream.status === 'streaming';
+        var label = isLive ? 'Live' : (state.readiness.eligible ? 'Ready' : 'Paired');
+        var tone = isLive ? 'danger' : (state.readiness.eligible ? 'ready' : 'paired');
+        setPill(ui.connectionPill, label, tone);
+        ui.openPairButton.textContent = 'Repair';
+      }
+
+      function renderViews() {
+        var paired = !!state.session;
+        ui.pairView.classList.toggle('hidden', paired);
+        ui.mainView.classList.toggle('hidden', !paired);
+        ui.mainView.classList.toggle('stream-active', !!state.activeStream);
+      }
+
+      function render() {
+        renderViews();
+        renderConnection();
+        renderSummary();
+        renderDestinations();
+        renderReadiness();
+        renderStreamSetup();
+        updateButtonStates();
+      }
+
+      async function loadDashboard() {
+        if (!state.session) {
+          clearSession();
+          render();
+          return;
+        }
+
+        state.busy.loading = true;
+        hideAlerts();
+        render();
+
+        try {
+          var bootstrapResponse = await deviceFetch('/api/device/bootstrap');
+          var bootstrapData = safeParse(await bootstrapResponse.text(), {});
+          if (!bootstrapResponse.ok || !bootstrapData.workspace || !bootstrapData.device) {
+            throw new Error(bootstrapData.error || 'The paired device could not load its Emberstage workspace.');
+          }
+
+          state.workspace = bootstrapData.workspace;
+          state.device = bootstrapData.device;
+          state.activeStream = bootstrapData.activeStream || null;
+          saveActiveStream(state.activeStream);
+          await loadDestinations();
+          await pollStreamStatus();
+        } catch (error) {
+          clearSession();
+          state.busy.loading = false;
+          render();
+          showError(error.message || 'This device could not reconnect. Pair again from the Emberstage Portal.');
+          return;
+        }
+
+        state.busy.loading = false;
+        render();
+      }
+
+      async function loadDestinations() {
+        var response = await deviceFetch('/api/workspaces/' + encodeURIComponent(state.workspace.id) + '/streams/setup');
+        var data = safeParse(await response.text(), {});
+        if (!response.ok) {
+          throw new Error(data.error || 'Workspace monitor state could not be loaded.');
+        }
+
+        state.destinations = Array.isArray(data.destinations) ? data.destinations : [];
+        state.activeStream = data.stream || null;
+        saveActiveStream(state.activeStream);
+        await refreshReadiness(true);
+      }
+
+      function buildReadinessFallback(selected) {
+        if (!selected.length) {
+          return {
+            tone: 'muted',
+            label: 'Select channels',
+            copy: 'Choose at least one destination before Emberstage can check live readiness.',
+            note: 'Connected provider channels stay visible here, but unsupported relay types remain honestly marked as not ready.',
+            eligible: false,
+            selectedIds: []
+          };
+        }
+
+        var unsupported = selected.filter(function (destination) { return !destination.ready; });
+        if (unsupported.length) {
+          return {
+            tone: 'warning',
+            label: 'Attention',
+            copy: unsupported.length === 1 ? unsupported[0].name + ' still needs setup before OBS start can send it through automatically.' : unsupported.length + ' approved destinations still need setup before OBS start can send them through automatically.',
+            note: 'Provider channels are shown, but the current backend only marks Custom RTMP destinations as relay-ready.',
+            eligible: false,
+            selectedIds: selected.map(function (destination) { return destination.id; })
+          };
+        }
+
+        return {
+          tone: 'ready',
+          label: 'Ready',
+          copy: 'Approved channels are valid for the current Emberstage control-plane checks.',
+          note: 'Use Start Streaming in OBS. Emberstage will detect the feed, start the approved relays, and approved YouTube broadcasts should go live automatically.',
+          eligible: true,
+          selectedIds: selected.map(function (destination) { return destination.id; })
+        };
+      }
+
+      async function refreshReadiness(silent) {
+        var selected = selectedDestinations();
+        state.readiness = buildReadinessFallback(selected);
+        render();
+
+        if (!selected.length || !state.workspace) return;
+
+        state.busy.refreshingReadiness = true;
+        render();
+
+        try {
+          var response = await deviceFetch('/api/workspaces/' + encodeURIComponent(state.workspace.id) + '/streams/preflight', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ destinations: selected.map(function (destination) { return destination.id; }) })
+          });
+          var data = safeParse(await response.text(), {});
+
+          if (response.ok && data.eligible) {
+            state.readiness = {
+              tone: 'ready',
+              label: 'Ready',
+              copy: 'Emberstage cleared ' + selected.length + ' approved destination' + (selected.length === 1 ? '' : 's') + ' for the current workspace limits.',
+              note: state.device && state.device.hasIngestKey
+                ? 'Use Start Streaming in OBS. Emberstage will detect the feed automatically, and approved YouTube channels should go live without a second click.'
+                : 'Open the portal and configure this device\'s reusable OBS stream key first.',
+              eligible: true,
+              selectedIds: selected.map(function (destination) { return destination.id; })
+            };
+          } else {
+            state.readiness = {
+              tone: response.status === 402 ? 'warning' : 'danger',
+              label: response.status === 402 ? 'Upgrade needed' : 'Blocked',
+              copy: data.error || 'Emberstage could not clear the approved destinations.',
+              note: response.status === 402 ? 'Streaming entitlement is enforced by the control plane, not by the dock UI.' : 'Nothing unsafe is attempted when the live API says a session is not ready.',
+              eligible: false,
+              selectedIds: selected.map(function (destination) { return destination.id; })
+            };
+            if (!silent) showError(state.readiness.copy);
+          }
+        } catch (error) {
+          state.readiness = {
+            tone: 'danger',
+            label: 'Offline',
+            copy: error.message || 'Emberstage readiness could not be checked right now.',
+            note: 'The dock keeps your channel selection, but it will not fake a ready state while the control plane is unreachable.',
+            eligible: false,
+            selectedIds: selected.map(function (destination) { return destination.id; })
+          };
+          if (!silent) showError(state.readiness.copy);
+        }
+
+        state.busy.refreshingReadiness = false;
+        render();
+      }
+
+      async function handlePairSubmit() {
+        var linkCode = ui.linkCodeInput.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+        if (!linkCode) {
+          showError('Enter the link code from Emberstage Portal to pair this OBS dock.');
+          ui.linkCodeInput.focus();
+          return;
+        }
+
+        var candidates = getUrlCandidates();
+        if (!candidates.length) {
+          showError('No Emberstage control-plane address is configured for this dock.');
+          return;
+        }
+
+        state.busy.pairing = true;
+        hideAlerts();
+        render();
+
+        var firstMeaningfulError = '';
+
+        try {
+          for (var i = 0; i < candidates.length; i += 1) {
+            var baseUrl = candidates[i];
+            try {
+              var result = await pairWithLinkCode(baseUrl, linkCode);
+              if (result.response.ok && result.data.accessToken && result.data.refreshToken) {
+                saveSession({
+                  baseUrl: baseUrl,
+                  accessToken: result.data.accessToken,
+                  refreshToken: result.data.refreshToken
+                });
+                hidePairModal();
+                showInfo('Emberstage is now paired. Loading workspace channels…');
+                await loadDashboard();
+                state.busy.pairing = false;
+                render();
+                return;
+              }
+
+              if (result.data && result.data.error && !firstMeaningfulError) {
+                firstMeaningfulError = result.data.error;
+              }
+            } catch (_) {
+              // Try the next candidate quietly.
+            }
+          }
+
+          throw new Error(firstMeaningfulError || 'The dock could not reach an Emberstage control plane with that link code.');
+        } catch (error) {
+          showError(error.message || 'Pairing failed.');
+        }
+
+        state.busy.pairing = false;
+        render();
+      }
+
+      async function handleDisconnect() {
+        if (state.activeStream) {
+          showError('End the current stream before disconnecting this dock.');
+          return;
+        }
+        if (!window.confirm('Disconnect this OBS dock from Emberstage? The locally stored device session will be removed from the dock UI.')) {
+          return;
+        }
+
+        state.busy.disconnecting = true;
+        hideAlerts();
+        render();
+
+        clearSession();
+        state.busy.disconnecting = false;
+        render();
+        showInfo('This dock is disconnected. Pair again with a fresh link code when you are ready.');
+      }
+
+      async function handleReload() {
+        await loadDashboard();
+      }
+
+      function stopStatusPoll() {
+        if (statusTimer) window.clearTimeout(statusTimer);
+        statusTimer = null;
+      }
+
+      function scheduleStatusPoll() {
+        stopStatusPoll();
+        if (!state.session) return;
+        statusTimer = window.setTimeout(function () { pollStreamStatus(); }, 8000);
+      }
+
+      async function pollStreamStatus() {
+        if (!state.session || !state.workspace) return;
+        try {
+          var wasLive = !!state.activeStream;
+          await loadDestinations();
+          if (wasLive && !state.activeStream) showInfo('The OBS stream ended. Emberstage relays were stopped.');
+          scheduleStatusPoll();
+          render();
+        } catch (error) {
+          stopStatusPoll();
+          showError(error.message || 'Stream status could not be refreshed.');
+        }
+      }
+
+      async function handleEndLive() {
+        if (!state.activeStream || state.busy.stopping) return;
+        state.busy.stopping = true;
+        hideAlerts();
+        render();
+
+        try {
+          var response = await deviceFetch('/api/workspaces/' + encodeURIComponent(state.workspace.id) + '/streams/' + encodeURIComponent(state.activeStream.id) + '/stop', { method: 'POST' });
+          var data = safeParse(await response.text(), {});
+          if (!response.ok && response.status !== 400) throw new Error(data.error || 'The stream could not be ended.');
+          stopStatusPoll();
+          saveActiveStream(null);
+          showInfo('Stream ended.');
+          await refreshReadiness(true);
+        } catch (error) {
+          showError(error.message || 'The stream could not be ended.');
+        }
+
+        state.busy.stopping = false;
+        render();
+      }
+
+      async function copyText(value, label) {
+        if (!value) return;
+        try {
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            await navigator.clipboard.writeText(value);
+          } else {
+            var area = document.createElement('textarea');
+            area.value = value;
+            area.style.position = 'fixed';
+            area.style.opacity = '0';
+            document.body.appendChild(area);
+            area.select();
+            document.execCommand('copy');
+            area.remove();
+          }
+          showInfo(label + ' copied.');
+        } catch (_) {
+          showError('Copy failed. Select the value and copy it manually.');
+        }
+      }
+
+      function bindEvents() {
+        ui.heroPairButton.addEventListener('click', showPairModal);
+        ui.openPairButton.addEventListener('click', showPairModal);
+        ui.pairCancelButton.addEventListener('click', hidePairModal);
+        ui.pairSubmitButton.addEventListener('click', handlePairSubmit);
+        ui.refreshReadinessButton.addEventListener('click', function () { refreshReadiness(false); });
+        ui.refreshButton.addEventListener('click', handleReload);
+        ui.disconnectButton.addEventListener('click', handleDisconnect);
+        ui.endLiveButton.addEventListener('click', handleEndLive);
+        ui.setupEndButton.addEventListener('click', handleEndLive);
+        ui.linkCodeInput.addEventListener('keydown', function (event) {
+          if (event.key === 'Enter') {
+            event.preventDefault();
+            handlePairSubmit();
+          }
+          if (event.key === 'Escape') hidePairModal();
+        });
+        ui.pairModal.addEventListener('click', function (event) {
+          if (event.target === ui.pairModal) hidePairModal();
+        });
+        document.addEventListener('keydown', function (event) {
+          if (event.key === 'Escape' && ui.pairModal.classList.contains('show')) {
+            hidePairModal();
+            return;
+          }
+          trapPairModalFocus(event);
+        });
+      }
+
+      async function init() {
+        state.session = loadSession();
+        state.activeStream = null;
+        updatePortalLinks();
+        bindEvents();
+        render();
+        if (state.session) await loadDashboard();
+      }
+
+      init();
+    })();
+  </script>
+</body>
+</html>

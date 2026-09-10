@@ -1,6 +1,6 @@
 # Contributing to This Project
 
-Thank you for your interest in contributing to this OBS Bible Plugin project!
+Thank you for your interest in contributing to Emberstage for OBS!
 
 ## How to Contribute
 
