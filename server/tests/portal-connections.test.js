@@ -96,7 +96,10 @@ test('returning to the portal refreshes the connected badge and channel, without
   await Promise.all([focus, visible]);
   assert.equal(p.requests(), 6);
   assert.match(p.card(), />Connected</);
-  assert.match(p.card(), /Test Channel/);
+  // Destinations are rendered once in the flat list, not nested in account management.
+  const channels = p.nodes.get('channels-panel').innerHTML;
+  assert.match(channels, /Test Channel/);
+  assert.equal(channels.match(/<strong>Test Channel<\/strong>/g).length, 1);
   p.document.visibilityState = 'hidden';
   await p.events.visibilitychange();
   assert.equal(p.requests(), 6);

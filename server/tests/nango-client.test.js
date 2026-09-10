@@ -507,14 +507,14 @@ function facebookClientFixture(overrides = {}) {
   return { client, calls, state };
 }
 
-test('Facebook scopes are Pages-only and discovery strips unsolicited tokens', async () => {
+test('Facebook scopes include profiles and discovery strips unsolicited tokens', async () => {
   let requested;
   const client = new NangoClient(async (_url, options) => {
     requested = JSON.parse(options.body);
     return new Response(JSON.stringify({ data: {} }));
   }, { baseUrl: 'https://nango.test', secretKey: 'test' });
   await client.createConnectSession({ workspaceId: 'ws-fb', provider: 'facebook' });
-  assert.equal(requested.integrations_config_defaults.facebook.user_scopes, 'pages_show_list,pages_read_engagement,pages_manage_posts');
+  assert.equal(requested.integrations_config_defaults.facebook.user_scopes, 'pages_show_list,pages_read_engagement,pages_manage_posts,publish_video');
   const f = facebookClientFixture({ pages: [
     { id: 'yes', tasks: ['CREATE_CONTENT'], access_token: 'SECRET_PAGE' },
     { id: 'no', tasks: ['MODERATE', 'ANALYZE', 'PUBLISH_VIDEO'] },
@@ -597,4 +597,268 @@ test('Facebook remote errors are sanitized and status exposes only verified allo
   await assert.rejects(f.client.endFacebookLiveVideo('ws-fb', 'page-external', 'live-external'), error => error.message === 'Facebook end_live_video failed (403)');
   f.state.end = { success: false };
   await assert.rejects(f.client.endFacebookLiveVideo('ws-fb', 'page-external', 'live-external'), /not confirmed/);
+});
+
+test('Facebook personal profiles: discovery with no Pages, missing or declined permissions, and ownership verification', async () => {
+  const connection = { connection_id: 'connection-fb-profile', provider_config_key: 'facebook', tags: { end_user_id: 'ws-fb-profile', organization_id: 'ws-fb-profile' } };
+  const credentials = { access_token: 'SECRET_USER_PROFILE' };
+
+  // 1. Profile discovery when user has no Pages
+  let calls = [];
+  const client1 = new NangoClient(async (url, options = {}) => {
+    calls.push({ url, options });
+    if (url.includes('/connections?')) {
+      return new Response(JSON.stringify({ connections: [connection] }));
+    }
+    if (url.includes('/connections/connection-fb-profile?')) {
+      return new Response(JSON.stringify({ credentials }));
+    }
+    if (url.includes('/me/accounts')) {
+      return new Response(JSON.stringify({ data: [] }));
+    }
+    if (url.includes('/me/permissions')) {
+      return new Response(JSON.stringify({
+        data: [{ permission: 'publish_video', status: 'granted' }]
+      }));
+    }
+    if (url.includes('/me?fields=id,name')) {
+      return new Response(JSON.stringify({ id: '123456789', name: 'John Doe' }));
+    }
+    throw new Error(`Unexpected URL: ${url}`);
+  }, { baseUrl: 'https://nango.test', secretKey: 'SECRET' });
+
+  const targets1 = await client1.discoverTargets('ws-fb-profile', 'facebook');
+  assert.deepEqual(targets1, [{ id: 'profile:123456789', name: 'John Doe (Personal Profile)' }]);
+
+  // 2. Missing/declined publish_video permission
+  const client2 = new NangoClient(async (url, options = {}) => {
+    if (url.includes('/connections?')) return new Response(JSON.stringify({ connections: [connection] }));
+    if (url.includes('/connections/connection-fb-profile?')) return new Response(JSON.stringify({ credentials }));
+    if (url.includes('/me/accounts')) return new Response(JSON.stringify({ data: [] }));
+    if (url.includes('/me/permissions')) {
+      return new Response(JSON.stringify({
+        data: [{ permission: 'publish_video', status: 'declined' }]
+      }));
+    }
+    throw new Error(`Unexpected URL: ${url}`);
+  }, { baseUrl: 'https://nango.test', secretKey: 'SECRET' });
+
+  const targets2 = await client2.discoverTargets('ws-fb-profile', 'facebook');
+  assert.deepEqual(targets2, []);
+
+  // 3. Profile ownership mismatch (returned profile ID from /me does not match target profile ID)
+  const client3 = new NangoClient(async (url, options = {}) => {
+    if (url.includes('/connections?')) return new Response(JSON.stringify({ connections: [connection] }));
+    if (url.includes('/connections/connection-fb-profile?')) return new Response(JSON.stringify({ credentials }));
+    if (url.includes('/me/permissions')) {
+      return new Response(JSON.stringify({
+        data: [{ permission: 'publish_video', status: 'granted' }]
+      }));
+    }
+    if (url.includes('/me?fields=id')) {
+      return new Response(JSON.stringify({ id: '123456789' })); // returned ID
+    }
+    throw new Error(`Unexpected URL: ${url}`);
+  }, { baseUrl: 'https://nango.test', secretKey: 'SECRET' });
+
+  await assert.rejects(
+    client3.createFacebookLiveVideo('ws-fb-profile', 'profile:999999999'), // forged profile ID
+    /Reverification failed: Profile ownership mismatch/
+  );
+});
+
+test('Facebook personal profiles: user versus Page token choice and private creation', async () => {
+  const connection = { connection_id: 'connection-fb-profile', provider_config_key: 'facebook', tags: { end_user_id: 'ws-fb-profile', organization_id: 'ws-fb-profile' } };
+  const credentials = { access_token: 'SECRET_USER_PROFILE' };
+
+  // 4. Token choice: Profiles use User token, Page uses Page token
+  // 5. Private creation: Profile live video uses ONLY_ME / SELF privacy value
+  let posts = [];
+  const client = new NangoClient(async (url, options = {}) => {
+    if (url.includes('/connections?')) return new Response(JSON.stringify({ connections: [connection] }));
+    if (url.includes('/connections/connection-fb-profile?')) return new Response(JSON.stringify({ credentials }));
+    if (url.includes('/me/permissions')) {
+      return new Response(JSON.stringify({
+        data: [{ permission: 'publish_video', status: 'granted' }]
+      }));
+    }
+    if (url.includes('/me?fields=id')) {
+      return new Response(JSON.stringify({ id: '123456789' }));
+    }
+    if (url.includes('/123456789/live_videos')) {
+      posts.push({ url, options, body: JSON.parse(options.body) });
+      return new Response(JSON.stringify({ id: 'live-video-profile-123', secure_stream_url: 'rtmps://live-api-s.facebook.com:443/rtmp/STREAM_KEY' }));
+    }
+    throw new Error(`Unexpected URL: ${url}`);
+  }, { baseUrl: 'https://nango.test', secretKey: 'SECRET' });
+
+  const resolved = await client.resolveDestination('ws-fb-profile', 'facebook', 'profile:123456789');
+  assert.equal(resolved.connectionId, 'connection-fb-profile');
+  assert.equal(resolved.liveVideoId, 'live-video-profile-123');
+
+  // Verify that the user token was used as bearer (and not some page token)
+  assert.equal(posts.length, 1);
+  assert.equal(posts[0].options.headers.Authorization, 'Bearer SECRET_USER_PROFILE');
+  // Verify privacy is set to SELF for profiles
+  assert.deepEqual(posts[0].body.privacy, { value: 'SELF' });
+});
+
+test('Facebook personal profiles: start, stop, status, and original connection mismatch', async () => {
+  const connection = { connection_id: 'connection-fb-profile', provider_config_key: 'facebook', tags: { end_user_id: 'ws-fb-profile', organization_id: 'ws-fb-profile' } };
+  const credentials = { access_token: 'SECRET_USER_PROFILE' };
+
+  let endCalled = false;
+  let statusCalled = false;
+  const client = new NangoClient(async (url, options = {}) => {
+    if (url.includes('/connections?')) {
+      return new Response(JSON.stringify({ connections: [connection] }));
+    }
+    if (url.includes('/connections/connection-fb-profile?')) return new Response(JSON.stringify({ credentials }));
+    if (url.includes('/me/permissions')) {
+      return new Response(JSON.stringify({
+        data: [{ permission: 'publish_video', status: 'granted' }]
+      }));
+    }
+    if (url.includes('/me?fields=id')) {
+      return new Response(JSON.stringify({ id: '123456789' }));
+    }
+    if (url.includes('/live-video-profile-123?end_live_video=true')) {
+      endCalled = true;
+      return new Response(JSON.stringify({ success: true }));
+    }
+    if (url.includes('/live-video-profile-123?fields=id,status,permalink_url')) {
+      statusCalled = true;
+      return new Response(JSON.stringify({ id: 'live-video-profile-123', status: 'LIVE', permalink_url: 'https://facebook.com/123456789/videos/111' }));
+    }
+    throw new Error(`Unexpected URL: ${url}`);
+  }, { baseUrl: 'https://nango.test', secretKey: 'SECRET' });
+
+  // Verify status call works for profiles
+  const status = await client.getFacebookLiveVideoStatus('ws-fb-profile', 'profile:123456789', 'live-video-profile-123', 'connection-fb-profile');
+  assert.ok(statusCalled);
+  assert.deepEqual(status, { id: 'live-video-profile-123', status: 'LIVE', permalink_url: 'https://facebook.com/123456789/videos/111' });
+
+  // Verify end call works for profiles
+  const endResult = await client.endFacebookLiveVideo('ws-fb-profile', 'profile:123456789', 'live-video-profile-123', 'connection-fb-profile');
+  assert.ok(endCalled);
+  assert.deepEqual(endResult, { success: true });
+
+  // Verify original connection mismatch throws during end/cleanup
+  await assert.rejects(
+    client.endFacebookLiveVideo('ws-fb-profile', 'profile:123456789', 'live-video-profile-123', 'foreign-connection-id'),
+    /connection changed/
+  );
+});
+
+test('Facebook personal profiles: failed URL cleanup', async () => {
+  const connection = { connection_id: 'connection-fb-profile', provider_config_key: 'facebook', tags: { end_user_id: 'ws-fb-profile', organization_id: 'ws-fb-profile' } };
+  const credentials = { access_token: 'SECRET_USER_PROFILE' };
+
+  let endCalled = false;
+  const client = new NangoClient(async (url, options = {}) => {
+    if (url.includes('/connections?')) return new Response(JSON.stringify({ connections: [connection] }));
+    if (url.includes('/connections/connection-fb-profile?')) return new Response(JSON.stringify({ credentials }));
+    if (url.includes('/me/permissions')) {
+      return new Response(JSON.stringify({
+        data: [{ permission: 'publish_video', status: 'granted' }]
+      }));
+    }
+    if (url.includes('/me?fields=id')) {
+      return new Response(JSON.stringify({ id: '123456789' }));
+    }
+    if (url.includes('/123456789/live_videos')) {
+      return new Response(JSON.stringify({ id: 'live-video-profile-123', secure_stream_url: '' }));
+    }
+    if (url.includes('/live-video-profile-123?end_live_video=true')) {
+      endCalled = true;
+      return new Response(JSON.stringify({ success: true }));
+    }
+    throw new Error(`Unexpected URL: ${url}`);
+  }, { baseUrl: 'https://nango.test', secretKey: 'SECRET' });
+
+  await assert.rejects(
+    client.resolveDestination('ws-fb-profile', 'facebook', 'profile:123456789'),
+    /Facebook response did not include a secure stream URL/
+  );
+  assert.ok(endCalled);
+});
+
+test('Facebook profile discovery fails instead of removing targets on remote or identity errors', async () => {
+  for (const response of [new Response('{}', { status: 503 }), new Response('{"id":"invalid-profile"}')]) {
+    const client = new NangoClient(async url => {
+      if (url.includes('/me/permissions')) return new Response(JSON.stringify({ data: [{ permission: 'publish_video', status: 'granted' }] }));
+      if (url.includes('/me?fields=id,name')) return response;
+      throw new Error('Unexpected request');
+    }, { baseUrl: 'https://nango.test', secretKey: 'SECRET' });
+    client.getConnection = async () => ({ connection_id: 'connection-fb-profile' });
+    client.getCredentials = async () => ({ access_token: 'SECRET_USER_PROFILE' });
+    await assert.rejects(client.discoverTargets('ws-fb-profile', 'facebook'), /Facebook profile (fetch failed|discovery returned an invalid identity)/);
+  }
+});
+
+test('Facebook malformed permission response preserves legacy Page discovery', async () => {
+  const client = new NangoClient(async () => new Response('{"data":null}'), { baseUrl: 'https://nango.test', secretKey: 'SECRET' });
+  client.getConnection = async () => ({ connection_id: 'connection-fb-profile' });
+  client.getCredentials = async () => ({ access_token: 'SECRET_USER_PROFILE' });
+  client.fetchFacebookPages = async () => [{ id: 'page-existing', name: 'Existing Page' }];
+  assert.deepEqual(await client.discoverTargets('ws-fb-profile', 'facebook'), [{ id: 'page-existing', name: 'Existing Page' }]);
+});
+
+test('Facebook personal profiles: malformed profile IDs and non-digit rejections', async () => {
+  const connection = { connection_id: 'connection-fb-profile', provider_config_key: 'facebook', tags: { end_user_id: 'ws-fb-profile', organization_id: 'ws-fb-profile' } };
+  const credentials = { access_token: 'SECRET_USER_PROFILE' };
+  const client = new NangoClient(async (url, options = {}) => {
+    if (url.includes('/connections?')) return new Response(JSON.stringify({ connections: [connection] }));
+    if (url.includes('/connections/connection-fb-profile?')) return new Response(JSON.stringify({ credentials }));
+    if (url.includes('/me/accounts')) {
+      return new Response(JSON.stringify({ data: [{ id: 'legacy-page-abc-123', tasks: ['CREATE_CONTENT'] }] }));
+    }
+    if (url.includes('/legacy-page-abc-123?')) {
+      return new Response(JSON.stringify({ id: 'legacy-page-abc-123', access_token: 'PAGE_TOKEN' }));
+    }
+    return new Response(JSON.stringify({}));
+  }, { baseUrl: 'https://nango.test', secretKey: 'SECRET' });
+
+  // 1. Resolver must reject non-digit profile ID
+  await assert.rejects(
+    client.getFacebookPageCredentials('ws-fb-profile', 'profile:abc'),
+    /Invalid Facebook profile ID/
+  );
+  await assert.rejects(
+    client.getFacebookPageCredentials('ws-fb-profile', 'profile:12345678a'),
+    /Invalid Facebook profile ID/
+  );
+  await assert.rejects(
+    client.getFacebookPageCredentials('ws-fb-profile', 'profile:'),
+    /Invalid Facebook profile ID/
+  );
+  // Ensure legacy page IDs are still handled correctly (not digits-only requirement)
+  const creds = await client.getFacebookPageCredentials('ws-fb-profile', 'legacy-page-abc-123');
+  assert.ok(creds.pageToken);
+});
+
+test('Facebook personal profiles: profile-only discovery when pages_show_list is not granted', async () => {
+  const connection = { connection_id: 'connection-fb-profile', provider_config_key: 'facebook', tags: { end_user_id: 'ws-fb-profile', organization_id: 'ws-fb-profile' } };
+  const credentials = { access_token: 'SECRET_USER_PROFILE' };
+
+  const client = new NangoClient(async (url, options = {}) => {
+    if (url.includes('/connections?')) return new Response(JSON.stringify({ connections: [connection] }));
+    if (url.includes('/connections/connection-fb-profile?')) return new Response(JSON.stringify({ credentials }));
+    if (url.includes('/me/permissions')) {
+      return new Response(JSON.stringify({
+        data: [
+          { permission: 'publish_video', status: 'granted' },
+          { permission: 'pages_show_list', status: 'declined' }
+        ]
+      }));
+    }
+    if (url.includes('/me?fields=id,name')) {
+      return new Response(JSON.stringify({ id: '987654321', name: 'Profile Only User' }));
+    }
+    throw new Error(`Unexpected URL: ${url}`);
+  }, { baseUrl: 'https://nango.test', secretKey: 'SECRET' });
+
+  const targets = await client.discoverTargets('ws-fb-profile', 'facebook');
+  // Pages-only scopes are declined, but profile-only works perfectly!
+  assert.deepEqual(targets, [{ id: 'profile:987654321', name: 'Profile Only User (Personal Profile)' }]);
 });

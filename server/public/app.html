@@ -103,111 +103,143 @@
         </section>
       </div>
 
-      <div id="app-view" style="display: none;">
-        <header class="app-header panel panel-ornate">
-          <div class="brand-lockup brand-lockup--svg brand-lockup--compact">
-            <img class="brand-logo" src="/assets/brand/emberstage-logo.svg" alt="">
-            <div>
-              <p class="eyebrow">Workspace portal</p>
-              <h1>
-                <span class="sr-only">Emberstage Portal</span>
-                <img class="brand-wordmark" src="/assets/brand/emberstage-wordmark.svg" alt="">
-              </h1>
+      <div id="app-view" class="portal-app" style="display: none;">
+        <aside class="app-sidebar panel" aria-label="Primary">
+          <div class="sidebar-top">
+            <div class="sidebar-brand">
+              <span class="sidebar-brand-mark" aria-hidden="true">
+                <img class="brand-logo" src="/assets/brand/emberstage-logo.svg" alt="">
+              </span>
+              <div>
+                <h1 class="sidebar-brand-title">Emberstage</h1>
+              </div>
             </div>
-          </div>
 
-          <div class="header-meta">
-            <div class="identity-card">
-              <div class="identity-row">
-                <span class="identity-label">Workspace</span>
+            <div class="workspace-chip" aria-label="Active workspace">
+              <span class="workspace-chip-dot" aria-hidden="true"></span>
+              <div class="workspace-chip-copy">
                 <strong id="header-workspace-name">--</strong>
-              </div>
-              <div class="identity-row">
-                <span class="identity-label">User</span>
-                <span id="header-user-email">--</span>
+                <span>Active workspace</span>
               </div>
             </div>
-            <div class="header-actions">
+
+            <nav class="sidebar-nav" aria-label="Portal sections">
+              <button id="nav-overview" class="nav-link" type="button" data-action="open-view" data-view="overview" data-portal-view="overview">Overview</button>
+              <button id="nav-broadcasts" class="nav-link" type="button" data-action="open-view" data-view="broadcasts" data-portal-view="broadcasts">Broadcasts</button>
+              <button id="nav-devices" class="nav-link" type="button" data-action="open-view" data-view="devices" data-portal-view="devices">Devices</button>
+              <button id="nav-workspace" class="nav-link" type="button" data-action="open-view" data-view="workspace" data-portal-view="workspace">Workspace</button>
+            </nav>
+          </div>
+
+          <div class="sidebar-bottom">
+            <div class="sidebar-note" aria-label="Portal note">
+              <strong>Portal</strong>
+              <span>Encoder setup, broadcasts, devices, and billing stay in these four views.</span>
+            </div>
+            <div class="operator-card">
+              <span class="operator-avatar" aria-hidden="true">EM</span>
+              <div class="operator-copy">
+                <strong id="header-user-email">--</strong>
+                <span>Workspace owner</span>
+              </div>
+            </div>
+            <button id="logout-btn" class="btn btn-secondary btn-block" type="button">Sign Out</button>
+          </div>
+        </aside>
+
+        <div class="app-main">
+          <header class="topbar">
+            <div class="topbar-copy">
+              <p class="topbar-kicker">Live ingestion</p>
+              <div>
+                <h2 id="view-title">Stream Overview</h2>
+                <p id="view-subtitle" class="topbar-subtitle">Live relay, destination readiness, and encoder setup</p>
+              </div>
+            </div>
+            <div class="topbar-actions">
+              <span id="last-sync-label" class="topbar-sync">Last sync: waiting</span>
               <button id="refresh-portal-btn" class="btn btn-secondary" type="button">Refresh</button>
-              <button id="logout-btn" class="btn btn-secondary" type="button">Sign Out</button>
             </div>
-          </div>
-        </header>
+          </header>
 
-        <div id="app-alert" class="alert" style="display: none;"></div>
+          <nav class="mobile-nav panel" aria-label="Portal sections">
+            <button class="mobile-nav-link" type="button" data-action="open-view" data-view="overview" data-portal-view="overview">Overview</button>
+            <button class="mobile-nav-link" type="button" data-action="open-view" data-view="broadcasts" data-portal-view="broadcasts">Broadcasts</button>
+            <button class="mobile-nav-link" type="button" data-action="open-view" data-view="devices" data-portal-view="devices">Devices</button>
+            <button class="mobile-nav-link" type="button" data-action="open-view" data-view="workspace" data-portal-view="workspace">Workspace</button>
+          </nav>
 
-        <section class="command-stage panel panel-ornate" aria-labelledby="command-stage-title">
-          <div class="section-head section-head--hero">
-            <div>
-              <p class="eyebrow">Live control</p>
-              <h2 id="command-stage-title">Your stream, at a glance.</h2>
-            </div>
-            <div class="hero-actions">
-              <span id="active-session-chip" class="status-chip status-chip-muted">Checking session</span>
-            </div>
-          </div>
-          <p class="section-copy command-copy">
-            Configure OBS once, then approve your channels and broadcasts. Start Streaming in OBS to go live; track each stage of delivery below.
-          </p>
-          <div id="command-stage-grid" class="command-stage-grid"></div>
-        </section>
+          <div id="app-alert" class="alert" style="display: none;"></div>
 
-        <div class="app-primary-grid">
-          <section class="card panel" aria-labelledby="encoder-title">
-            <div class="section-head">
-              <div>
-                <p class="eyebrow">Encoder setup</p>
-                <h2 id="encoder-title">Connect OBS</h2>
+          <section id="overview-view" class="portal-view" data-view="overview" aria-labelledby="command-stage-title">
+            <section class="command-stage panel">
+              <div class="section-head section-head--hero">
+                <div>
+                  <h2 id="command-stage-title">Delivery path</h2>
+                </div>
+                <div class="hero-actions">
+                  <span id="active-session-chip" class="status-chip status-chip-muted">Checking session</span>
+                </div>
               </div>
+              <div id="command-stage-grid" class="command-stage-grid"></div>
+            </section>
+
+            <div class="overview-layout">
+              <section class="card panel overview-main-card" aria-labelledby="channels-title">
+                <div class="section-head">
+                  <div>
+                    <h2 id="channels-title">Destinations</h2>
+                  </div>
+                </div>
+                <div id="channels-panel"></div>
+              </section>
+
+              <aside class="card panel encoder-rail" aria-labelledby="encoder-title">
+                <div class="section-head">
+                  <div>
+                    <h2 id="encoder-title">OBS setup</h2>
+                  </div>
+                </div>
+                <div id="encoder-panel"></div>
+              </aside>
             </div>
-            <div id="encoder-panel"></div>
           </section>
 
-          <section class="card panel" aria-labelledby="channels-title">
-            <div class="section-head">
-              <div>
-                <p class="eyebrow">Destinations</p>
-                <h2 id="channels-title">Manage your channels</h2>
+          <section id="broadcasts-view" class="portal-view" data-view="broadcasts" hidden aria-labelledby="youtube-studio-title">
+            <section class="card panel youtube-studio-panel">
+              <div class="section-head">
+                <div>
+                  <p class="eyebrow">Broadcasts</p>
+                  <h2 id="youtube-studio-title">YouTube planning and assignment</h2>
+                </div>
               </div>
-            </div>
-            <div id="channels-panel"></div>
-          </section>
-        </div>
-
-        <div class="app-secondary-grid">
-          <section class="card panel youtube-studio-panel" aria-labelledby="youtube-studio-title">
-            <div class="section-head">
-              <div>
-                <p class="eyebrow">YouTube studio</p>
-                <h2 id="youtube-studio-title">Prepare your broadcast</h2>
-              </div>
-            </div>
-            <div id="youtube-studio-panel"></div>
+              <div id="youtube-studio-panel"></div>
+            </section>
           </section>
 
-          <div class="secondary-stack">
-            <details class="subordinate-shell card panel" open>
-              <summary>
-                <span>
-                  <span class="eyebrow">Pairing &amp; device admin</span>
-                  <strong>Devices &amp; Pairings</strong>
-                </span>
-                <span class="summary-hint">Pair new OBS hardware or rotate access later</span>
-              </summary>
-              <div id="devices-panel" class="subordinate-body"></div>
-            </details>
+          <section id="devices-view" class="portal-view" data-view="devices" hidden aria-labelledby="devices-view-title">
+            <section class="card panel">
+              <div class="section-head">
+                <div>
+                  <p class="eyebrow">Devices</p>
+                  <h2 id="devices-view-title">Pairing and device access</h2>
+                </div>
+              </div>
+              <div id="devices-panel"></div>
+            </section>
+          </section>
 
-            <details class="subordinate-shell card panel">
-              <summary>
-                <span>
-                  <span class="eyebrow">Billing &amp; limits</span>
-                  <strong>Workspace &amp; Subscription</strong>
-                </span>
-                <span class="summary-hint">Keep plan controls out of the way until needed</span>
-              </summary>
-              <div id="subscription-panel" class="subordinate-body"></div>
-            </details>
-          </div>
+          <section id="workspace-view" class="portal-view" data-view="workspace" hidden aria-labelledby="workspace-view-title">
+            <section class="card panel">
+              <div class="section-head">
+                <div>
+                  <p class="eyebrow">Workspace</p>
+                  <h2 id="workspace-view-title">Billing and limits</h2>
+                </div>
+              </div>
+              <div id="subscription-panel"></div>
+            </section>
+          </section>
         </div>
       </div>
     </div>

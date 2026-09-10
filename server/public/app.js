@@ -68,6 +68,8 @@ const state = {
   ui: {
     busy: {},
     statuses: {},
+    activeView: 'overview',
+    lastLoadedAt: null,
     modal: {
       open: false,
       resolver: null,
@@ -85,6 +87,25 @@ const FOCUSABLE_SELECTOR = [
   'select:not([disabled])',
   '[tabindex]:not([tabindex="-1"])'
 ].join(', ');
+
+const PORTAL_VIEWS = {
+  overview: {
+    title: 'Stream Overview',
+    subtitle: 'Live relay, destination readiness, and encoder setup'
+  },
+  broadcasts: {
+    title: 'Broadcasts',
+    subtitle: 'Select, create, update, and transition YouTube broadcasts'
+  },
+  devices: {
+    title: 'Devices',
+    subtitle: 'Pair OBS hardware and manage reusable encoder access'
+  },
+  workspace: {
+    title: 'Workspace',
+    subtitle: 'Review billing status, plan limits, and workspace access'
+  }
+};
 
 function escapeHtml(value) {
   return String(value ?? '')
@@ -212,7 +233,9 @@ function showView(viewName) {
     return;
   }
   document.getElementById('auth-view').style.display = 'none';
-  document.getElementById('app-view').style.display = 'block';
+  document.getElementById('app-view').style.display = 'grid';
+  setActiveView(activeViewFromLocation(), { skipHash: true });
+  updateLastSyncLabel();
 }
 
 function showAlert(message, type = 'danger') {
@@ -245,6 +268,54 @@ function renderAuthView() {
     submitBtn.textContent = 'Sign In';
     toggleLink.textContent = 'Create an account instead';
   }
+}
+
+function normalizeViewName(viewName) {
+  return PORTAL_VIEWS[viewName] ? viewName : 'overview';
+}
+
+function currentViewName() {
+  return normalizeViewName(state.ui.activeView);
+}
+
+function setActiveView(viewName, options = {}) {
+  const nextView = normalizeViewName(viewName);
+  state.ui.activeView = nextView;
+
+  const titleEl = document.getElementById('view-title');
+  const subtitleEl = document.getElementById('view-subtitle');
+  const viewMeta = PORTAL_VIEWS[nextView];
+  if (titleEl) titleEl.textContent = viewMeta.title;
+  if (subtitleEl) subtitleEl.textContent = viewMeta.subtitle;
+
+  document.querySelectorAll?.('.portal-view').forEach((section) => {
+    const active = section.dataset.view === nextView;
+    section.hidden = !active;
+  });
+
+  document.querySelectorAll?.('[data-action="open-view"]').forEach((button) => {
+    const active = button.dataset.view === nextView;
+    button.classList.toggle('nav-link-active', active);
+    button.classList.toggle('mobile-nav-link-active', active);
+    button.setAttribute('aria-current', active ? 'page' : 'false');
+  });
+
+  if (!options.skipHash && window.location) {
+    window.location.hash = `#${nextView}`;
+  }
+}
+
+function activeViewFromLocation() {
+  const hash = String(window.location?.hash || '').replace(/^#/, '');
+  return normalizeViewName(hash || state.ui.activeView);
+}
+
+function updateLastSyncLabel() {
+  const label = document.getElementById('last-sync-label');
+  if (!label) return;
+  label.textContent = state.ui.lastLoadedAt
+    ? `Last sync: ${formatRelativeTime(state.ui.lastLoadedAt)}`
+    : 'Last sync: waiting';
 }
 
 function isSetupLocked() {
@@ -413,6 +484,8 @@ async function fetchWorkspaceData(options, workspaceId) {
 
     reconcileSelections();
     renderApp();
+    state.ui.lastLoadedAt = new Date().toISOString();
+    updateLastSyncLabel();
 
     if (state.selectedYoutubeTargetId) {
       await ensureYoutubeBroadcasts(state.selectedYoutubeTargetId, { silent: true });
@@ -481,44 +554,51 @@ function deviceHasKey(device) {
 function renderCommandStage() {
   const stream = state.setup.stream;
   const selected = selectedDestinations();
-  const relaying = selected.filter((destination) => destination.delivery?.relayState === 'relaying').length;
-  const relayIssues = selected.filter((destination) => ['failed', 'stalled'].includes(destination.delivery?.relayState)).length;
   const youtubeSelected = selected.filter((destination) => destination.provider === 'youtube');
-  const receiving = youtubeSelected.filter((destination) => destination.delivery?.streamStatus === 'active').length;
   const live = youtubeSelected.filter((destination) => String(destination.delivery?.broadcastStatus || '').toLowerCase() === 'live').length;
 
   const cards = [
     stream?.status === 'streaming'
-      ? { title: 'OBS ingest', value: 'Streaming to Emberstage', tone: 'danger', copy: `Ingest has been active${stream.started_at ? ` since ${formatDateTime(stream.started_at)}` : ''}.` }
+      ? { title: 'OBS Studio', value: 'Live signal detected', tone: 'danger', copy: stream.started_at ? `Started ${formatDateTime(stream.started_at)}` : 'Encoder is sending video now.' }
       : stream?.status === 'reserved'
-        ? { title: 'OBS ingest', value: 'Reserved session', tone: 'warning', copy: 'The session exists, but live ingest bytes are not confirmed yet.' }
-        : { title: 'OBS ingest', value: 'Idle', tone: 'muted', copy: 'OBS is not currently sending a feed.' },
-    relayIssues
-      ? { title: 'Relay output', value: `${relayIssues} issue${relayIssues === 1 ? '' : 's'}`, tone: 'danger', copy: 'One or more relays are stalled or failed.' }
-      : relaying
-        ? { title: 'Relay output', value: `${relaying}/${selected.length} relaying`, tone: 'success', copy: 'This only proves Emberstage is writing bytes out.' }
-        : selected.length
-          ? { title: 'Relay output', value: `${selected.length} approved`, tone: 'warning', copy: 'Enabled channels are approved to join automatically when OBS starts.' }
-          : { title: 'Relay output', value: 'No approved channels', tone: 'muted', copy: 'Enable at least one destination first.' },
+        ? { title: 'OBS Studio', value: 'Session reserved', tone: 'warning', copy: 'Waiting for ingest bytes.' }
+        : { title: 'OBS Studio', value: 'Offline', tone: 'muted', copy: 'No signal' },
+    selected.some((destination) => destination.delivery?.relayState === 'relaying')
+      ? { title: 'Ember Relay', value: 'Relaying', tone: 'success', copy: 'Bytes are leaving the local relay.' }
+      : selected.length
+        ? { title: 'Ember Relay', value: 'Standby ready', tone: 'warning', copy: `${selected.length} destination${selected.length === 1 ? '' : 's'} approved.` }
+        : { title: 'Ember Relay', value: 'Idle', tone: 'muted', copy: 'No approved destinations yet.' },
+    selected.length
+      ? { title: 'Destinations', value: live ? `${live} live destination${live === 1 ? '' : 's'}` : 'Waiting for signal', tone: live ? 'danger' : 'muted', copy: `${selected.length} configured` }
+      : { title: 'Destinations', value: 'No destinations approved', tone: 'muted', copy: '0 configured' },
     youtubeSelected.length
-      ? receiving
-        ? { title: 'Provider receiving', value: `${receiving}/${youtubeSelected.length} receiving`, tone: 'success', copy: 'YouTube streamStatus active means the provider sees the signal.' }
-        : { title: 'Provider receiving', value: 'Waiting on provider', tone: 'warning', copy: 'Provider receiving stays separate from relay state.' }
-      : { title: 'Provider receiving', value: 'No YouTube check', tone: 'muted', copy: 'Provider receiving status only appears for YouTube destinations.' },
-    youtubeSelected.length
-      ? live
-        ? { title: 'Broadcast live', value: `${live} live on YouTube`, tone: 'danger', copy: 'This means the YouTube audience can see the broadcast.' }
-        : { title: 'Broadcast live', value: 'Waiting for OBS start', tone: 'warning', copy: 'Approved YouTube broadcasts should transition automatically after OBS starts. Privacy still stays private, unlisted, or public as configured.' }
-      : { title: 'Broadcast live', value: 'No broadcast approved', tone: 'muted', copy: 'Select or create a YouTube broadcast for any channel you want to auto-go-live.' }
+      ? { title: 'Audience live', value: live ? 'Provider marked live' : 'Not live yet', tone: live ? 'danger' : 'warning', copy: live ? 'Live state is separate from privacy and relay readiness.' : 'Provider live stays separate from relay state.' }
+      : { title: 'Audience live', value: 'No broadcast approved', tone: 'muted', copy: 'Choose a YouTube broadcast first.' }
   ];
 
+  const sessionTone = live
+    ? 'danger'
+    : stream?.status === 'streaming'
+      ? 'warning'
+      : selected.length
+        ? 'warning'
+        : 'muted';
+  const sessionLabel = live
+    ? 'System live'
+    : stream?.status === 'streaming'
+      ? 'Ingest active'
+      : 'System idle';
+
   const chip = document.getElementById('active-session-chip');
-  chip.className = `status-chip status-chip-${cards[0].tone}`;
-  chip.textContent = cards[0].value;
+  chip.className = `status-chip status-chip-${sessionTone}`;
+  chip.textContent = sessionLabel;
 
   document.getElementById('command-stage-grid').innerHTML = cards.map((card) => `
     <article class="stage-card stage-card-${escapeHtml(card.tone)}">
-      <p class="stage-label">${escapeHtml(card.title)}</p>
+      <div class="stage-topline">
+        <span class="stage-dot stage-dot-${escapeHtml(card.tone)}"></span>
+        <p class="stage-label">${escapeHtml(card.title)}</p>
+      </div>
       <h3>${escapeHtml(card.value)}</h3>
       <p>${escapeHtml(card.copy)}</p>
     </article>
@@ -541,40 +621,44 @@ function renderEncoderPanel() {
     <div class="panel-stack">
       ${renderStatus('encoder')}
       ${sessionLockCopy()}
-      <div class="info-grid info-grid-encoder">
-        <article class="info-card info-card-strong">
-          <p class="field-label">Ingest server</p>
-          <div class="mono-value">${escapeHtml(state.setup.ingestServer || 'Not configured')}</div>
-          <div class="meta-copy">Every OBS device points at the same managed Emberstage RTMP ingest.</div>
-          <div class="panel-actions">
-            <button class="btn btn-secondary" type="button" data-action="copy-ingest-server" ${state.setup.ingestServer ? '' : 'disabled'}>Copy RTMP URL</button>
+      <article class="rail-card rail-card-device">
+        <div class="rail-row rail-row-between">
+          <div>
+            <p class="field-label">Selected device</p>
+            <h3>${device ? escapeHtml(device.name) : 'No device selected'}</h3>
+            <p class="section-copy">${escapeHtml(device ? latestSession : 'Pair a device first to unlock OBS setup.')}</p>
           </div>
-        </article>
-        <article class="info-card">
-          <p class="field-label">Device</p>
-          ${(state.setup.devices || []).length ? `
-            <label class="select-shell">
-              <span class="sr-only">Choose device</span>
-              <select id="encoder-device-select" ${locked ? 'disabled' : ''}>${deviceOptions}</select>
-            </label>
-          ` : '<div class="empty-inline">Pair a device first to generate a reusable OBS setup.</div>'}
-          <div class="meta-copy">${escapeHtml(latestSession)}</div>
-        </article>
-      </div>
+          ${device ? statusChip(titleCase(device.status || 'unknown'), device.status === 'active' ? 'success' : device.status === 'pending' ? 'warning' : 'muted') : statusChip('Waiting', 'muted')}
+        </div>
+        ${(state.setup.devices || []).length ? `
+          <label class="select-shell">
+            <span class="sr-only">Choose device</span>
+            <select id="encoder-device-select" ${locked ? 'disabled' : ''}>${deviceOptions}</select>
+          </label>
+        ` : '<div class="empty-inline">Pair a device first to generate a reusable OBS setup.</div>'}
+      </article>
+      <article class="rail-card">
+        <p class="field-label">RTMP ingest server</p>
+        <div class="mono-value">${escapeHtml(state.setup.ingestServer || 'Not configured')}</div>
+        <p class="meta-copy">Every OBS device points at the same local Emberstage ingest.</p>
+        <div class="panel-actions">
+          <button class="btn btn-secondary btn-block" type="button" data-action="copy-ingest-server" ${state.setup.ingestServer ? '' : 'disabled'}>Copy RTMP URL</button>
+        </div>
+      </article>
       <article class="key-card ${activeKey ? 'key-card-fresh' : ''}">
         <div class="section-head section-head-tight">
           <div>
-            <p class="field-label">Setup key</p>
+            <p class="field-label">Stream key</p>
             <h3>${device ? escapeHtml(device.name) : 'No device selected'}</h3>
           </div>
           ${device && deviceHasKey(device) ? statusChip(`Stored as ••••${device.ingest_key_last4}`, 'warning') : statusChip('Not set yet', 'muted')}
         </div>
         ${device ? `
           <p class="section-copy">${activeKey
-            ? 'This new OBS key is shown one time only. Emberstage stores only its hash, so nothing older can be recovered.'
+            ? 'This new OBS key is shown one time only.'
             : deviceHasKey(device)
-              ? `The existing OBS key ends in ••••${escapeHtml(device.ingest_key_last4)}. The old raw key cannot be shown again.`
-              : 'Generate the reusable OBS key once for this device. The raw key is only shown after generation.'}
+              ? `The current OBS key ends in ••••${escapeHtml(device.ingest_key_last4)}.`
+              : 'Generate the reusable OBS key once for this device.'}
           </p>
           <div class="secret-row">
             <div class="secret-value">${activeKey ? escapeHtml(activeKey.revealed ? activeKey.streamKey : maskSecret(activeKey.streamKey)) : escapeHtml(deviceHasKey(device) ? `Stored key ending ••••${device.ingest_key_last4}` : 'No OBS stream key generated yet')}</div>
@@ -585,17 +669,24 @@ function renderEncoderPanel() {
               ${activeKey ? '<button class="btn btn-secondary" type="button" data-action="dismiss-new-key">Dismiss</button>' : ''}
             </div>
           </div>
-          <div class="meta-grid meta-grid-2">
-            <div class="meta-card">
-              <span>Current device state</span>
-              <strong>${escapeHtml(titleCase(device.status || 'unknown'))}</strong>
+          <details class="portal-details">
+            <summary>More setup details</summary>
+            <div class="portal-details-body meta-grid meta-grid-2">
+              <div class="meta-card">
+                <span>Current device state</span>
+                <strong>${escapeHtml(titleCase(device.status || 'unknown'))}</strong>
+              </div>
+              <div class="meta-card">
+                <span>Latest key rotation</span>
+                <strong>${device.ingest_key_rotated_at ? escapeHtml(formatDateTime(device.ingest_key_rotated_at)) : 'Never'}</strong>
+              </div>
             </div>
-            <div class="meta-card">
-              <span>Latest key rotation</span>
-              <strong>${device.ingest_key_rotated_at ? escapeHtml(formatDateTime(device.ingest_key_rotated_at)) : 'Never'}</strong>
-            </div>
-          </div>
+          </details>
         ` : '<div class="empty-inline">Pick a paired device to manage its OBS setup.</div>'}
+      </article>
+      <article class="rail-card rail-card-tip">
+        <p class="field-label">Start sequence</p>
+        <p class="section-copy">Once OBS starts streaming, Emberstage relays to every enabled destination and approved broadcast automatically.</p>
       </article>
     </div>
   `;
@@ -604,24 +695,46 @@ function renderEncoderPanel() {
 function renderProviderTargetRow(target) {
   const destination = findDestinationById(target.id);
   const relay = destination?.delivery?.relayState || 'unknown';
+  const broadcast = destination?.broadcast;
+  const summary = destination?.detail || 'Connected and ready to be enabled.';
+  const isFacebookProfile = target.provider === 'facebook' && /personal profile/i.test(target.name || '');
+  const facebookPrivacyNote = isFacebookProfile && !/only me|private|friends|public/i.test(summary)
+    ? 'Personal Profile broadcasts default to Only Me until Facebook privacy is changed there.'
+    : '';
   return `
-    <label class="destination-toggle-row ${target.selected ? 'destination-toggle-row-selected' : ''}">
-      <div class="destination-toggle-main">
-        <input type="checkbox" data-action="toggle-provider-target" data-target-id="${escapeHtml(target.id)}" ${target.selected ? 'checked' : ''} ${isSetupLocked() || isBusy(`toggle-target-${target.id}`) ? 'disabled' : ''}>
-        <div class="destination-toggle-copy">
-          <strong>${escapeHtml(target.name)}</strong>
-          <div class="destination-row-copy">${escapeHtml(destination?.detail || 'Channel available from provider connection.')}</div>
-          <div class="destination-row-extra">${target.selected ? 'Enabled = approved for auto-go-live when OBS starts.' : 'Disabled channels stay connected but will be ignored when OBS starts.'}</div>
-          ${destination?.broadcast ? `<div class="destination-row-extra">Broadcast: ${escapeHtml(destination.broadcast.title || 'Untitled')} · ${escapeHtml(titleCase(destination.broadcast.lifeCycleStatus || 'ready'))}</div>` : ''}
+    <article class="destination-toggle-row ${target.selected ? 'destination-toggle-row-selected' : ''}">
+      <div class="destination-row-head">
+        <div class="destination-toggle-main">
+          <div class="provider-badge provider-badge-${escapeHtml(target.provider)}" aria-hidden="true">${escapeHtml(target.provider.slice(0, 1).toUpperCase())}</div>
+          <div class="destination-toggle-copy">
+            <div class="destination-title-row">
+              <strong>${escapeHtml(target.name)}</strong>
+              ${statusChip(target.selected ? 'Enabled' : 'Disabled', target.selected ? 'success' : 'muted')}
+            </div>
+            <div class="destination-row-copy">${escapeHtml(summary)}</div>
+            <div class="destination-row-extra destination-approval-copy">${target.selected ? 'Approved for auto-go-live when OBS starts streaming.' : 'Disabled channels stay connected but out of the live path.'}</div>
+            ${facebookPrivacyNote ? `<div class="destination-row-extra">${escapeHtml(facebookPrivacyNote)}</div>` : ''}
+          </div>
+        </div>
+        <div class="destination-row-controls">
+          <label class="toggle-switch">
+            <input type="checkbox" data-action="toggle-provider-target" data-target-id="${escapeHtml(target.id)}" ${target.selected ? 'checked' : ''} ${isSetupLocked() || isBusy(`toggle-target-${target.id}`) ? 'disabled' : ''}>
+            <span class="toggle-switch-ui" aria-hidden="true"></span>
+            <span class="sr-only">Toggle ${escapeHtml(target.name)}</span>
+          </label>
         </div>
       </div>
-       <div class="delivery-pill-set delivery-pill-set-wrap delivery-pill-set-compact">
-         ${meterPill(`Relay ${titleCase(relay)}`, toneForRelay(relay))}
-         ${providerReceivingPill(destination)}
-         ${providerLivePill(destination)}
-       </div>
-     </label>
-   `;
+      <div class="delivery-pill-set delivery-pill-set-wrap delivery-pill-set-compact">
+        ${meterPill(`Relay ${titleCase(relay)}`, toneForRelay(relay))}
+        ${providerReceivingPill(destination)}
+        ${providerLivePill(destination)}
+      </div>
+      <div class="destination-row-actions">
+        ${target.provider === 'youtube' ? `<button class="btn btn-secondary btn-compact" type="button" data-action="open-view" data-view="broadcasts">${broadcast ? 'Open broadcasts' : 'Configure broadcast'}</button>` : ''}
+        ${broadcast ? `<details class="portal-details portal-details-inline"><summary>Details</summary><div class="portal-details-body">Broadcast: <strong>${escapeHtml(broadcast.title || 'Untitled')}</strong> · ${escapeHtml(titleCase(broadcast.lifeCycleStatus || 'ready'))}</div></details>` : ''}
+      </div>
+    </article>
+  `;
 }
 
 function renderProviderCard(provider) {
@@ -633,16 +746,11 @@ function renderProviderCard(provider) {
     <article class="provider-surface">
       <div class="section-head section-head-tight">
         <div>
-          <p class="field-label">${escapeHtml(provider)}</p>
           <h3>${escapeHtml(titleCase(provider))}</h3>
+          <p class="section-copy">${details.connected ? `${targets.length} destination${targets.length === 1 ? '' : 's'} connected` : 'Connect an account to add destinations.'}</p>
         </div>
         ${statusChip(statusLabel, statusTone)}
       </div>
-      <p class="section-copy">${escapeHtml(
-        provider === 'youtube' ? 'Choose broadcasts, keep privacy accurate, and approve each enabled channel to auto-go-live when OBS starts streaming.' :
-        provider === 'twitch' ? 'Connection and channel selection are shown here. Extra live-state detail only appears when the backend reports it.' :
-        'Connection and channel visibility are shown here. Emberstage only labels provider live state when the backend confirms it.'
-      )}</p>
       <div class="panel-actions provider-action-row">
         ${details.connected
           ? `<button class="btn btn-secondary" type="button" data-action="disconnect-provider" data-provider="${escapeHtml(provider)}" ${isSetupLocked() || isBusy(`provider-disconnect-${provider}`) ? 'disabled' : ''}>${isBusy(`provider-disconnect-${provider}`) ? 'Disconnecting…' : 'Disconnect'}</button>`
@@ -651,9 +759,6 @@ function renderProviderCard(provider) {
       ${details.reason && !details.connected ? `<div class="provider-note">${escapeHtml(details.reason)}</div>` : ''}
       ${renderStatus(`provider-${provider}`)}
       ${!details.connected && state.ui.statuses[`provider-${provider}`]?.connectUrl ? `<a class="btn btn-secondary" href="${escapeHtml(state.ui.statuses[`provider-${provider}`].connectUrl)}" target="_blank" rel="noopener noreferrer">Continue ${escapeHtml(titleCase(provider))} sign-in</a>` : ''}
-      <div class="provider-target-list">
-        ${targets.length ? targets.map((target) => renderProviderTargetRow(target)).join('') : '<div class="empty-inline">No channels discovered yet for this provider.</div>'}
-      </div>
     </article>
   `;
 }
@@ -663,32 +768,33 @@ function renderCustomTargets() {
     <article class="provider-surface provider-surface-wide">
       <div class="section-head section-head-tight">
         <div>
-          <p class="field-label">Custom RTMP</p>
-          <h3>Add relay destinations</h3>
+          <h3>Custom destinations</h3>
         </div>
         ${statusChip(`${state.customTargets.length} configured`, state.customTargets.length ? 'warning' : 'muted')}
       </div>
-      <p class="section-copy">Use this for destinations without real provider broadcast tooling in Emberstage.</p>
       ${renderStatus('custom-targets')}
-      <form id="custom-target-form" class="dense-form">
-        <div class="field-grid field-grid-3">
-          <label class="field-shell">
-            <span>Name</span>
-            <input class="form-control" type="text" name="name" data-draft-section="customTarget" value="${escapeHtml(state.drafts.customTarget.name)}" placeholder="Sanctuary feed">
-          </label>
-          <label class="field-shell">
-            <span>RTMP URL</span>
-            <input class="form-control" type="url" name="stream_url" data-draft-section="customTarget" value="${escapeHtml(state.drafts.customTarget.stream_url)}" placeholder="rtmps://live.example.com/app">
-          </label>
-          <label class="field-shell">
-            <span>Stream key</span>
-            <input class="form-control" type="password" name="stream_key" data-draft-section="customTarget" value="${escapeHtml(state.drafts.customTarget.stream_key)}" placeholder="Paste key">
-          </label>
-        </div>
-        <div class="panel-actions">
-          <button class="btn" type="submit" ${isSetupLocked() || isBusy('create-custom-target') ? 'disabled' : ''}>${isBusy('create-custom-target') ? 'Adding…' : 'Add custom RTMP target'}</button>
-        </div>
-      </form>
+      <details class="portal-details">
+        <summary>Add custom RTMP destination</summary>
+        <form id="custom-target-form" class="dense-form portal-details-body">
+          <div class="field-grid field-grid-3">
+            <label class="field-shell">
+              <span>Name</span>
+              <input class="form-control" type="text" name="name" data-draft-section="customTarget" value="${escapeHtml(state.drafts.customTarget.name)}" placeholder="Sanctuary feed">
+            </label>
+            <label class="field-shell">
+              <span>RTMP URL</span>
+              <input class="form-control" type="url" name="stream_url" data-draft-section="customTarget" value="${escapeHtml(state.drafts.customTarget.stream_url)}" placeholder="rtmps://live.example.com/app">
+            </label>
+            <label class="field-shell">
+              <span>Stream key</span>
+              <input class="form-control" type="password" name="stream_key" data-draft-section="customTarget" value="${escapeHtml(state.drafts.customTarget.stream_key)}" placeholder="Paste key">
+            </label>
+          </div>
+          <div class="panel-actions">
+            <button class="btn" type="submit" ${isSetupLocked() || isBusy('create-custom-target') ? 'disabled' : ''}>${isBusy('create-custom-target') ? 'Adding…' : 'Add custom RTMP target'}</button>
+          </div>
+        </form>
+      </details>
       <div class="destination-board compact-board">
         ${state.customTargets.length ? state.customTargets.map((target) => {
           const destination = findDestinationById(target.id);
@@ -708,7 +814,7 @@ function renderCustomTargets() {
               </div>
             </div>
           `;
-        }).join('') : '<div class="empty-inline">No custom RTMP targets yet.</div>'}
+        }).join('') : ''}
       </div>
     </article>
   `;
@@ -753,19 +859,20 @@ function renderChannelsPanel() {
     <div class="panel-stack channels-panel-shell">
       ${renderStatus('channels')}
       ${sessionLockCopy()}
-      <div class="provider-surface-grid">
-        ${PROVIDERS.map((provider) => renderProviderCard(provider)).join('')}
+      <div class="overview-copy-row">
+        <span class="overview-summary">Enabled destinations go live when OBS starts.</span>
+        <span class="overview-summary">${selectedDestinations().length ? `${selectedDestinations().length} enabled` : 'No destinations enabled yet'}</span>
       </div>
-      ${renderCustomTargets()}
-      <article class="provider-surface provider-surface-wide">
-        <div class="section-head">
-          <div>
-            <p class="field-label">Delivery map</p>
-            <h3>Approved destinations and live-state truth</h3>
-          </div>
+      <div class="provider-target-list destination-list">
+        ${state.providerTargets.length ? state.providerTargets.map((target) => renderProviderTargetRow(target)).join('') : '<div class="empty-state-inline">Connect your first channel below, then enable it to stream from OBS.</div>'}
+      </div>
+      <details class="portal-details connections-details" ${state.providerTargets.length ? '' : 'open'}>
+        <summary>Connect or manage accounts</summary>
+        <div class="provider-surface-grid portal-details-body">
+          ${PROVIDERS.map((provider) => renderProviderCard(provider)).join('')}
         </div>
-        ${renderDestinationBoard()}
-      </article>
+      </details>
+      ${renderCustomTargets()}
     </div>
   `;
 }
@@ -841,52 +948,55 @@ function renderYouTubeStudio() {
           </div>
         </article>
         <div class="studio-stack">
-          <article class="studio-card">
-            <div class="section-head section-head-tight">
+          <details class="subordinate-shell studio-card" ${currentBroadcast ? '' : 'open'}>
+            <summary>
               <div>
                 <p class="field-label">Create and bind</p>
                 <h3>Create a new YouTube broadcast</h3>
               </div>
+              ${statusChip('Optional', 'muted')}
+            </summary>
+            <div class="subordinate-body panel-stack">
+              ${renderStatus('youtube-create')}
+              <form id="youtube-create-form" class="dense-form">
+                <div class="field-grid field-grid-2">
+                  <label class="field-shell">
+                    <span>Title</span>
+                    <input class="form-control" type="text" name="title" data-draft-section="youtubeCreate" value="${escapeHtml(state.drafts.youtubeCreate.title)}" placeholder="Sunday service">
+                  </label>
+                  <label class="field-shell">
+                    <span>Privacy</span>
+                    <select class="form-control" name="privacyStatus" data-draft-section="youtubeCreate">
+                      ${YOUTUBE_PRIVACY.map((option) => `<option value="${option.value}" ${state.drafts.youtubeCreate.privacyStatus === option.value ? 'selected' : ''}>${escapeHtml(option.label)}</option>`).join('')}
+                    </select>
+                  </label>
+                </div>
+                <label class="field-shell">
+                  <span>Description</span>
+                  <textarea class="form-control textarea-control" name="description" data-draft-section="youtubeCreate" placeholder="Describe this broadcast">${escapeHtml(state.drafts.youtubeCreate.description)}</textarea>
+                </label>
+                <div class="field-grid field-grid-3">
+                  <label class="field-shell">
+                    <span>Scheduled start</span>
+                    <input class="form-control" type="datetime-local" name="scheduledStartTime" data-draft-section="youtubeCreate" value="${escapeHtml(state.drafts.youtubeCreate.scheduledStartTime)}">
+                  </label>
+                  <label class="field-shell">
+                    <span>Latency</span>
+                    <select class="form-control" name="latencyPreference" data-draft-section="youtubeCreate">
+                      ${YOUTUBE_LATENCIES.map((option) => `<option value="${option.value}" ${state.drafts.youtubeCreate.latencyPreference === option.value ? 'selected' : ''}>${escapeHtml(option.label)}</option>`).join('')}
+                    </select>
+                  </label>
+                  <label class="field-shell">
+                    <span>Category</span>
+                    <input class="form-control" type="text" name="categoryId" data-draft-section="youtubeCreate" value="${escapeHtml(state.drafts.youtubeCreate.categoryId)}" placeholder="29">
+                  </label>
+                </div>
+                <div class="panel-actions">
+                  <button class="btn" type="submit" ${isSetupLocked() || isBusy('youtube-create') ? 'disabled' : ''}>${isBusy('youtube-create') ? 'Creating…' : 'Create and bind broadcast'}</button>
+                </div>
+              </form>
             </div>
-            ${renderStatus('youtube-create')}
-            <form id="youtube-create-form" class="dense-form">
-              <div class="field-grid field-grid-2">
-                <label class="field-shell">
-                  <span>Title</span>
-                  <input class="form-control" type="text" name="title" data-draft-section="youtubeCreate" value="${escapeHtml(state.drafts.youtubeCreate.title)}" placeholder="Sunday service">
-                </label>
-                <label class="field-shell">
-                  <span>Privacy</span>
-                  <select class="form-control" name="privacyStatus" data-draft-section="youtubeCreate">
-                    ${YOUTUBE_PRIVACY.map((option) => `<option value="${option.value}" ${state.drafts.youtubeCreate.privacyStatus === option.value ? 'selected' : ''}>${escapeHtml(option.label)}</option>`).join('')}
-                  </select>
-                </label>
-              </div>
-              <label class="field-shell">
-                <span>Description</span>
-                <textarea class="form-control textarea-control" name="description" data-draft-section="youtubeCreate" placeholder="Describe this broadcast">${escapeHtml(state.drafts.youtubeCreate.description)}</textarea>
-              </label>
-              <div class="field-grid field-grid-3">
-                <label class="field-shell">
-                  <span>Scheduled start</span>
-                  <input class="form-control" type="datetime-local" name="scheduledStartTime" data-draft-section="youtubeCreate" value="${escapeHtml(state.drafts.youtubeCreate.scheduledStartTime)}">
-                </label>
-                <label class="field-shell">
-                  <span>Latency</span>
-                  <select class="form-control" name="latencyPreference" data-draft-section="youtubeCreate">
-                    ${YOUTUBE_LATENCIES.map((option) => `<option value="${option.value}" ${state.drafts.youtubeCreate.latencyPreference === option.value ? 'selected' : ''}>${escapeHtml(option.label)}</option>`).join('')}
-                  </select>
-                </label>
-                <label class="field-shell">
-                  <span>Category</span>
-                  <input class="form-control" type="text" name="categoryId" data-draft-section="youtubeCreate" value="${escapeHtml(state.drafts.youtubeCreate.categoryId)}" placeholder="29">
-                </label>
-              </div>
-              <div class="panel-actions">
-                <button class="btn" type="submit" ${isSetupLocked() || isBusy('youtube-create') ? 'disabled' : ''}>${isBusy('youtube-create') ? 'Creating…' : 'Create and bind broadcast'}</button>
-              </div>
-            </form>
-          </article>
+          </details>
           <article class="studio-card">
             <div class="section-head section-head-tight">
               <div>
@@ -902,111 +1012,125 @@ function renderYouTubeStudio() {
                 <strong>${escapeHtml(target?.name || 'This YouTube channel')}</strong>
                 <span>${target?.selected ? ' is approved to auto-go-live when OBS starts streaming.' : ' is not approved yet. Enable this channel in Destinations if you want OBS start to send it live automatically.'}</span>
               </div>
-              <form id="youtube-update-form" class="dense-form">
-                <div class="field-grid field-grid-2">
-                  <label class="field-shell">
-                    <span>Title</span>
-                    <input class="form-control" type="text" name="title" data-draft-section="youtubeUpdate" value="${escapeHtml(state.drafts.youtubeUpdate.title)}">
-                  </label>
-                  <label class="field-shell">
-                    <span>Privacy</span>
-                    <select class="form-control" name="privacyStatus" data-draft-section="youtubeUpdate">
-                      ${YOUTUBE_PRIVACY.map((option) => `<option value="${option.value}" ${state.drafts.youtubeUpdate.privacyStatus === option.value ? 'selected' : ''}>${escapeHtml(option.label)}</option>`).join('')}
-                    </select>
-                  </label>
+              <details class="subordinate-shell" open>
+                <summary>
+                  <div>
+                    <p class="field-label">Edit and transition</p>
+                    <h3>Broadcast details and controls</h3>
+                  </div>
+                  ${statusChip('Open', 'warning')}
+                </summary>
+                <div class="subordinate-body panel-stack">
+                  <form id="youtube-update-form" class="dense-form">
+                    <div class="field-grid field-grid-2">
+                      <label class="field-shell">
+                        <span>Title</span>
+                        <input class="form-control" type="text" name="title" data-draft-section="youtubeUpdate" value="${escapeHtml(state.drafts.youtubeUpdate.title)}">
+                      </label>
+                      <label class="field-shell">
+                        <span>Privacy</span>
+                        <select class="form-control" name="privacyStatus" data-draft-section="youtubeUpdate">
+                          ${YOUTUBE_PRIVACY.map((option) => `<option value="${option.value}" ${state.drafts.youtubeUpdate.privacyStatus === option.value ? 'selected' : ''}>${escapeHtml(option.label)}</option>`).join('')}
+                        </select>
+                      </label>
+                    </div>
+                    <label class="field-shell">
+                      <span>Description</span>
+                      <textarea class="form-control textarea-control" name="description" data-draft-section="youtubeUpdate">${escapeHtml(state.drafts.youtubeUpdate.description)}</textarea>
+                    </label>
+                    <div class="field-grid field-grid-2">
+                      <label class="field-shell">
+                        <span>Latency</span>
+                        <select class="form-control" name="latencyPreference" data-draft-section="youtubeUpdate">
+                          ${YOUTUBE_LATENCIES.map((option) => `<option value="${option.value}" ${state.drafts.youtubeUpdate.latencyPreference === option.value ? 'selected' : ''}>${escapeHtml(option.label)}</option>`).join('')}
+                        </select>
+                      </label>
+                      <label class="field-shell">
+                        <span>Category</span>
+                        <input class="form-control" type="text" name="categoryId" data-draft-section="youtubeUpdate" value="${escapeHtml(state.drafts.youtubeUpdate.categoryId)}">
+                      </label>
+                    </div>
+                    <div class="field-grid field-grid-2 field-grid-tight">
+                      <label class="field-shell">
+                        <span>Thumbnail</span>
+                        <input class="form-control" type="file" accept=".jpg,.jpeg,.png,image/jpeg,image/png" data-action="thumbnail-input" data-target-id="${escapeHtml(target.id)}">
+                      </label>
+                      <div class="thumbnail-note">Keep it under 2MB here (JPEG or PNG only).</div>
+                    </div>
+                    <div class="panel-actions panel-actions-wrap">
+                      <button class="btn" type="submit" ${isSetupLocked() || isBusy('youtube-update') ? 'disabled' : ''}>${isBusy('youtube-update') ? 'Saving…' : 'Save broadcast details'}</button>
+                      <button class="btn btn-secondary" type="button" data-action="upload-thumbnail" data-target-id="${escapeHtml(target.id)}" ${isSetupLocked() || isBusy('youtube-thumbnail') ? 'disabled' : ''}>${isBusy('youtube-thumbnail') ? 'Uploading…' : 'Upload thumbnail'}</button>
+                      <button class="btn btn-danger" type="button" data-action="transition-broadcast" data-target-id="${escapeHtml(target.id)}" data-status="complete" ${isBusy('youtube-transition') ? 'disabled' : ''}>End broadcast</button>
+                    </div>
+                  </form>
                 </div>
-                <label class="field-shell">
-                  <span>Description</span>
-                  <textarea class="form-control textarea-control" name="description" data-draft-section="youtubeUpdate">${escapeHtml(state.drafts.youtubeUpdate.description)}</textarea>
-                </label>
-                <div class="field-grid field-grid-2">
-                  <label class="field-shell">
-                    <span>Latency</span>
-                    <select class="form-control" name="latencyPreference" data-draft-section="youtubeUpdate">
-                      ${YOUTUBE_LATENCIES.map((option) => `<option value="${option.value}" ${state.drafts.youtubeUpdate.latencyPreference === option.value ? 'selected' : ''}>${escapeHtml(option.label)}</option>`).join('')}
-                    </select>
-                  </label>
-                  <label class="field-shell">
-                    <span>Category</span>
-                    <input class="form-control" type="text" name="categoryId" data-draft-section="youtubeUpdate" value="${escapeHtml(state.drafts.youtubeUpdate.categoryId)}">
-                  </label>
-                </div>
-                <div class="field-grid field-grid-2 field-grid-tight">
-                  <label class="field-shell">
-                    <span>Thumbnail</span>
-                    <input class="form-control" type="file" accept=".jpg,.jpeg,.png,image/jpeg,image/png" data-action="thumbnail-input" data-target-id="${escapeHtml(target.id)}">
-                  </label>
-                  <div class="thumbnail-note">Keep it under 2MB here (JPEG or PNG only).</div>
-                </div>
-                <div class="panel-actions panel-actions-wrap">
-                  <button class="btn" type="submit" ${isSetupLocked() || isBusy('youtube-update') ? 'disabled' : ''}>${isBusy('youtube-update') ? 'Saving…' : 'Save broadcast details'}</button>
-                  <button class="btn btn-secondary" type="button" data-action="upload-thumbnail" data-target-id="${escapeHtml(target.id)}" ${isSetupLocked() || isBusy('youtube-thumbnail') ? 'disabled' : ''}>${isBusy('youtube-thumbnail') ? 'Uploading…' : 'Upload thumbnail'}</button>
-                  <button class="btn btn-danger" type="button" data-action="transition-broadcast" data-target-id="${escapeHtml(target.id)}" data-status="complete" ${isBusy('youtube-transition') ? 'disabled' : ''}>End broadcast</button>
-                </div>
-              </form>
+              </details>
             ` : '<div class="empty-inline">Select an existing broadcast or create a new one for this channel first.</div>'}
           </article>
         </div>
       </div>
-      <article class="studio-card">
-        <div class="section-head section-head-tight">
+      <details class="subordinate-shell studio-card">
+        <summary>
           <div>
             <p class="field-label">Bulk update</p>
             <h3>Push shared metadata across selected YouTube targets</h3>
           </div>
-        </div>
-        <p class="section-copy">This bulk editor only changes selected YouTube destinations. Other providers stay visible here without joining the YouTube metadata update flow.</p>
-        ${renderStatus('youtube-bulk')}
-        <form id="youtube-bulk-form" class="dense-form">
-          <div class="field-grid field-grid-2">
-            <label class="field-shell">
-              <span>Shared title</span>
-              <input class="form-control" type="text" name="title" data-draft-section="youtubeBulk" value="${escapeHtml(state.drafts.youtubeBulk.title)}" placeholder="Weekend stream">
-            </label>
-            <label class="field-shell">
-              <span>Privacy</span>
-              <select class="form-control" name="privacyStatus" data-draft-section="youtubeBulk">
-                ${YOUTUBE_PRIVACY.map((option) => `<option value="${option.value}" ${state.drafts.youtubeBulk.privacyStatus === option.value ? 'selected' : ''}>${escapeHtml(option.label)}</option>`).join('')}
-              </select>
-            </label>
-          </div>
-          <label class="field-shell">
-            <span>Shared description</span>
-            <textarea class="form-control textarea-control" name="description" data-draft-section="youtubeBulk">${escapeHtml(state.drafts.youtubeBulk.description)}</textarea>
-          </label>
-          <div class="field-grid field-grid-2">
-            <label class="field-shell">
-              <span>Latency</span>
-              <select class="form-control" name="latencyPreference" data-draft-section="youtubeBulk">
-                ${YOUTUBE_LATENCIES.map((option) => `<option value="${option.value}" ${state.drafts.youtubeBulk.latencyPreference === option.value ? 'selected' : ''}>${escapeHtml(option.label)}</option>`).join('')}
-              </select>
-            </label>
-            <label class="field-shell">
-              <span>Category</span>
-              <input class="form-control" type="text" name="categoryId" data-draft-section="youtubeBulk" value="${escapeHtml(state.drafts.youtubeBulk.categoryId)}" placeholder="29">
-            </label>
-          </div>
-          <div class="bulk-target-list">
-            ${selectedDestinations().length ? selectedDestinations().map((destination) => `
-              <label class="bulk-target-row">
-                <input type="checkbox" data-action="toggle-bulk-target" data-target-id="${escapeHtml(destination.id)}" ${destination.provider === 'youtube' && state.drafts.youtubeBulk.targetIds.includes(destination.id) ? 'checked' : ''} ${destination.provider !== 'youtube' || isSetupLocked() ? 'disabled' : ''}>
-                <span>
-                  <strong>${escapeHtml(destination.name)}</strong>
-                  <small>${escapeHtml(destination.provider === 'youtube' ? 'Included in YouTube bulk updates' : `Visible here, but not included in YouTube bulk updates`)}</small>
-                </span>
+          ${statusChip(state.bulkResults.length ? `${state.bulkResults.length} results` : 'Optional', state.bulkResults.length ? 'warning' : 'muted')}
+        </summary>
+        <div class="subordinate-body panel-stack">
+          <p class="section-copy">This bulk editor only changes selected YouTube destinations. Other providers stay visible here without joining the YouTube metadata update flow.</p>
+          ${renderStatus('youtube-bulk')}
+          <form id="youtube-bulk-form" class="dense-form">
+            <div class="field-grid field-grid-2">
+              <label class="field-shell">
+                <span>Shared title</span>
+                <input class="form-control" type="text" name="title" data-draft-section="youtubeBulk" value="${escapeHtml(state.drafts.youtubeBulk.title)}" placeholder="Weekend stream">
               </label>
-            `).join('') : '<div class="empty-inline">Turn on at least one destination to include it in bulk updates.</div>'}
-          </div>
-          <div class="panel-actions">
-            <button class="btn" type="submit" ${isSetupLocked() || isBusy('youtube-bulk') ? 'disabled' : ''}>${isBusy('youtube-bulk') ? 'Updating…' : 'Run bulk update'}</button>
-          </div>
-        </form>
-        ${state.bulkResults.length ? `
-          <div class="bulk-results">
-            ${state.bulkResults.map((result) => `<div class="bulk-result bulk-result-${escapeHtml(result.type)}"><strong>${escapeHtml(result.name)}</strong><span>${escapeHtml(result.message)}</span></div>`).join('')}
-          </div>
-        ` : ''}
-      </article>
+              <label class="field-shell">
+                <span>Privacy</span>
+                <select class="form-control" name="privacyStatus" data-draft-section="youtubeBulk">
+                  ${YOUTUBE_PRIVACY.map((option) => `<option value="${option.value}" ${state.drafts.youtubeBulk.privacyStatus === option.value ? 'selected' : ''}>${escapeHtml(option.label)}</option>`).join('')}
+                </select>
+              </label>
+            </div>
+            <label class="field-shell">
+              <span>Shared description</span>
+              <textarea class="form-control textarea-control" name="description" data-draft-section="youtubeBulk">${escapeHtml(state.drafts.youtubeBulk.description)}</textarea>
+            </label>
+            <div class="field-grid field-grid-2">
+              <label class="field-shell">
+                <span>Latency</span>
+                <select class="form-control" name="latencyPreference" data-draft-section="youtubeBulk">
+                  ${YOUTUBE_LATENCIES.map((option) => `<option value="${option.value}" ${state.drafts.youtubeBulk.latencyPreference === option.value ? 'selected' : ''}>${escapeHtml(option.label)}</option>`).join('')}
+                </select>
+              </label>
+              <label class="field-shell">
+                <span>Category</span>
+                <input class="form-control" type="text" name="categoryId" data-draft-section="youtubeBulk" value="${escapeHtml(state.drafts.youtubeBulk.categoryId)}" placeholder="29">
+              </label>
+            </div>
+            <div class="bulk-target-list">
+              ${selectedDestinations().length ? selectedDestinations().map((destination) => `
+                <label class="bulk-target-row">
+                  <input type="checkbox" data-action="toggle-bulk-target" data-target-id="${escapeHtml(destination.id)}" ${destination.provider === 'youtube' && state.drafts.youtubeBulk.targetIds.includes(destination.id) ? 'checked' : ''} ${destination.provider !== 'youtube' || isSetupLocked() ? 'disabled' : ''}>
+                  <span>
+                    <strong>${escapeHtml(destination.name)}</strong>
+                    <small>${escapeHtml(destination.provider === 'youtube' ? 'Included in YouTube bulk updates' : `Visible here, but not included in YouTube bulk updates`)}</small>
+                  </span>
+                </label>
+              `).join('') : '<div class="empty-inline">Turn on at least one destination to include it in bulk updates.</div>'}
+            </div>
+            <div class="panel-actions">
+              <button class="btn" type="submit" ${isSetupLocked() || isBusy('youtube-bulk') ? 'disabled' : ''}>${isBusy('youtube-bulk') ? 'Updating…' : 'Run bulk update'}</button>
+            </div>
+          </form>
+          ${state.bulkResults.length ? `
+            <div class="bulk-results">
+              ${state.bulkResults.map((result) => `<div class="bulk-result bulk-result-${escapeHtml(result.type)}"><strong>${escapeHtml(result.name)}</strong><span>${escapeHtml(result.message)}</span></div>`).join('')}
+            </div>
+          ` : ''}
+        </div>
+      </details>
     </div>
   `;
 }
@@ -1803,7 +1927,13 @@ function setupEventListeners() {
     };
     state.ui.busy = {};
     state.ui.statuses = {};
+    state.ui.lastLoadedAt = null;
     showView('auth');
+  });
+
+  window.addEventListener('hashchange', () => {
+    if (!state.user) return;
+    setActiveView(activeViewFromLocation(), { skipHash: true });
   });
 
   document.getElementById('refresh-portal-btn').addEventListener('click', handleRefreshClick);
@@ -1896,6 +2026,10 @@ function setupEventListeners() {
     }
 
     const action = button.dataset.action;
+    if (action === 'open-view') {
+      setActiveView(button.dataset.view);
+      return;
+    }
     if (action === 'copy-ingest-server') copyText(state.setup.ingestServer, 'RTMP URL copied.', 'encoder');
     if (action === 'toggle-new-key-visibility' && state.ingestCredentials) {
       state.ingestCredentials.revealed = !state.ingestCredentials.revealed;

@@ -4,7 +4,7 @@ import { db } from './db.js';
 const PROVIDER_SCOPES = {
   twitch: 'channel:read:stream_key',
   youtube: 'https://www.googleapis.com/auth/youtube',
-  facebook: 'pages_show_list,pages_read_engagement,pages_manage_posts'
+  facebook: 'pages_show_list,pages_read_engagement,pages_manage_posts,publish_video'
 };
 
 function integrationId(provider, settings = {}) {
@@ -227,7 +227,17 @@ export class NangoClient {
   }
 
   async getFacebookPageCredentials(workspaceId, targetPageId, expectedConnectionId) {
-    if (typeof targetPageId !== 'string' || !/^[\w-]+$/.test(targetPageId)) throw new Error('Invalid Facebook Page ID');
+    const isProfile = typeof targetPageId === 'string' && targetPageId.startsWith('profile:');
+    const numericId = isProfile ? targetPageId.substring(8) : targetPageId;
+    if (isProfile) {
+      if (typeof numericId !== 'string' || !/^\d+$/.test(numericId)) {
+        throw new Error('Invalid Facebook profile ID');
+      }
+    } else {
+      if (typeof targetPageId !== 'string' || !/^[\w-]+$/.test(targetPageId)) {
+        throw new Error('Invalid Facebook Page ID');
+      }
+    }
     const connection = expectedConnectionId
       ? (await this.listConnections(workspaceId, 'facebook')).find(candidate => candidate.connection_id === expectedConnectionId)
       : await this.getConnection(workspaceId, 'facebook');
@@ -236,16 +246,53 @@ export class NangoClient {
     const userAccessToken = credentials.access_token || credentials.raw?.access_token;
     if (!userAccessToken) throw new Error('Facebook user access token is missing');
 
-    const pages = await this.fetchFacebookPages(userAccessToken);
-    if (!pages.some(page => page.id === targetPageId)) throw new Error('Reverification failed: Page ownership or CREATE_CONTENT permission was not verified');
-    const response = await this.fetchResponse(`https://graph.facebook.com/${config.FACEBOOK_API_VERSION}/${encodeURIComponent(targetPageId)}?fields=id,access_token`, {
-      redirect: 'error',
-      headers: { Authorization: `Bearer ${userAccessToken}`, Accept: 'application/json' }
-    });
-    const body = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(`Facebook Page token request failed (${response.status})`);
-    if (body.id !== targetPageId || typeof body.access_token !== 'string' || !body.access_token.trim()) throw new Error('Facebook Page access token is missing or mismatched');
-    return { pageToken: body.access_token, connectionId: connection.connection_id };
+    const version = config.FACEBOOK_API_VERSION;
+    if (isProfile) {
+      const permissionsRes = await this.fetchResponse(`https://graph.facebook.com/${version}/me/permissions`, {
+        redirect: 'error',
+        headers: {
+          Authorization: `Bearer ${userAccessToken}`,
+          Accept: 'application/json'
+        }
+      });
+      if (!permissionsRes.ok) {
+        throw new Error(`Facebook permissions fetch failed (${permissionsRes.status})`);
+      }
+      const permBody = await permissionsRes.json().catch(() => ({}));
+      const hasPublishVideo = Array.isArray(permBody.data) && permBody.data.some(
+        p => p.permission === 'publish_video' && p.status === 'granted'
+      );
+      if (!hasPublishVideo) {
+        throw new Error('Reverification failed: publish_video permission was not verified');
+      }
+
+      const profileRes = await this.fetchResponse(`https://graph.facebook.com/${version}/me?fields=id`, {
+        redirect: 'error',
+        headers: {
+          Authorization: `Bearer ${userAccessToken}`,
+          Accept: 'application/json'
+        }
+      });
+      if (!profileRes.ok) {
+        throw new Error(`Facebook profile fetch failed (${profileRes.status})`);
+      }
+      const profileBody = await profileRes.json().catch(() => ({}));
+      if (profileBody.id !== numericId) {
+        throw new Error('Reverification failed: Profile ownership mismatch');
+      }
+      return { pageToken: userAccessToken, connectionId: connection.connection_id };
+    } else {
+      const pages = await this.fetchFacebookPages(userAccessToken);
+      if (!pages.some(page => page.id === targetPageId)) throw new Error('Reverification failed: Page ownership or CREATE_CONTENT permission was not verified');
+      const response = await this.fetchResponse(`https://graph.facebook.com/${config.FACEBOOK_API_VERSION}/${encodeURIComponent(targetPageId)}?fields=id,access_token`, {
+        redirect: 'error',
+        headers: { Authorization: `Bearer ${userAccessToken}`, Accept: 'application/json' }
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(`Facebook Page token request failed (${response.status})`);
+      if (body.id !== targetPageId || typeof body.access_token !== 'string' || !body.access_token.trim()) throw new Error('Facebook Page access token is missing or mismatched');
+      return { pageToken: body.access_token, connectionId: connection.connection_id };
+    }
   }
 
   async createFacebookLiveVideo(workspaceId, pageId) {
@@ -255,7 +302,15 @@ export class NangoClient {
     }
 
     const version = config.FACEBOOK_API_VERSION;
-    const response = await this.fetchResponse(`https://graph.facebook.com/${version}/${pageId}/live_videos`, {
+    const isProfile = typeof pageId === 'string' && pageId.startsWith('profile:');
+    const numericId = isProfile ? pageId.substring(8) : pageId;
+
+    const requestBody = { status: 'LIVE_NOW' };
+    if (isProfile) {
+      requestBody.privacy = { value: 'SELF' };
+    }
+
+    const response = await this.fetchResponse(`https://graph.facebook.com/${version}/${numericId}/live_videos`, {
       redirect: 'error',
       method: 'POST',
       headers: {
@@ -263,7 +318,7 @@ export class NangoClient {
         'Content-Type': 'application/json',
         Accept: 'application/json'
       },
-      body: JSON.stringify({ status: 'LIVE_NOW' })
+      body: JSON.stringify(requestBody)
     });
 
     const body = await response.json().catch(() => ({}));
@@ -408,8 +463,68 @@ export class NangoClient {
       const credentials = await this.getCredentials(connection.connection_id, 'facebook');
       const userAccessToken = credentials.access_token || credentials.raw?.access_token;
       if (!userAccessToken) return [];
-      const pages = await this.fetchFacebookPages(userAccessToken);
-      return pages.map(p => ({ id: String(p.id), name: p.name }));
+
+      const version = config.FACEBOOK_API_VERSION;
+      let hasPublishVideo = false;
+      let hasPagesShowList = false;
+      let permissionFetchFailed = false;
+
+      try {
+        const permissionsRes = await this.fetchResponse(`https://graph.facebook.com/${version}/me/permissions`, {
+          redirect: 'error',
+          headers: {
+            Authorization: `Bearer ${userAccessToken}`,
+            Accept: 'application/json'
+          }
+        });
+        if (permissionsRes.ok) {
+          const permBody = await permissionsRes.json().catch(() => ({}));
+          const permissionsData = permBody.data;
+          if (Array.isArray(permissionsData)) {
+            hasPublishVideo = permissionsData.some(p => p.permission === 'publish_video' && p.status === 'granted');
+            hasPagesShowList = permissionsData.some(p => p.permission === 'pages_show_list' && p.status === 'granted');
+          } else {
+            permissionFetchFailed = true;
+          }
+        } else {
+          permissionFetchFailed = true;
+        }
+      } catch (err) {
+        permissionFetchFailed = true;
+      }
+
+      const targets = [];
+
+      if (permissionFetchFailed) {
+        const pages = await this.fetchFacebookPages(userAccessToken);
+        return pages.map(p => ({ id: String(p.id), name: p.name }));
+      }
+
+      if (hasPublishVideo) {
+        const profileRes = await this.fetchResponse(`https://graph.facebook.com/${version}/me?fields=id,name`, {
+          redirect: 'error',
+          headers: {
+            Authorization: `Bearer ${userAccessToken}`,
+            Accept: 'application/json'
+          }
+        });
+        if (!profileRes.ok) throw new Error(`Facebook profile fetch failed (${profileRes.status})`);
+        const profileBody = await profileRes.json().catch(() => ({}));
+        if (!profileBody || typeof profileBody.id !== 'string' || !/^\d+$/.test(profileBody.id)) {
+          throw new Error('Facebook profile discovery returned an invalid identity');
+        }
+        const profileName = typeof profileBody.name === 'string' ? profileBody.name : 'Facebook Profile';
+        targets.push({ id: `profile:${profileBody.id}`, name: `${profileName} (Personal Profile)` });
+      }
+
+      if (hasPagesShowList) {
+        const pages = await this.fetchFacebookPages(userAccessToken);
+        for (const p of pages) {
+          targets.push({ id: String(p.id), name: p.name });
+        }
+      }
+
+      return targets;
     }
     return [];
   }

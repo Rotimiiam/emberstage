@@ -30,15 +30,15 @@ Keep the host and container paths identical: Compose resolves `./nango-data` for
 - Replace the pinned Nango image digest only through a reviewed upgrade.
 - This stack does not expose Nango directly to Emberstage devices. Only the Emberstage control plane may use Nango's secret API.
 
-Emberstage's control plane uses Nango for Twitch, YouTube, and Facebook Page connections. Set `NANGO_BASE_URL`, `NANGO_CONNECT_BASE_URL`, and the server-only `NANGO_SECRET_KEY` as described in `server/.env.example`. Self-hosting removes the Nango Cloud connection quota, not provider approval requirements or infrastructure limits.
+Emberstage's control plane uses Nango for Twitch, YouTube, and Facebook Page or personal-profile connections. Set `NANGO_BASE_URL`, `NANGO_CONNECT_BASE_URL`, and the server-only `NANGO_SECRET_KEY` as described in `server/.env.example`. Self-hosting removes the Nango Cloud connection quota, not provider approval requirements or infrastructure limits.
 
-## Facebook Pages
+## Facebook Pages & Profiles
 
-1. Create/configure a Meta developer app with Facebook Login and the Page/Live Video capabilities required by your app's use case. Use an account with permission to create content on the intended Page; personal-profile and Group streaming are not supported by this connector.
+1. Create/configure a Meta developer app with Facebook Login and the Page/Live Video capabilities required by your app's use case. Use an account with permission to create content on the intended Page or Profile.
 2. Add the exact callback URL shown by your self-hosted Nango integration to Meta's valid OAuth redirect URIs. The local Nango callback is `http://127.0.0.1:3003/oauth/callback`; if Meta rejects loopback HTTP for your configuration, use an HTTPS Nango endpoint and update its public URL consistently. Never substitute the Emberstage portal callback.
-3. In Nango, create a Facebook integration with ID `facebook` (or set `NANGO_FACEBOOK_INTEGRATION_ID` to its ID), and enter the Meta app ID and secret there—not in a dock or browser storage. Request `pages_show_list,pages_read_engagement,pages_manage_posts`.
-4. From the Emberstage portal, connect Facebook, approve the intended Pages, and select the Page destination. Reconnect if the existing grant is missing a required Page or permission.
-5. **Starting Streaming in OBS publishes to selected Facebook Pages automatically.** Discovery and selection do not create a live video. Use a dedicated test Page and explicitly approve a publishing test; do not assume a Page broadcast is private. Stopping the stream ends the associated Facebook live video.
+3. In Nango, create a Facebook integration with ID `facebook` (or set `NANGO_FACEBOOK_INTEGRATION_ID` to its ID), and enter the Meta app ID and secret there—not in a dock or browser storage. Set the integration's Scopes field to `pages_show_list,pages_read_engagement,pages_manage_posts,publish_video`. Facebook uses these integration scopes; connect-session `user_scopes` alone does not update the Facebook OAuth request on our self-hosted version.
+4. From the Emberstage portal, connect Facebook, approve the intended Pages or Profile, and select the destination. Reconnect/reauthorize existing connections if the `publish_video` permission or your profile is missing.
+5. **Starting Streaming in OBS publishes to selected Facebook Pages or Profiles automatically.** Discovery and selection do not create a live video. Use a dedicated test Page or your Profile and explicitly approve a publishing test; profile broadcasts default to Only Me (private). Stopping the stream ends the associated Facebook live video.
 
 `FACEBOOK_API_VERSION` defaults to `v25.0` and is configurable server-side. Meta controls account/Page eligibility, Live access, app roles in Development mode, and App Review/Advanced Access for use by people outside the app's roles; business verification may also be required. Successful mocked tests do not establish that an app or Page has these approvals.
 

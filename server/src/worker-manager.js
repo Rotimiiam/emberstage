@@ -17,6 +17,7 @@ function facebookSnapshotSignature(snapshot) {
 
 export function createFacebookSnapshot(session, destination, pageId, liveVideoId, connectionId) {
   if (![pageId, liveVideoId, connectionId].every(value => typeof value === 'string' && value.length > 0)) throw new Error('Facebook live ownership metadata is missing');
+  // Semantics of pageId: Holds either a Page ID (for Pages-only streams) or a namespaced profile ID (e.g. profile:<numericUserId>) to support Facebook profiles without requiring a schema migration.
   const snapshot = {
     provider: 'facebook', workspaceId: session.workspace_id, sessionId: session.id,
     destinationId: destination.id, targetId: destination.target_id,
@@ -30,6 +31,7 @@ export function readFacebookSnapshot(session, destination) {
   try { snapshot = JSON.parse(destination.broadcast_snapshot || 'null'); }
   catch { throw new Error('Invalid broadcast cleanup snapshot'); }
   if (snapshot?.provider !== 'facebook') return null;
+  // Semantics of pageId: Holds either a Page ID or a namespaced profile ID (e.g. profile:<numericUserId>) to support Facebook profiles without requiring a schema migration.
   if (destination.target_type !== 'provider' || snapshot.workspaceId !== session.workspace_id ||
       snapshot.sessionId !== session.id || snapshot.destinationId !== destination.id ||
       snapshot.targetId !== destination.target_id || !snapshot.pageId || !snapshot.id || !snapshot.connectionId ||

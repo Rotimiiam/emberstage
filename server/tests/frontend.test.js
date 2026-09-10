@@ -28,6 +28,8 @@ function createMockElement(tag, id = '') {
       contains: () => false
     },
     setAttribute: () => {},
+    matches: () => false,
+    closest: () => null,
     listeners: {},
     addEventListener(event, cb) {
       this.listeners[event] = cb;
@@ -52,6 +54,7 @@ function createMockDOM() {
 
   const document = {
     cookie: '',
+    visibilityState: 'visible',
     getElementById(id) {
       if (!elements[id]) {
         elements[id] = createMockElement('div', id);
@@ -70,7 +73,8 @@ function createMockDOM() {
     createTextNode(text) {
       return { textContent: text, type: 'text' };
     },
-    activeElement: null
+    activeElement: null,
+    querySelectorAll() { return []; }
   };
 
   const window = {
@@ -80,7 +84,7 @@ function createMockDOM() {
       }
       elements['window'].listeners[event] = cb;
     },
-    location: { href: '' }
+    location: { href: '', hash: '' }
   };
 
   const localStorage = {
@@ -258,6 +262,46 @@ test('frontend: isUserInteracting checks and thumbnail constraints', () => {
   handleUploadThumbnail('target-1');
   assert.equal(alertType, 'danger');
   assert.ok(alertMsg.includes('under 2MB'));
+});
+
+test('frontend: setActiveView updates hash and view state', () => {
+  const { document, window, localStorage } = createMockDOM();
+  const sections = [
+    { dataset: { view: 'overview' }, hidden: false },
+    { dataset: { view: 'broadcasts' }, hidden: true },
+    { dataset: { view: 'devices' }, hidden: true },
+    { dataset: { view: 'workspace' }, hidden: true }
+  ];
+  const navButtons = [
+    { dataset: { view: 'overview' }, classList: { toggle() {} }, setAttribute() {} },
+    { dataset: { view: 'broadcasts' }, classList: { toggle() {} }, setAttribute() {} },
+    { dataset: { view: 'devices' }, classList: { toggle() {} }, setAttribute() {} },
+    { dataset: { view: 'workspace' }, classList: { toggle() {} }, setAttribute() {} }
+  ];
+  document.querySelectorAll = (selector) => {
+    if (selector === '.portal-view') return sections;
+    if (selector === '[data-action="open-view"]') return navButtons;
+    return [];
+  };
+
+  const context = vm.createContext({
+    document,
+    window,
+    localStorage,
+    console,
+    setTimeout: () => {},
+    setInterval: () => {},
+    URL,
+    URLSearchParams
+  });
+
+  vm.runInContext(fs.readFileSync(appJsPath, 'utf8'), context);
+  vm.runInContext("setActiveView('devices')", context);
+
+  assert.equal(window.location.hash, '#devices');
+  assert.equal(sections[0].hidden, true);
+  assert.equal(sections[2].hidden, false);
+  assert.equal(document.getElementById('view-title').textContent, 'Devices');
 });
 
 test('streaming_dock: token refresh race safety and renderDestinations safe text nodes', async () => {
