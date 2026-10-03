@@ -40,7 +40,9 @@ if ([string]::IsNullOrWhiteSpace($desktopUser)) {
     $desktopObs = Join-Path $desktopProfile[0].LocalPath 'AppData\Roaming\obs-studio'
 }
 $desktopBefore = Snapshot $desktopObs
-$sandbox = Join-Path $env:TEMP ('emberstage-acceptance-' + [Guid]::NewGuid().ToString('N'))
+# Inno expands 8.3 paths. Use the long known-folder path rather than TEMP's
+# RUNNER~1 alias so install and repair share exactly the same file:// URLs.
+$sandbox = Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) ('Temp\emberstage-acceptance-' + [Guid]::NewGuid().ToString('N'))
 Assert (-not (Test-Path -LiteralPath $sandbox)) 'Sandbox unexpectedly exists.'
 $appData = Join-Path $sandbox 'APPDATA'
 $localData = Join-Path $sandbox 'LOCALAPPDATA'
