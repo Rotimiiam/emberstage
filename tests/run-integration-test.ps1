@@ -117,7 +117,8 @@ try {
     Assert (@($program.settings.items).Count -eq 3) 'Program must compose camera A, camera B and graphics.'
     $graphics = @($scene.sources | Where-Object { $_.name -eq 'Emberstage Graphics' })[0]
     Assert ($graphics.id -eq 'browser_source' -and $graphics.settings.shutdown -eq $true) 'Graphics must shut down when hidden.'
-    Assert ($graphics.settings.url -eq [Uri]::new((Join-Path $app 'emberstage_output.html')).AbsoluteUri -and -not $graphics.settings.is_local_file) 'Wrong graphics URL/origin mode.'
+    $expectedGraphicsUrl = [Uri]::new((Join-Path $app 'emberstage_output.html')).AbsoluteUri
+    Assert ($graphics.settings.url -eq $expectedGraphicsUrl -and -not $graphics.settings.is_local_file) "Wrong graphics URL/origin mode. Expected=$expectedGraphicsUrl Actual=$($graphics.settings.url) Local=$($graphics.settings.is_local_file)"
     $ws = Get-Content -LiteralPath $wsPath -Raw | ConvertFrom-Json
     Assert ($ws.server_enabled -and $ws.auth_required -and $ws.server_password.Length -ge 32) 'Automatic authenticated WebSocket not provisioned.'
     $wsAfterInstall = Hash $wsPath

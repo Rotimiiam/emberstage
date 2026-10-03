@@ -650,7 +650,7 @@ def test_private_connection_script_behavior():
         
         # 5. Verify uninstall removes them!
         # Run installer with uninstall flag
-        with patch.object(sys, 'argv', ['install-media-deck.py', '--uninstall', '--apply']):
+        with patch.object(sys, 'argv', ['install-media-deck.py', '--obs-config-path', str(f.Config), '--uninstall', '--apply']), patch.object(installer, 'get_default_obs_config_path', side_effect=AssertionError('Test must not discover real OBS configuration')):
             installer.main()
             
         assert_cond(not private_script.exists(), "Private script was not removed on uninstall.")
@@ -1085,10 +1085,10 @@ def test_python_uninstall_transaction_rollback():
         try:
             failed_as_expected = False
             try:
-                with patch.object(sys, 'argv', ['install-media-deck.py', '--uninstall', '--apply']):
+                with patch.object(sys, 'argv', ['install-media-deck.py', '--obs-config-path', str(f.Config), '--uninstall', '--apply']), patch.object(installer, 'get_default_obs_config_path', side_effect=AssertionError('Test must not discover real OBS configuration')):
                     installer.main()
             except Exception as e:
-                failed_as_expected = True
+                failed_as_expected = 'Simulated uninstall failure during directory cleanup.' in str(e)
                 
             assert_cond(failed_as_expected, "Uninstall did not fail during transaction.")
             # Verify private credential rollback: should be restored!
