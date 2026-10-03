@@ -1,0 +1,97 @@
+:root {
+  --dock-scale: 1;
+  --dock-gap: 8px;
+  --dock-font-size: 13px;
+  --dock-font-size-sm: 11px;
+  --dock-control-height: 34px;
+  --dock-radius: 7px;
+}
+
+body[data-ui-scale] {
+  --dock-font-size: clamp(11px, calc(13px * var(--dock-scale)), 15px);
+  --dock-font-size-sm: clamp(10px, calc(11px * var(--dock-scale)), 13px);
+  --dock-gap: clamp(4px, calc(8px * var(--dock-scale)), 12px);
+  --dock-control-height: clamp(28px, calc(34px * var(--dock-scale)), 42px);
+  --dock-radius: clamp(6px, calc(7px * var(--dock-scale)), 10px);
+}
+
+.dock-ui-scale {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  white-space: nowrap;
+  color: inherit;
+}
+
+.dock-ui-scale-label {
+  color: inherit;
+  font-size: var(--dock-font-size-sm);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.dock-ui-scale-slider {
+  appearance: none;
+  width: clamp(88px, 16vw, 132px);
+  min-width: 72px;
+  height: 4px;
+  min-height: 4px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(255,255,255,0.14), rgba(232,180,92,0.7));
+  cursor: pointer;
+}
+
+.dock-ui-scale-slider::-webkit-slider-thumb {
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(20, 22, 26, 0.92);
+  border-radius: 50%;
+  background: #f1c67c;
+  box-shadow: 0 0 0 1px rgba(232,180,92,0.45), 0 2px 8px rgba(0,0,0,0.28);
+}
+
+.dock-ui-scale-slider::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(20, 22, 26, 0.92);
+  border-radius: 50%;
+  background: #f1c67c;
+  box-shadow: 0 0 0 1px rgba(232,180,92,0.45), 0 2px 8px rgba(0,0,0,0.28);
+}
+
+.dock-ui-scale-slider::-moz-range-track {
+  height: 4px;
+  border: 0;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(255,255,255,0.14), rgba(232,180,92,0.7));
+}
+
+.dock-ui-scale-readout {
+  min-width: 40px;
+  text-align: right;
+  color: inherit;
+  font-size: var(--dock-font-size-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 480px), (max-height: 320px) {
+  .dock-ui-scale {
+    gap: 6px;
+  }
+
+  .dock-ui-scale-label {
+    display: none;
+  }
+
+  .dock-ui-scale-slider {
+    width: clamp(74px, 24vw, 102px);
+  }
+
+  .dock-ui-scale-readout {
+    min-width: 34px;
+  }
+}

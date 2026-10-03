@@ -1,0 +1,32 @@
+<svg width="256" height="256" viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="emberstageLogoTitle emberstageLogoDesc">
+  <title id="emberstageLogoTitle">Emberstage logo</title>
+  <desc id="emberstageLogoDesc">A warm ember cross set inside a charcoal rounded square.</desc>
+  <defs>
+    <linearGradient id="emberstage-bg" x1="40" y1="28" x2="214" y2="226" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#2D241C"/>
+      <stop offset="0.52" stop-color="#171B22"/>
+      <stop offset="1" stop-color="#0D1014"/>
+    </linearGradient>
+    <linearGradient id="emberstage-frame" x1="34" y1="34" x2="222" y2="222" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F2CB80" stop-opacity="0.88"/>
+      <stop offset="0.38" stop-color="#D8A553" stop-opacity="0.34"/>
+      <stop offset="1" stop-color="#6A2F35" stop-opacity="0.54"/>
+    </linearGradient>
+    <linearGradient id="emberstage-main" x1="128" y1="54" x2="128" y2="202" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFDCA6"/>
+      <stop offset="0.38" stop-color="#F2C97D"/>
+      <stop offset="1" stop-color="#D9933E"/>
+    </linearGradient>
+    <radialGradient id="emberstage-glow" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(128 128) rotate(90) scale(92)">
+      <stop stop-color="#F2C97D" stop-opacity="0.46"/>
+      <stop offset="1" stop-color="#F2C97D" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect x="17" y="17" width="222" height="222" rx="62" fill="url(#emberstage-bg)"/>
+  <rect x="18.5" y="18.5" width="219" height="219" rx="60.5" stroke="url(#emberstage-frame)" stroke-width="3"/>
+  <circle cx="128" cy="128" r="82" fill="url(#emberstage-glow)"/>
+  <rect x="111" y="51" width="34" height="154" rx="17" fill="url(#emberstage-main)"/>
+  <rect x="53" y="111" width="150" height="34" rx="17" fill="url(#emberstage-main)"/>
+  <circle cx="189" cy="69" r="14" fill="#F17D85"/>
+  <circle cx="189" cy="69" r="25" fill="#F17D85" fill-opacity="0.18"/>
+</svg>

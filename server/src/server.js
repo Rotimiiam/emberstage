@@ -1285,6 +1285,10 @@ addRoute('GET', '/api/workspaces/:workspaceId/audits', (req, res) => {
   return json(res, { success: true, audits });
 }, ['owner', 'operator', 'finance'], true);
 
+export function getStrictWorkspaceEntitlement(workspaceId) {
+  return getWorkspaceEntitlement(workspaceId);
+}
+
 // 10. Workspace Devices: Link-Code Generator
 addRoute('POST', '/api/workspaces/:workspaceId/devices/link-code', async (req, res) => {
   try {
@@ -1301,8 +1305,11 @@ addRoute('POST', '/api/workspaces/:workspaceId/devices/link-code', async (req, r
       [req.workspaceId]
     ).count;
 
-    const workspace = db.queryOne('SELECT max_devices FROM workspaces WHERE id = ?', [req.workspaceId]);
-    if (devicesCount >= workspace.max_devices) {
+    const entitlement = getStrictWorkspaceEntitlement(req.workspaceId);
+    if (!entitlement.canStream) {
+      return json(res, { error: 'Workspace has reached its maximum paired devices limit' }, 402);
+    }
+    if (devicesCount >= entitlement.maxDevices) {
       return json(res, { error: 'Workspace has reached its maximum paired devices limit' }, 402);
     }
 
@@ -1485,8 +1492,12 @@ addRoute('POST', '/api/devices/pair', async (req, res) => {
         [device.workspace_id]
       ).count;
 
-      const workspace = db.queryOne('SELECT max_devices FROM workspaces WHERE id = ?', [device.workspace_id]);
-      if (activeCount >= workspace.max_devices) {
+      const entitlement = getStrictWorkspaceEntitlement(device.workspace_id);
+      if (!entitlement.canStream) {
+        result = { error: 'Maximum active devices limit exceeded. Please upgrade your subscription.', status: 402 };
+        return;
+      }
+      if (activeCount >= entitlement.maxDevices) {
         result = { error: 'Maximum active devices limit exceeded. Please upgrade your subscription.', status: 402 };
         return;
       }
@@ -1628,39 +1639,452 @@ addRoute('POST', '/api/devices/refresh', async (req, res) => {
   }
 }, null, false);
 
+// Helpers for Paystack subscription billing
+function isPaystackConfigured() {
+  return !!(
+    /^sk_(test|live)_\S+$/.test(config.PAYSTACK_SECRET_KEY || '') &&
+    config.PAYSTACK_PLAN_CODE &&
+    String(config.PAYSTACK_PLAN_AMOUNT) === '300000' &&
+    config.PAYSTACK_CURRENCY === 'NGN'
+  );
+}
+
+export function getWorkspaceEntitlement(workspaceId) {
+  const workspace = db.queryOne('SELECT * FROM workspaces WHERE id = ?', [workspaceId]);
+  if (!workspace) {
+    return {
+      plan: 'free',
+      paidUntil: null,
+      cancelAtPeriodEnd: false,
+      canStream: false,
+      maxDevices: 0,
+      maxDestinations: 0,
+      maxActiveBroadcasts: 0,
+      subscriptionStatus: 'none',
+      manageAvailable: false
+    };
+  }
+
+  const paidUntil = workspace.paid_until || null;
+  const cancelAtPeriodEnd = !!workspace.cancel_at_period_end;
+  const paystackStatus = workspace.paystack_status || 'none';
+  // A provider status or a legacy Stripe column is never proof of payment.
+  const payments = db.queryOne(`SELECT COUNT(*) AS count, MAX(CASE WHEN mode = ? THEN paid_until END) AS mode_paid_until
+    FROM paystack_payments WHERE workspace_id = ?`, [paystackMode(), workspaceId]);
+  const modeMatches = !payments.count || Date.parse(payments.mode_paid_until) >= Date.parse(paidUntil);
+  const isPro = Number.isFinite(Date.parse(paidUntil)) && Date.parse(paidUntil) > Date.now() && paystackStatus !== 'suspended' && modeMatches;
+
+  return {
+    plan: isPro ? 'pro' : 'free',
+    paidUntil,
+    cancelAtPeriodEnd,
+    canStream: isPro,
+    maxDevices: isPro ? 3 : 0,
+    maxDestinations: isPro ? 3 : 0,
+    maxActiveBroadcasts: isPro ? 1 : 0,
+    subscriptionStatus: paystackStatus,
+    manageAvailable: !!db.queryOne('SELECT 1 FROM paystack_subscriptions WHERE subscription_code = ? AND workspace_id = ? AND mode = ?',
+      [workspace.paystack_subscription_id, workspaceId, paystackMode()])
+  };
+}
+
+function addOneMonthClamped(date) {
+  const d = new Date(date);
+  const currentMonth = d.getUTCMonth();
+  d.setUTCMonth(currentMonth + 1);
+  if (d.getUTCMonth() !== (currentMonth + 1) % 12) {
+    d.setUTCDate(0);
+  }
+  return d;
+}
+
+function paystackMode() {
+  const key = config.PAYSTACK_SECRET_KEY || '';
+  return /^sk_live_/.test(key) ? 'live' : /^sk_test_/.test(key) ? 'test' : 'unconfigured';
+}
+
+function paymentPlanCode(data) {
+  return (typeof data.plan === 'string' ? data.plan : data.plan?.plan_code) || data.plan_object?.plan_code || null;
+}
+
+function safePaystackUrl(value) {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' && !url.username && !url.password && !url.port &&
+      ['paystack.com', 'paystack.co'].some(host => url.hostname === host || url.hostname.endsWith(`.${host}`));
+  } catch { return false; }
+}
+
+async function paystackRequest(endpoint, body) {
+  let response;
+  let result;
+  try {
+    response = await fetch(`https://api.paystack.co${endpoint}`, {
+      method: body ? 'POST' : 'GET',
+      headers: { Authorization: `Bearer ${config.PAYSTACK_SECRET_KEY}`, 'Content-Type': 'application/json' },
+      ...(body ? { body: JSON.stringify(body) } : {}),
+      signal: AbortSignal.timeout(10000),
+      redirect: 'error'
+    });
+    result = await response.json();
+  } catch { throw new Error('Payment provider unavailable. Please retry verification shortly.'); }
+  if (!response.ok || result.status !== true || !result.data) {
+    const error = new Error('Payment provider could not complete this request.');
+    // Only a definite rejection of initialization permits a new checkout.
+    error.definiteRejection = response.status >= 400 && response.status < 500;
+    throw error;
+  }
+  return result.data;
+}
+
+async function verifyPaystackPlan() {
+  if (!isPaystackConfigured()) throw new Error('Paystack NGN billing is not configured.');
+  let origin;
+  try { origin = new URL(config.APP_BASE_URL); } catch { throw new Error('Checkout callback origin is not configured.'); }
+  const localTest = paystackMode() === 'test' && origin.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(origin.hostname);
+  if ((!localTest && origin.protocol !== 'https:') || origin.username || origin.password || origin.search || origin.hash || origin.pathname !== '/') {
+    throw new Error('Checkout requires an HTTPS app origin (loopback HTTP is allowed with test keys).');
+  }
+  const plan = await paystackRequest(`/plan/${encodeURIComponent(config.PAYSTACK_PLAN_CODE)}`);
+  if (plan.plan_code !== config.PAYSTACK_PLAN_CODE || plan.amount !== 300000 || plan.currency !== 'NGN' ||
+      plan.interval !== 'monthly' || plan.domain !== paystackMode()) {
+    throw new Error('Paystack plan must be NGN 3,000 monthly in the configured payment mode.');
+  }
+}
+
+function validatePaidTransaction(data, reference) {
+  const paidAt = Date.parse(data.paid_at);
+  if (data.reference !== reference || data.status !== 'success' || data.domain !== paystackMode() ||
+      data.amount !== 300000 || data.currency !== 'NGN' || paymentPlanCode(data) !== config.PAYSTACK_PLAN_CODE ||
+      !/^CUS_[a-zA-Z0-9]+$/.test(data.customer?.customer_code || '') ||
+      !/^\d+$/.test(String(data.id || '')) || !Number.isFinite(paidAt) || paidAt > Date.now() + 60000) {
+    throw new Error('Verification failed: Payment details mismatch.');
+  }
+}
+
+// Both callback verification and webhooks enter this transaction. Metadata never
+// selects a workspace. A renewal requires an already bound subscription.
+function applyPaidTransaction(data, reference, subscriptionCode = null, invoice = null) {
+  validatePaidTransaction(data, reference);
+  let invoiceEnd = null;
+  if (invoice?.period_end || invoice?.period_start) {
+    const start = Date.parse(invoice.period_start), end = Date.parse(invoice.period_end);
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start || end - start > 32 * 86400000 ||
+        end > Date.parse(data.paid_at) + 32 * 86400000 || (invoice.amount !== undefined && invoice.amount !== 300000) ||
+        (invoice.domain !== undefined && invoice.domain !== data.domain)) throw new Error('Invalid paid invoice period.');
+    invoiceEnd = new Date(end).toISOString();
+  }
+  return db.transaction(() => {
+    const checkout = db.queryOne('SELECT * FROM paystack_checkouts WHERE reference = ?', [reference]);
+    const subscription = subscriptionCode && db.queryOne('SELECT * FROM paystack_subscriptions WHERE subscription_code = ?', [subscriptionCode]);
+    const workspaceId = checkout?.workspace_id || subscription?.workspace_id;
+    if (!workspaceId || (checkout && (checkout.plan_code !== paymentPlanCode(data) || checkout.amount !== data.amount ||
+        checkout.currency !== data.currency || checkout.mode !== data.domain)) ||
+        (subscription && (subscription.customer_code !== data.customer.customer_code || subscription.plan_code !== paymentPlanCode(data) ||
+          subscription.mode !== data.domain || (subscription.workspace_id && subscription.workspace_id !== workspaceId)))) {
+      throw new Error('Payment is not bound to this workspace.');
+    }
+    if (!checkout && !invoiceEnd) throw new Error('Renewal requires a verified invoice period.');
+    const previous = db.queryOne('SELECT * FROM paystack_payments WHERE reference = ? OR (mode = ? AND transaction_id = ?)',
+      [reference, data.domain, String(data.id)]);
+    if (previous) {
+      if (previous.reference !== reference || previous.workspace_id !== workspaceId) throw new Error('Payment reference conflict.');
+      if (invoiceEnd && previous.paid_until !== invoiceEnd) {
+        db.run('UPDATE paystack_payments SET paid_until = ? WHERE reference = ?', [invoiceEnd, reference]);
+        const latest = db.queryOne('SELECT MAX(paid_until) AS paid_until FROM paystack_payments WHERE workspace_id = ? AND mode = ?', [workspaceId, data.domain]);
+        db.run('UPDATE workspaces SET paid_until = ? WHERE id = ?', [latest.paid_until, workspaceId]);
+      }
+      return getWorkspaceEntitlement(workspaceId);
+    }
+    const paidUntil = invoiceEnd || addOneMonthClamped(data.paid_at).toISOString();
+    db.run(`INSERT INTO paystack_payments (reference, transaction_id, workspace_id, customer_code, plan_code, mode, paid_at, paid_until)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, [reference, String(data.id), workspaceId, data.customer.customer_code,
+      paymentPlanCode(data), data.domain, new Date(data.paid_at).toISOString(), paidUntil]);
+    const current = db.queryOne('SELECT paid_until, paystack_status FROM workspaces WHERE id = ?', [workspaceId]);
+    const nextPaidUntil = Date.parse(current.paid_until) > Date.parse(paidUntil) ? current.paid_until : paidUntil;
+    db.run(`UPDATE workspaces SET paid_until = ?, paystack_customer_code = ?,
+      paystack_status = CASE WHEN paystack_status IN ('none', 'past_due') THEN 'active' ELSE paystack_status END,
+      max_devices = 3, max_destinations = 3 WHERE id = ?`, [nextPaidUntil, data.customer.customer_code, workspaceId]);
+    if (checkout) db.run("UPDATE paystack_checkouts SET status = 'verified', updated_at = ? WHERE reference = ?", [new Date().toISOString(), reference]);
+    db.logAudit({ workspaceId, action: 'billing.payment_verified', details: { reference, paidUntil: nextPaidUntil } });
+    return getWorkspaceEntitlement(workspaceId);
+  });
+}
+
+function rememberSubscription(data) {
+  const code = data.subscription_code;
+  const customer = data.customer?.customer_code;
+  if (!/^SUB_[a-zA-Z0-9]+$/.test(code || '') || !/^CUS_[a-zA-Z0-9]+$/.test(customer || '') ||
+      paymentPlanCode(data) !== config.PAYSTACK_PLAN_CODE || data.domain !== paystackMode()) return null;
+  const existing = db.queryOne('SELECT * FROM paystack_subscriptions WHERE subscription_code = ?', [code]);
+  if (existing && (existing.customer_code !== customer || existing.plan_code !== paymentPlanCode(data) || existing.mode !== data.domain)) {
+    throw new Error('Subscription ownership mismatch.');
+  }
+  db.run(`INSERT OR IGNORE INTO paystack_subscriptions (subscription_code, customer_code, plan_code, mode, status)
+    VALUES (?, ?, ?, ?, ?)`, [code, customer, paymentPlanCode(data), data.domain, 'pending']);
+  return code;
+}
+
+// Paystack's subscription.create can precede charge.success and usually has no
+// checkout reference. Resolve its actual invoice transaction, never guess using
+// customer/email/timestamps (customers can own several workspaces).
+async function bindPaystackSubscription(code, invoice = null) {
+  const subscription = db.queryOne('SELECT * FROM paystack_subscriptions WHERE subscription_code = ?', [code]);
+  if (!subscription) throw new Error('Subscription not recognized.');
+  if (!invoice) {
+    const remote = await paystackRequest(`/subscription/${encodeURIComponent(code)}`);
+    if (remote.subscription_code !== code || remote.customer?.customer_code !== subscription.customer_code ||
+        paymentPlanCode(remote) !== subscription.plan_code || remote.domain !== subscription.mode) throw new Error('Subscription ownership mismatch.');
+    invoice = remote.most_recent_invoice;
+  }
+  const transaction = invoice?.transaction;
+  let reference = transaction?.reference;
+  if (!reference && /^\d+$/.test(String(transaction?.id || transaction || ''))) {
+    const fetched = await paystackRequest(`/transaction/${encodeURIComponent(transaction?.id || transaction)}`);
+    reference = fetched.reference;
+  }
+  if (!reference || invoice.paid !== 1 && invoice.paid !== true) throw new Error('Subscription payment association is pending.');
+  const paid = await paystackRequest(`/transaction/verify/${encodeURIComponent(reference)}`);
+  validatePaidTransaction(paid, reference);
+  if (paid.customer.customer_code !== subscription.customer_code) throw new Error('Subscription customer mismatch.');
+  applyPaidTransaction(paid, reference, code, invoice);
+  const payment = db.queryOne('SELECT * FROM paystack_payments WHERE reference = ?', [reference]);
+  db.transaction(() => {
+    const current = db.queryOne('SELECT * FROM paystack_subscriptions WHERE subscription_code = ?', [code]);
+    const workspace = db.queryOne('SELECT paystack_subscription_id FROM workspaces WHERE id = ?', [payment.workspace_id]);
+    const oldSubscription = workspace.paystack_subscription_id && db.queryOne('SELECT status FROM paystack_subscriptions WHERE subscription_code = ?', [workspace.paystack_subscription_id]);
+    if ((subscription.workspace_id && subscription.workspace_id !== payment.workspace_id) ||
+        (workspace.paystack_subscription_id && workspace.paystack_subscription_id !== code && oldSubscription?.status !== 'disabled')) throw new Error('Subscription binding conflict.');
+    const status = current.status === 'pending' ? 'active' : current.status;
+    db.run('UPDATE paystack_subscriptions SET workspace_id = ?, status = ? WHERE subscription_code = ?', [payment.workspace_id, status, code]);
+    db.run('UPDATE workspaces SET paystack_subscription_id = ?, cancel_at_period_end = ?, paystack_status = ? WHERE id = ?',
+      [code, current.cancel_at_period_end, status, payment.workspace_id]);
+  });
+}
+
+// 14.2. Public: GET Paystack plan configuration
+addRoute('GET', '/api/billing/plan', async (req, res) => {
+  let configured = false;
+  const mode = !config.PAYSTACK_SECRET_KEY ? 'unconfigured' : (config.PAYSTACK_SECRET_KEY.startsWith('sk_live_') ? 'live' : 'test');
+  let checkoutUnavailableReason = null;
+  try { await verifyPaystackPlan(); configured = true; }
+  catch (err) { checkoutUnavailableReason = err.message; }
+  return json(res, {
+    plan: {
+      name: 'Emberstage Pro',
+      amount: 300000,
+      currency: 'NGN',
+      interval: 'monthly',
+      maxDevices: 3,
+      maxDestinations: 3,
+      maxActiveBroadcasts: 1
+    },
+    checkoutAvailable: configured,
+    checkoutUnavailableReason,
+    mode
+  });
+}, null, false);
+
+// 14.3. Workspace Billing: GET Workspace Billing/Entitlement Details
+addRoute('GET', '/api/workspaces/:workspaceId/billing', async (req, res) => {
+  let configured = false;
+  const mode = !config.PAYSTACK_SECRET_KEY ? 'unconfigured' : (config.PAYSTACK_SECRET_KEY.startsWith('sk_live_') ? 'live' : 'test');
+  let checkoutUnavailableReason = null;
+  try { await verifyPaystackPlan(); configured = true; }
+  catch (err) { checkoutUnavailableReason = err.message; }
+
+  const entitlement = getWorkspaceEntitlement(req.workspaceId);
+
+  return json(res, {
+    plan: {
+      name: 'Emberstage Pro',
+      amount: 300000,
+      currency: 'NGN',
+      interval: 'monthly',
+      maxDevices: 3,
+      maxDestinations: 3,
+      maxActiveBroadcasts: 1
+    },
+    checkoutAvailable: configured,
+    checkoutUnavailableReason,
+    mode,
+    entitlement: {
+      plan: entitlement.plan,
+      paidUntil: entitlement.paidUntil,
+      cancelAtPeriodEnd: entitlement.cancelAtPeriodEnd,
+      canStream: entitlement.canStream,
+      maxDevices: entitlement.maxDevices,
+      maxDestinations: entitlement.maxDestinations,
+      maxActiveBroadcasts: entitlement.maxActiveBroadcasts
+    },
+    subscription: {
+      status: entitlement.subscriptionStatus,
+      manageAvailable: entitlement.manageAvailable
+    }
+  });
+}, ['owner', 'operator', 'finance'], true);
+
 // 15. Workspace Billing: Paystack Checkout
 addRoute('POST', '/api/workspaces/:workspaceId/billing/checkout', async (req, res) => {
-  if (!config.PAYSTACK_SECRET_KEY || !config.PAYSTACK_PLAN_CODE || !config.PAYSTACK_PLAN_AMOUNT || !config.APP_BASE_URL) {
-    return json(res, { error: 'Paystack integration is not configured. Please contact support.' }, 503);
+  if (!isPaystackConfigured()) {
+    return json(res, { error: 'Paystack subscription billing is not configured or configured with incorrect plan parameters.' }, 503);
+  }
+
+  const workspaceId = req.workspaceId;
+  let initializedReference = null;
+  try {
+    await verifyPaystackPlan();
+    const result = db.transaction(() => {
+      const entitlement = getWorkspaceEntitlement(workspaceId);
+      if (entitlement.plan === 'pro') {
+        throw Object.assign(new Error('Workspace already has an active subscription'), { status: 409 });
+      }
+
+      const workspace = db.queryOne('SELECT paystack_subscription_id, paystack_status FROM workspaces WHERE id = ?', [workspaceId]);
+      const paidCheckout = db.queryOne("SELECT reference FROM paystack_checkouts WHERE workspace_id = ? AND status = 'verified' LIMIT 1", [workspaceId]);
+      if ((workspace.paystack_subscription_id || paidCheckout) && workspace.paystack_status !== 'disabled') {
+        throw Object.assign(new Error('Manage the existing subscription before starting another checkout.'), { status: 409 });
+      }
+
+      const pending = db.queryOne(
+        `SELECT * FROM paystack_checkouts WHERE workspace_id = ? AND status = 'pending' ORDER BY created_at DESC LIMIT 1`,
+        [workspaceId]
+      );
+      if (pending) {
+        if (pending.plan_code !== config.PAYSTACK_PLAN_CODE || pending.mode !== paystackMode() || pending.amount !== 300000 || pending.currency !== 'NGN') {
+          throw Object.assign(new Error('An existing checkout requires reconciliation.'), { status: 409 });
+        }
+        if (pending.checkout_url && safePaystackUrl(pending.checkout_url)) return { url: pending.checkout_url, reference: pending.reference };
+        throw Object.assign(new Error('Checkout initialization is pending; verify this reference before retrying.'), { status: 409, reference: pending.reference });
+      }
+
+      const reference = 'ref_' + crypto.randomBytes(8).toString('hex');
+      const mode = config.PAYSTACK_SECRET_KEY.startsWith('sk_live_') ? 'live' : 'test';
+      const now = new Date().toISOString();
+
+      db.run(
+        `INSERT INTO paystack_checkouts (reference, workspace_id, plan_code, amount, currency, mode, status, checkout_url, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, 'pending', NULL, ?, ?)`,
+        [reference, workspaceId, config.PAYSTACK_PLAN_CODE, 300000, 'NGN', mode, now, now]
+      );
+
+      return { reference, mode };
+    });
+
+    if (result.url) {
+      return json(res, { success: true, url: result.url, reference: result.reference });
+    }
+
+    const { reference } = result;
+    initializedReference = reference;
+    const data = await paystackRequest('/transaction/initialize', {
+        email: req.authContext.user.email,
+        amount: '300000',
+        currency: 'NGN',
+        plan: config.PAYSTACK_PLAN_CODE,
+        reference: reference,
+        callback_url: `${new URL(config.APP_BASE_URL).origin}/app?billing=return&workspaceId=${encodeURIComponent(workspaceId)}#workspace`,
+        metadata: { workspace_id: workspaceId, reference: reference }
+    });
+    const authUrl = data.authorization_url;
+    if (data.reference !== reference || !safePaystackUrl(authUrl)) {
+      return json(res, { error: 'Invalid authorization URL received from payment provider' }, 500);
+    }
+
+    db.run(
+      `UPDATE paystack_checkouts SET checkout_url = ?, updated_at = ? WHERE reference = ?`,
+      [authUrl, new Date().toISOString(), reference]
+    );
+
+    return json(res, { success: true, url: authUrl, reference });
+  } catch (err) {
+    if (initializedReference && err.definiteRejection) {
+      db.run("UPDATE paystack_checkouts SET status = 'failed', updated_at = ? WHERE reference = ?", [new Date().toISOString(), initializedReference]);
+    }
+    return json(res, { error: err.message || 'Failed to initialize checkout with Paystack', reference: err.reference || initializedReference }, err.status || 503);
+  }
+}, ['owner', 'finance'], true);
+
+// 15.2. Workspace Billing: Paystack Verify Reference
+addRoute('POST', '/api/workspaces/:workspaceId/billing/verify', async (req, res) => {
+  if (!isPaystackConfigured()) {
+    return json(res, { error: 'Paystack subscription billing is not configured or configured with incorrect plan parameters.' }, 503);
+  }
+
+  const workspaceId = req.workspaceId;
+  let bodyText = '';
+  try {
+    bodyText = await readBody(req);
+  } catch (e) {}
+
+  let reference = '';
+  try {
+    const parsed = JSON.parse(bodyText || '{}');
+    reference = parsed.reference || '';
+  } catch (e) {}
+
+  if (typeof reference !== 'string' || !/^[a-zA-Z0-9._=-]{1,150}$/.test(reference)) {
+    return json(res, { error: 'Missing reference parameter' }, 400);
+  }
+
+  const checkout = db.queryOne('SELECT * FROM paystack_checkouts WHERE reference = ?', [reference]);
+  if (!checkout) {
+    return json(res, { error: 'Checkout reference not found' }, 404);
+  }
+  if (checkout.workspace_id !== workspaceId) {
+    return json(res, { error: 'Forbidden: Checkout reference belongs to a different workspace' }, 403);
+  }
+
+  if (checkout.status === 'verified' && db.queryOne('SELECT reference FROM paystack_payments WHERE reference = ?', [reference])) {
+    if (checkout.mode !== paystackMode() || checkout.plan_code !== config.PAYSTACK_PLAN_CODE) {
+      return json(res, { error: 'Checkout belongs to a different payment configuration.' }, 400);
+    }
+    const entitlement = getWorkspaceEntitlement(workspaceId);
+    return json(res, {
+      verified: true,
+      entitlement: {
+        plan: entitlement.plan,
+        paidUntil: entitlement.paidUntil,
+        cancelAtPeriodEnd: entitlement.cancelAtPeriodEnd,
+        canStream: entitlement.canStream,
+        maxDevices: entitlement.maxDevices,
+        maxDestinations: entitlement.maxDestinations,
+        maxActiveBroadcasts: entitlement.maxActiveBroadcasts
+      },
+      subscription: {
+        status: entitlement.subscriptionStatus,
+        manageAvailable: entitlement.manageAvailable
+      }
+    });
   }
 
   try {
-    const response = await fetch('https://api.paystack.co/transaction/initialize', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${config.PAYSTACK_SECRET_KEY}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        email: req.authContext.user.email,
-        amount: String(config.PAYSTACK_PLAN_AMOUNT),
-        currency: config.PAYSTACK_CURRENCY,
-        plan: config.PAYSTACK_PLAN_CODE,
-        callback_url: `${config.APP_BASE_URL}/app?billing=complete`,
-        metadata: { workspace_id: req.workspaceId }
-      })
-    });
-
-    const body = await response.json();
-    if (!response.ok || !body.status || !body.data || !body.data.authorization_url) {
-      return json(res, { error: body.message || 'Paystack checkout creation failed' }, 400);
+    const data = await paystackRequest(`/transaction/verify/${encodeURIComponent(reference)}`);
+    if (data.status !== 'success') {
+      return json(res, { verified: false, message: 'Transaction is not successful or still pending on Paystack.' });
     }
+    const entitlement = applyPaidTransaction(data, reference);
 
-    return json(res, { success: true, url: body.data.authorization_url });
+    return json(res, {
+      verified: true,
+      entitlement: {
+        plan: entitlement.plan,
+        paidUntil: entitlement.paidUntil,
+        cancelAtPeriodEnd: entitlement.cancelAtPeriodEnd,
+        canStream: entitlement.canStream,
+        maxDevices: entitlement.maxDevices,
+        maxDestinations: entitlement.maxDestinations,
+        maxActiveBroadcasts: entitlement.maxActiveBroadcasts
+      },
+      subscription: {
+        status: entitlement.subscriptionStatus,
+        manageAvailable: entitlement.manageAvailable
+      }
+    });
   } catch (err) {
-    return json(res, { error: 'Failed to contact Paystack API' }, 500);
+    return json(res, { error: 'Payment could not be verified. No access was granted.' }, 400);
   }
-}, ['owner', 'operator'], true);
+}, ['owner', 'finance'], true);
 
 // 16. Workspace Billing: Paystack subscription management
 addRoute('POST', '/api/workspaces/:workspaceId/billing/portal', async (req, res) => {
@@ -1668,30 +2092,21 @@ addRoute('POST', '/api/workspaces/:workspaceId/billing/portal', async (req, res)
     return json(res, { error: 'Paystack integration is not configured. Please contact support.' }, 503);
   }
 
-  const workspace = db.queryOne('SELECT stripe_subscription_id FROM workspaces WHERE id = ?', [req.workspaceId]);
-  if (!workspace || !workspace.stripe_subscription_id) {
-    return json(res, { error: 'No Paystack subscription found. Please complete subscription first.' }, 400);
+  const workspace = db.queryOne('SELECT paystack_subscription_id FROM workspaces WHERE id = ?', [req.workspaceId]);
+  const subId = workspace?.paystack_subscription_id;
+  if (!subId || !getWorkspaceEntitlement(req.workspaceId).manageAvailable) {
+    return json(res, { error: 'No active subscription found. Please complete subscription first.' }, 400);
   }
 
   try {
-    const subscriptionCode = encodeURIComponent(workspace.stripe_subscription_id);
-    const response = await fetch(`https://api.paystack.co/subscription/${subscriptionCode}/manage/link`, {
-      method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${config.PAYSTACK_SECRET_KEY}`
-      }
-    });
-
-    const body = await response.json();
-    if (!response.ok || !body.status || !body.data || !body.data.link) {
-      return json(res, { error: body.message || 'Paystack subscription management unavailable' }, 400);
-    }
-
-    return json(res, { success: true, url: body.data.link });
+    const subscriptionCode = encodeURIComponent(subId);
+    const data = await paystackRequest(`/subscription/${subscriptionCode}/manage/link`);
+    if (!safePaystackUrl(data.link)) return json(res, { error: 'Invalid subscription management URL' }, 502);
+    return json(res, { success: true, url: data.link });
   } catch (err) {
     return json(res, { error: 'Failed to contact Paystack API' }, 500);
   }
-}, ['owner', 'operator', 'finance'], true);
+}, ['owner', 'finance'], true);
 
 // 17. Public: Paystack Webhook
 addRoute('POST', '/api/billing/webhook', async (req, res) => {
@@ -1721,85 +2136,47 @@ addRoute('POST', '/api/billing/webhook', async (req, res) => {
     const eventType = event.event;
     const data = event.data || {};
     if (!eventType) return json(res, { error: 'Missing Paystack event type' }, 400);
-    const sourceId = data.id || data.reference || data.subscription_code ||
-      (data.subscription && data.subscription.subscription_code) ||
-      crypto.createHash('sha256').update(rawBody).digest('hex');
-    const eventId = `paystack:${eventType}:${sourceId}`;
+    const eventId = `paystack:${crypto.createHash('sha256').update(rawBody).digest('hex')}`;
 
-    // Idempotency: check if already processed
     const duplicate = db.queryOne('SELECT COUNT(*) as count FROM processed_webhook_events WHERE id = ?', [eventId]).count;
     if (duplicate > 0) {
       return json(res, { received: true, duplicate: true, message: 'Event already processed' });
     }
 
-    db.transaction(() => {
-      // Record event ID transactionally
-      db.run('INSERT INTO processed_webhook_events (id, created_at) VALUES (?, ?)', [eventId, new Date().toISOString()]);
-
-      let metadata = data.metadata || {};
-      if (typeof metadata === 'string') {
-        try { metadata = JSON.parse(metadata); } catch (err) { metadata = {}; }
+    if (!isPaystackConfigured() || data.domain !== paystackMode()) return json(res, { received: true, ignored: true });
+    const code = data.subscription_code || data.subscription?.subscription_code;
+    if (eventType === 'charge.success') {
+      if (!data.reference) throw new Error('Missing payment reference.');
+      const paid = await paystackRequest(`/transaction/verify/${encodeURIComponent(data.reference)}`);
+      applyPaidTransaction(paid, data.reference, code);
+    } else if (eventType === 'subscription.create') {
+      const remembered = rememberSubscription(data);
+      if (!remembered) return json(res, { received: true, ignored: true });
+      await bindPaystackSubscription(remembered);
+    } else if (eventType === 'invoice.update' && (data.paid === 1 || data.paid === true)) {
+      if (!code) throw new Error('Subscription association is pending.');
+      if (!db.queryOne('SELECT subscription_code FROM paystack_subscriptions WHERE subscription_code = ?', [code])) {
+        const remote = await paystackRequest(`/subscription/${encodeURIComponent(code)}`);
+        if (rememberSubscription(remote) !== code) throw new Error('Subscription mismatch.');
       }
-      const customerCode = typeof data.customer === 'string'
-        ? data.customer
-        : data.customer && data.customer.customer_code;
-      const subscriptionCode = data.subscription_code ||
-        (data.subscription && data.subscription.subscription_code) || null;
-      const planCode = typeof data.plan === 'string'
-        ? data.plan
-        : data.plan && (data.plan.plan_code || data.plan.planCode);
-      let workspaceId = metadata.workspace_id || null;
-      if (!workspaceId && subscriptionCode) {
-        const workspace = db.queryOne('SELECT id FROM workspaces WHERE stripe_subscription_id = ?', [subscriptionCode]);
-        if (workspace) workspaceId = workspace.id;
-      }
-      if (!workspaceId && customerCode) {
-        const workspace = db.queryOne('SELECT id FROM workspaces WHERE stripe_customer_id = ?', [customerCode]);
-        if (workspace) workspaceId = workspace.id;
-      }
-
-      if (eventType === 'charge.success' && data.status === 'success' && workspaceId) {
-        const isConfiguredPlan = planCode === config.PAYSTACK_PLAN_CODE;
-        db.run(
-          `UPDATE workspaces SET stripe_customer_id = ?, stripe_status = ?, max_devices = ?, max_destinations = ?
-           WHERE id = ?`,
-          [customerCode || null, isConfiguredPlan ? 'active' : 'none', isConfiguredPlan ? 3 : 1, isConfiguredPlan ? 3 : 1, workspaceId]
-        );
-        db.logAudit({
-          workspaceId,
-          action: 'billing.webhook',
-          details: { event: eventType, customerCode, planCode, activated: isConfiguredPlan }
-        });
-      } else if (eventType === 'subscription.create' && workspaceId) {
-        const status = data.status || 'active';
-        const isActive = planCode === config.PAYSTACK_PLAN_CODE && status === 'active';
-        db.run(
-          `UPDATE workspaces SET stripe_customer_id = ?, stripe_subscription_id = ?, stripe_status = ?, max_devices = ?, max_destinations = ?
-           WHERE id = ?`,
-          [customerCode || null, subscriptionCode, isActive ? 'active' : status, isActive ? 3 : 1, isActive ? 3 : 1, workspaceId]
-        );
-        db.logAudit({
-          workspaceId,
-          action: 'billing.webhook',
-          details: { event: eventType, customerCode, subscriptionCode, status }
-        });
-      } else if ((eventType === 'subscription.disable' || eventType === 'invoice.payment_failed') && workspaceId) {
-        const status = eventType === 'subscription.disable' ? 'canceled' : 'past_due';
-        db.run(
-          `UPDATE workspaces SET stripe_status = ?, max_devices = 1, max_destinations = 1 WHERE id = ?`,
-          [status, workspaceId]
-        );
-        db.logAudit({
-          workspaceId,
-          action: 'billing.webhook',
-          details: { event: eventType, customerCode, subscriptionCode, status }
-        });
-      }
-    });
+      await bindPaystackSubscription(code, data);
+    } else if (['subscription.not_renew', 'subscription.disable', 'invoice.payment_failed'].includes(eventType)) {
+      const subscription = code && db.queryOne('SELECT * FROM paystack_subscriptions WHERE subscription_code = ?', [code]);
+      if (!subscription || subscription.mode !== data.domain) throw new Error('Subscription association is pending.');
+      const status = eventType === 'invoice.payment_failed' ? 'past_due' : (eventType === 'subscription.disable' ? 'disabled' : 'non_renewing');
+      const cancelled = eventType !== 'invoice.payment_failed' || subscription.cancel_at_period_end;
+      db.transaction(() => {
+        db.run('UPDATE paystack_subscriptions SET status = ?, cancel_at_period_end = ? WHERE subscription_code = ?', [status, Number(cancelled), code]);
+        if (subscription.workspace_id) db.run(`UPDATE workspaces SET paystack_status = ?, cancel_at_period_end = ?
+          WHERE id = ? AND paystack_subscription_id = ?`, [status, Number(cancelled), subscription.workspace_id, code]);
+      });
+    }
+    db.run('INSERT OR IGNORE INTO processed_webhook_events (id, created_at) VALUES (?, ?)', [eventId, new Date().toISOString()]);
 
     return json(res, { received: true });
   } catch (err) {
-    return json(res, { error: 'Error processing webhook data' }, 400);
+    // Retry unknown/out-of-order associations; never permanently consume them.
+    return json(res, { error: 'Payment event is pending verification. Please retry.' }, 503);
   }
 }, null, false);
 
@@ -2907,9 +3284,10 @@ addRoute('GET', '/api/workspaces/:workspaceId/streams/setup', async (req, res) =
 
 function reapExpiredStreamReservations(workspaceId) {
   const now = new Date().toISOString();
+  const canStream = getWorkspaceEntitlement(workspaceId).canStream;
   const expired = db.queryAll(
-    "SELECT id FROM stream_sessions WHERE workspace_id = ? AND status = 'reserved' AND expires_at IS NOT NULL AND expires_at <= ?",
-    [workspaceId, now]
+    "SELECT id FROM stream_sessions WHERE workspace_id = ? AND status = 'reserved' AND (expires_at IS NULL OR expires_at <= ? OR (? = 0 AND started_at IS NULL))",
+    [workspaceId, now, Number(canStream)]
   );
   if (expired.length === 0) return;
   db.transaction(() => {
@@ -2929,13 +3307,18 @@ addRoute('POST', '/api/workspaces/:workspaceId/streams/preflight', async (req, r
 
     const workspace = db.queryOne('SELECT * FROM workspaces WHERE id = ?', [req.workspaceId]);
     
-    // Premium requirement: Require active/trialing subscription for stream preflight/start
-    if (workspace.stripe_status !== 'active' && workspace.stripe_status !== 'trialing') {
+    const entitlement = getStrictWorkspaceEntitlement(req.workspaceId);
+    if (!entitlement.canStream) {
       return json(res, { error: 'Payment Required: An active or trialing subscription is required for streaming.' }, 402);
     }
 
     if (!Array.isArray(destinations)) {
       return json(res, { eligible: false, error: 'Invalid destinations format. Must be an array.' }, 400);
+    }
+
+    const uniqueDestinations = Array.from(new Set(destinations));
+    if (uniqueDestinations.length !== destinations.length) {
+      return json(res, { eligible: false, error: 'Duplicate destination IDs are not allowed.' }, 400);
     }
 
     for (const targetId of destinations) {
@@ -2995,30 +3378,30 @@ addRoute('POST', '/api/workspaces/:workspaceId/streams/preflight', async (req, r
       }
     }
 
-    if (destinations.length > workspace.max_destinations) {
+    if (destinations.length > entitlement.maxDestinations) {
       return json(res, {
         eligible: false,
-        error: `Maximum destination limit exceeded. Current plan allows up to ${workspace.max_destinations} destination(s).`
+        error: `Maximum destination limit exceeded. Current plan allows up to ${entitlement.maxDestinations} destination(s).`
       }, 400);
     }
 
     const activeCount = db.queryOne(
-      "SELECT COUNT(*) as count FROM stream_sessions WHERE workspace_id = ? AND status = 'streaming'",
+      "SELECT COUNT(*) as count FROM stream_sessions WHERE workspace_id = ? AND status IN ('reserved', 'streaming')",
       [req.workspaceId]
     ).count;
 
-    if (activeCount >= 5) {
+    if (activeCount >= entitlement.maxActiveBroadcasts) {
       return json(res, {
         eligible: false,
-        error: 'Workspace maximum concurrent streams reached (max 5).'
+        error: `Workspace maximum concurrent streams reached (max ${entitlement.maxActiveBroadcasts}).`
       }, 400);
     }
 
     return json(res, {
       eligible: true,
-      maxDestinations: workspace.max_destinations,
+      maxDestinations: entitlement.maxDestinations,
       currentActiveStreams: activeCount,
-      stripeStatus: workspace.stripe_status
+      stripeStatus: entitlement.subscriptionStatus
     });
   } catch (err) {
     return json(res, { error: 'Invalid preflight payload' }, 400);
@@ -3188,6 +3571,10 @@ addRoute('GET', '/api/workspaces/:workspaceId/streams/destinations', (req, res) 
 }, ['owner', 'operator'], true, 'both');
 
 addRoute('POST', '/api/workspaces/:workspaceId/streams/destinations/:destinationId/select', (req, res) => {
+  const entitlement = getStrictWorkspaceEntitlement(req.workspaceId);
+  if (!entitlement.canStream) {
+    return json(res, { error: 'Payment Required: An active subscription is required to manage destinations.' }, 402);
+  }
   const destinationId = req.params.destinationId;
   const customTarget = db.queryOne('SELECT id FROM custom_rtmp_targets WHERE id = ? AND workspace_id = ?', [destinationId, req.workspaceId]);
   const providerTarget = customTarget ? null : db.queryOne('SELECT id, provider FROM provider_targets WHERE id = ? AND workspace_id = ?', [destinationId, req.workspaceId]);
@@ -3210,6 +3597,10 @@ addRoute('POST', '/api/workspaces/:workspaceId/streams/destinations/:destination
 }, ['owner', 'operator'], true, 'both');
 
 addRoute('POST', '/api/workspaces/:workspaceId/streams/destinations/:destinationId/deselect', (req, res) => {
+  const entitlement = getStrictWorkspaceEntitlement(req.workspaceId);
+  if (!entitlement.canStream) {
+    return json(res, { error: 'Payment Required: An active subscription is required to manage destinations.' }, 402);
+  }
   const destinationId = req.params.destinationId;
   const customTarget = db.queryOne('SELECT id FROM custom_rtmp_targets WHERE id = ? AND workspace_id = ?', [destinationId, req.workspaceId]);
   const providerTarget = customTarget ? null : db.queryOne('SELECT id, provider FROM provider_targets WHERE id = ? AND workspace_id = ?', [destinationId, req.workspaceId]);
@@ -3237,6 +3628,10 @@ addRoute('GET', '/api/workspaces/:workspaceId/streams/custom-targets', (req, res
 }, ['owner', 'operator'], true, 'web');
 
 addRoute('POST', '/api/workspaces/:workspaceId/streams/custom-targets', async (req, res) => {
+  const entitlement = getStrictWorkspaceEntitlement(req.workspaceId);
+  if (!entitlement.canStream) {
+    return json(res, { error: 'Payment Required: An active subscription is required to manage destinations.' }, 402);
+  }
   try {
     const bodyText = await readBody(req);
     const { name, stream_url, stream_key } = JSON.parse(bodyText || '{}');
@@ -3279,6 +3674,10 @@ addRoute('DELETE', '/api/workspaces/:workspaceId/streams/custom-targets/:targetI
 }, ['owner', 'operator'], true, 'web');
 
 addRoute('POST', '/api/workspaces/:workspaceId/streams/custom-targets/:targetId/select', (req, res) => {
+  const entitlement = getStrictWorkspaceEntitlement(req.workspaceId);
+  if (!entitlement.canStream) {
+    return json(res, { error: 'Payment Required: An active subscription is required to manage destinations.' }, 402);
+  }
   const targetId = req.params.targetId;
   const target = db.queryOne('SELECT * FROM custom_rtmp_targets WHERE id = ? AND workspace_id = ?', [targetId, req.workspaceId]);
   if (!target) {
@@ -3289,6 +3688,10 @@ addRoute('POST', '/api/workspaces/:workspaceId/streams/custom-targets/:targetId/
 }, ['owner', 'operator'], true, 'web');
 
 addRoute('POST', '/api/workspaces/:workspaceId/streams/custom-targets/:targetId/deselect', (req, res) => {
+  const entitlement = getStrictWorkspaceEntitlement(req.workspaceId);
+  if (!entitlement.canStream) {
+    return json(res, { error: 'Payment Required: An active subscription is required to manage destinations.' }, 402);
+  }
   const targetId = req.params.targetId;
   const target = db.queryOne('SELECT * FROM custom_rtmp_targets WHERE id = ? AND workspace_id = ?', [targetId, req.workspaceId]);
   if (!target) {
@@ -3309,6 +3712,20 @@ addRoute('GET', '/api/workspaces/:workspaceId/streams', (req, res) => {
 async function activatePublishedStream(session, streamKey) {
   const latest = db.queryOne('SELECT * FROM stream_sessions WHERE id = ?', [session.id]);
   if (!latest || latest.status === 'stopped' || latest.status === 'streaming') return;
+
+  const entitlement = getStrictWorkspaceEntitlement(session.workspace_id);
+  const now = new Date();
+  const isExpired = latest.expires_at && new Date(latest.expires_at) <= now;
+  const device = db.queryOne("SELECT status FROM devices WHERE id = ?", [session.device_id]);
+  // A reservation is not an already-live broadcast. Expiry grace must not be
+  // usable to start a new relay after the paid period has ended.
+  const allowed = device?.status === 'active' && entitlement.canStream && !isExpired;
+  if (!allowed) {
+    const nowStr = now.toISOString();
+    db.run("UPDATE stream_sessions SET status = 'stopped', stopped_at = ? WHERE id = ?", [nowStr, session.id]);
+    db.run("UPDATE streaming_sessions SET status = 'stopped', stopped_at = ? WHERE id = ?", [nowStr, session.id]);
+    return;
+  }
 
   // Claim activation synchronously so duplicate NGINX callbacks cannot spawn duplicate relays.
   const startedAt = new Date().toISOString();
@@ -3418,11 +3835,9 @@ function reservePublishedStream(device, clientId = '') {
   if (inflightWorkspaceMutations.has(device.workspace_id)) {
     return { error: 'Conflict: A workspace settings mutation is in progress. Please retry shortly.', status: 409 };
   }
+  reapExpiredStreamReservations(device.workspace_id);
   return db.transaction(() => {
     const workspace = db.queryOne('SELECT * FROM workspaces WHERE id = ?', [device.workspace_id]);
-    if (!workspace || (workspace.stripe_status !== 'active' && workspace.stripe_status !== 'trialing')) {
-      return { error: 'Payment Required: An active or trialing subscription is required for streaming.', status: 402 };
-    }
 
     const existing = db.queryOne(
       "SELECT * FROM stream_sessions WHERE device_id = ? AND status IN ('reserved', 'streaming') ORDER BY created_at DESC LIMIT 1",
@@ -3432,7 +3847,23 @@ function reservePublishedStream(device, clientId = '') {
       if (clientId && existing.publisher_identity && String(existing.publisher_identity) !== String(clientId)) {
         return { error: 'Conflict: A concurrent streaming session is already active with a different client ID.', status: 409 };
       }
+      const entitlement = getWorkspaceEntitlement(device.workspace_id);
+      if (entitlement.canStream && Date.parse(existing.expires_at) <= Date.now()) {
+        existing.expires_at = new Date(Date.parse(entitlement.paidUntil) + 2 * 3600000).toISOString();
+        db.run('UPDATE stream_sessions SET expires_at = ? WHERE id = ?', [existing.expires_at, existing.id]);
+      }
+      const continuingLiveSession = existing.status === 'streaming' && !!existing.started_at &&
+        entitlement.subscriptionStatus !== 'suspended' && Date.parse(entitlement.paidUntil) <= Date.now() &&
+        Number.isFinite(Date.parse(existing.expires_at)) && Date.parse(existing.expires_at) > Date.now();
+      if (!entitlement.canStream && !continuingLiveSession) {
+        return { error: 'Payment Required: An unexpired paid subscription is required to start streaming.', status: 402 };
+      }
       return { session: existing, existing: true };
+    }
+
+    const entitlement = getStrictWorkspaceEntitlement(device.workspace_id);
+    if (!entitlement.canStream) {
+      return { error: 'Payment Required: An active or trialing subscription is required for streaming.', status: 402 };
     }
 
     const customDestinations = db.queryAll(
@@ -3468,7 +3899,15 @@ function reservePublishedStream(device, clientId = '') {
       }
     }
 
-    const destinations = [...customDestinations, ...providerDestinations];
+    const destinationsMap = new Map();
+    for (const d of customDestinations) {
+      destinationsMap.set(d.id, d);
+    }
+    for (const d of providerDestinations) {
+      destinationsMap.set(d.id, d);
+    }
+    const destinations = Array.from(destinationsMap.values());
+
     if (destinations.length === 0) {
       return { error: 'Select at least one ready destination before starting OBS.', status: 400 };
     }
@@ -3485,20 +3924,26 @@ function reservePublishedStream(device, clientId = '') {
       }
     }
 
-    if (destinations.length > workspace.max_destinations) {
-      return { error: `Maximum destination limit exceeded. Current plan allows up to ${workspace.max_destinations} destination(s).`, status: 400 };
+    if (destinations.length > entitlement.maxDestinations) {
+      return { error: `Maximum destination limit exceeded. Current plan allows up to ${entitlement.maxDestinations} destination(s).`, status: 400 };
     }
 
     const activeCount = db.queryOne(
       "SELECT COUNT(*) AS count FROM stream_sessions WHERE workspace_id = ? AND status IN ('reserved', 'streaming')",
       [device.workspace_id]
     ).count;
-    if (activeCount >= 5) {
-      return { error: 'Workspace maximum concurrent streams reached (max 5).', status: 400 };
+    if (activeCount >= entitlement.maxActiveBroadcasts) {
+      return { error: `Workspace maximum concurrent streams reached (max ${entitlement.maxActiveBroadcasts}).`, status: 400 };
     }
 
     const streamId = 'stream_' + cryptoUtils.generateRandomToken(12);
     const now = new Date().toISOString();
+    let expiresAt = null;
+    if (entitlement.paidUntil) {
+      const graceMs = 2 * 3600 * 1000;
+      expiresAt = new Date(new Date(entitlement.paidUntil).getTime() + graceMs).toISOString();
+    }
+
     const destinationIds = destinations.map(({ id }) => id);
     db.run(
       `INSERT INTO streaming_sessions (id, workspace_id, device_id, status, destinations, started_at, stopped_at, created_at)
@@ -3507,8 +3952,8 @@ function reservePublishedStream(device, clientId = '') {
     );
     db.run(
       `INSERT INTO stream_sessions (id, workspace_id, device_id, status, expires_at, stream_key_hash, publisher_identity, started_at, stopped_at, created_at)
-       VALUES (?, ?, ?, 'reserved', NULL, ?, ?, NULL, NULL, ?)`,
-      [streamId, device.workspace_id, device.id, device.ingest_key_hash, clientId, now]
+       VALUES (?, ?, ?, 'reserved', ?, ?, ?, NULL, NULL, ?)`,
+      [streamId, device.workspace_id, device.id, expiresAt, device.ingest_key_hash, clientId, now]
     );
     for (const { id: targetId, target_type: targetType } of destinations) {
       let snapshot = null;
@@ -3886,3 +4331,44 @@ export async function handleRequest(req, res) {
     return json(res, { error: 'Internal Server Error' }, 500);
   }
 }
+
+let streamExpiryMonitorInterval = null;
+export async function expireStreamingSessions() {
+  const now = Date.now();
+  const sessions = db.queryAll("SELECT * FROM stream_sessions WHERE status IN ('reserved', 'streaming')");
+  for (const session of sessions) {
+    const entitlement = getWorkspaceEntitlement(session.workspace_id);
+    const device = db.queryOne('SELECT status FROM devices WHERE id = ?', [session.device_id]);
+    const expiryGrace = session.status === 'streaming' && !!session.started_at &&
+      entitlement.subscriptionStatus !== 'suspended' && Date.parse(entitlement.paidUntil) <= now;
+    if (device?.status !== 'active' || (!entitlement.canStream && !expiryGrace)) {
+      await stopStreamSession(session.id, session.workspace_id);
+      continue;
+    }
+    if (Number.isFinite(Date.parse(session.expires_at)) && Date.parse(session.expires_at) > now) continue;
+    if (entitlement.canStream) {
+      db.run('UPDATE stream_sessions SET expires_at = ? WHERE id = ?',
+        [new Date(Date.parse(entitlement.paidUntil) + 2 * 3600000).toISOString(), session.id]);
+    } else {
+      await stopStreamSession(session.id, session.workspace_id);
+    }
+  }
+}
+
+function startStreamExpiryMonitor() {
+  if (streamExpiryMonitorInterval) return;
+  let running = false;
+  streamExpiryMonitorInterval = setInterval(async () => {
+    if (running) return;
+    running = true;
+    try {
+      await expireStreamingSessions();
+    } catch (err) {
+      console.error('[StreamExpiryMonitor] Stream cleanup failed; will retry.');
+    } finally { running = false; }
+  }, 10000);
+  if (streamExpiryMonitorInterval.unref) {
+    streamExpiryMonitorInterval.unref();
+  }
+}
+startStreamExpiryMonitor();

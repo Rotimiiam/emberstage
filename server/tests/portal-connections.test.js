@@ -41,7 +41,7 @@ function portal({ blocked = false, failed = false } = {}) {
     addEventListener(name, handler) { events[name] = handler; }
   };
   let requests = 0;
-  const context = vm.createContext({ document, window, URL, setTimeout() {}, setInterval() {}, async mockApi(method, path) {
+  const context = vm.createContext({ document, window, URL, URLSearchParams, clearTimeout() {}, setTimeout() {}, setInterval() {}, async mockApi(method, path) {
     requests++;
     order.push('api');
     if (method === 'POST') {
@@ -94,7 +94,7 @@ test('returning to the portal refreshes the connected badge and channel, without
   const focus = p.events.focus();
   const visible = p.events.visibilitychange();
   await Promise.all([focus, visible]);
-  assert.equal(p.requests(), 6);
+  assert.equal(p.requests(), 7); // Includes the server-authoritative billing summary.
   assert.match(p.card(), />Connected</);
   // Destinations are rendered once in the flat list, not nested in account management.
   const channels = p.nodes.get('channels-panel').innerHTML;
@@ -102,11 +102,11 @@ test('returning to the portal refreshes the connected badge and channel, without
   assert.equal(channels.match(/<strong>Test Channel<\/strong>/g).length, 1);
   p.document.visibilityState = 'hidden';
   await p.events.visibilitychange();
-  assert.equal(p.requests(), 6);
+  assert.equal(p.requests(), 7);
   p.document.visibilityState = 'visible';
   vm.runInContext('state.user = null', p.context);
   await p.events.focus();
-  assert.equal(p.requests(), 6);
+  assert.equal(p.requests(), 7);
 });
 
 test('failed connector request closes the blank tab and re-enables the button', async () => {
@@ -116,4 +116,71 @@ test('failed connector request closes the blank tab and re-enables the button', 
   assert.equal(vm.runInContext("isBusy('provider-connect-youtube')", p.context), false);
   assert.match(p.card(), /Connector unavailable/);
   assert.equal(p.window.location.href, '/app');
+});
+
+function billingReturnPortal({ authenticated = true, workspaceId = 'ws-2', result = { verified: true, entitlement: { canStream: true } } } = {}) {
+  const p = portal();
+  const stored = new Map();
+  p.window.sessionStorage = { getItem: key => stored.get(key), setItem: (key, value) => stored.set(key, value), removeItem: key => stored.delete(key) };
+  p.window.location = new URL(`http://portal.test/app?billing=return&workspaceId=${workspaceId}&reference=test-reference#workspace`);
+  p.window.history = { replaceState(_state, _title, url) { p.window.location = new URL(url, p.window.location); } };
+  const requests = [];
+  p.context.testAuthenticated = authenticated;
+  p.context.billingApi = async (method, path, body) => {
+    if (path === '/api/auth/me') return { success: p.context.testAuthenticated, user: { id: 'user' } };
+    if (path === '/api/workspaces') return { workspaces: [{ id: 'ws-1' }, { id: 'ws-2' }] };
+    requests.push({ method, path, body: JSON.parse(JSON.stringify(body)) });
+    return result;
+  };
+  vm.runInContext(`
+    apiCall = billingApi;
+    configureProductAuth = async () => {};
+    showView = () => {};
+    loadWorkspaceData = async () => {};
+    renderSubscriptionPanel = () => {};
+  `, p.context);
+  return { ...p, requests, stored, init: () => vm.runInContext('init()', p.context) };
+}
+
+test('checkout return automatically verifies the returned workspace and clears return parameters', async () => {
+  const p = billingReturnPortal();
+  await p.init();
+  assert.deepEqual(p.requests, [{ method: 'POST', path: '/api/workspaces/ws-2/billing/verify', body: { reference: 'test-reference' } }]);
+  assert.equal(p.window.location.search, '');
+  assert.equal(p.window.location.hash, '#workspace');
+  assert.equal(p.stored.size, 0);
+  assert.equal(vm.runInContext('state.billing.stickyNotice.type', p.context), 'success');
+  await p.init();
+  assert.equal(p.requests.length, 1, 'successful return is not verified again on reinitialization');
+});
+
+test('checkout return survives required login, then verifies after authentication', async () => {
+  const p = billingReturnPortal({ authenticated: false });
+  await p.init();
+  assert.equal(p.requests.length, 0);
+  assert.equal(p.stored.size, 1);
+  p.context.testAuthenticated = true;
+  await p.init();
+  assert.equal(p.requests.length, 1);
+  assert.equal(p.stored.size, 0);
+});
+
+test('checkout return cannot verify a workspace outside the signed-in memberships', async () => {
+  const p = billingReturnPortal({ workspaceId: 'foreign-workspace' });
+  await p.init();
+  assert.equal(p.requests.length, 0);
+  assert.match(vm.runInContext('state.billing.returnFlow.lastError', p.context), /do not belong/);
+});
+
+test('pending payment stays unconfirmed and offers working retry and dismiss actions', async () => {
+  const p = billingReturnPortal({ result: { verified: false, message: 'Pending verification' } });
+  await p.init();
+  assert.equal(vm.runInContext('state.billing.stickyNotice', p.context), null);
+  assert.equal(p.stored.size, 1);
+  const click = action => p.events.click({ target: { closest: () => ({ dataset: { action } }) } });
+  await click('billing-manual-retry');
+  assert.equal(p.requests.length, 2);
+  await click('billing-dismiss-return');
+  assert.equal(p.stored.size, 0);
+  assert.equal(vm.runInContext('state.billing.returnFlow', p.context), null);
 });

@@ -1136,12 +1136,16 @@ input[type="number"]::-webkit-inner-spin-button {
 /* +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ */
 /* flyout tool bar for the textarea */
 .message-toolbar {
-  display: none;
-  position: absolute;
-  border-radius: 4px;
-  padding: 5px;
+  display: grid;
+  position: static;
+  grid-template-columns: auto auto auto minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  border-radius: 6px;
+  padding: 6px;
+  background: rgba(255, 255, 255, 0.04);
   box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
-  z-index: 1000;
 }
 
 .message-toolbar-button {
@@ -2729,7 +2733,8 @@ button:hover,
   text-overflow: ellipsis;
 }
 
-.song-delete-button {
+.song-delete-button,
+.song-edit-button {
   background: transparent;
   border: none;
   color: rgba(255, 255, 255, 0.4);
@@ -2743,7 +2748,8 @@ button:hover,
   flex: 0 0 auto;
 }
 
-.song-delete-button .icons {
+.song-delete-button .icons,
+.song-edit-button .icons {
   background: transparent;
 }
 
@@ -2759,6 +2765,101 @@ button:hover,
 .song-delete-button:hover {
   color: #ff4d4d;
   background: rgba(255, 77, 77, 0.12);
+}
+
+.song-edit-button:hover {
+  color: var(--primary, #3b82f6);
+  background: rgba(59, 130, 246, 0.12);
+}
+
+/* Scoped dialog styling for song Edit/Delete confirmation */
+.song-dialog {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  background: var(--surface-1, #1e1e24);
+  color: #fff;
+  padding: 16px;
+  width: min(320px, 90vw);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5);
+  margin: auto;
+}
+#song-edit-dialog {
+  width: min(440px, 90vw);
+}
+.song-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.6);
+}
+.song-dialog-content {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.song-dialog h3 {
+  margin: 0 0 4px;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #fff;
+}
+.song-dialog p {
+  margin: 0;
+  font-size: 0.9rem;
+  color: rgba(255, 255, 255, 0.8);
+  line-height: 1.4;
+}
+.song-dialog .input-container {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.song-dialog label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.5);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.song-dialog input, .song-dialog textarea {
+  width: 100%;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  color: #fff;
+  padding: 6px 10px;
+  font-size: 0.85rem;
+}
+.song-dialog textarea {
+  resize: vertical;
+  min-height: 120px;
+  font-family: inherit;
+}
+.song-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+}
+.song-dialog-actions button {
+  padding: 6px 12px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  border-radius: 4px;
+  cursor: pointer;
+  border: none;
+}
+.song-dialog-actions button.primary {
+  background: var(--primary, #3b82f6);
+  color: #fff;
+}
+.song-dialog-actions button.danger {
+  background: #ef4444;
+  color: #fff;
+}
+.song-dialog-actions button.secondary {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+.song-dialog-actions button:hover {
+  opacity: 0.9;
 }
 
 /* EasyWorship Card Color Coding on Sections */

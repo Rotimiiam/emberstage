@@ -6,16 +6,39 @@
   <link rel="icon" type="image/svg+xml" href="assets/brand/favicon.svg">
   <link rel="shortcut icon" href="assets/brand/favicon.svg">
   <link rel="stylesheet" href="assets/css/browser/browser_style.css">
+  <link rel="stylesheet" href="assets/css/browser/broadcast_branding.css">
   <title>Emberstage Text Overlay</title>
 </head>
 <body>
   <div class="bg-container" id="bg-container">
     <div class="container" id="container">
       <p id="messageDisplay" class=""></p>
+      <div id="broadcast-root" class="broadcast-root" hidden aria-hidden="true">
+        <div class="broadcast-scene">
+          <div id="broadcast-backdrop" class="broadcast-backdrop" hidden></div>
+          <div id="broadcast-corner-brand" class="broadcast-corner-brand" hidden>
+            <img id="broadcast-corner-logo" hidden alt="">
+            <span id="broadcast-corner-name"></span>
+          </div>
+          <div id="broadcast-card-shell" class="broadcast-card-shell">
+            <div id="broadcast-card" class="broadcast-card">
+              <div id="broadcast-inline-brand" class="broadcast-inline-brand" hidden>
+                <img id="broadcast-inline-logo" hidden alt="">
+                <span id="broadcast-inline-name"></span>
+              </div>
+              <div id="broadcast-reference" class="broadcast-reference"></div>
+              <div id="broadcast-verse" class="broadcast-verse"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div id="broadcast-measure" class="broadcast-measure" aria-hidden="true"></div>
     </div>
   </div>
 
+  <script src="assets/js/browser_source/broadcast_branding_shared.js"></script>
   <script src="assets/js/browser_source/browser_app.js"></script>
+  <script src="assets/js/browser_source/broadcast_branding.js"></script>
   <script>
     const bgContainer = document.getElementById("bg-container");
     const messageDisplay = document.getElementById("messageDisplay");
@@ -26,8 +49,6 @@
     channel.onmessage = (event) => {
       const message = event.data;
       updateMessage('messageDisplay', message);
-      // messageDisplay.innerHTML = message;
-
       if (savedTitleColor) {
           const dspans = document.querySelectorAll("#messageDisplay span");
           dspans.forEach(dspan => dspan.style.color = savedTitleColor);
@@ -37,6 +58,13 @@
     // settings channel
     const settingsChannel = new BroadcastChannel("settings");
     settingsChannel.onmessage = (event) => {
+       if (event.data?.songLayout) {
+          refreshSongLayout(event.data.songLayout);
+          return;
+       }
+       if (window.obsBibleBroadcasting?.handleSettingsMessage?.(event.data)) {
+          return;
+       }
        if (event.data) {
           if (event.data.selectedFont){
             bgContainer.style.fontFamily = event.data.selectedFont;
@@ -169,6 +197,9 @@
   <script>
         const receiveChannel = new BroadcastChannel("obs-bible-animation");
         receiveChannel.onmessage = (event) => {
+          if (window.obsBibleBroadcasting?.handleAnimationMessage?.(event.data)) {
+            return;
+          }
           const animatedElement = document.getElementById('messageDisplay');
           const animationContainer = document.getElementById('bg-container');
           const { type, duration, easing, display } = event.data;

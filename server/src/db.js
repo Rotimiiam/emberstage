@@ -293,6 +293,66 @@ export function initDatabase() {
     db.exec(`ALTER TABLE stream_sessions ADD COLUMN publisher_identity TEXT;`);
   } catch (e) {}
 
+  for (const column of [
+    'paystack_subscription_id TEXT',
+    'paystack_customer_code TEXT',
+    'paystack_status TEXT DEFAULT \'none\'',
+    'paid_until TEXT',
+    'cancel_at_period_end INTEGER DEFAULT 0'
+  ]) {
+    try {
+      db.exec(`ALTER TABLE workspaces ADD COLUMN ${column};`);
+    } catch (err) {}
+  }
+
+  db.exec(`
+      CREATE TABLE IF NOT EXISTS paystack_checkouts (
+        reference TEXT PRIMARY KEY,
+        workspace_id TEXT NOT NULL,
+        plan_code TEXT NOT NULL,
+        amount INTEGER NOT NULL,
+        currency TEXT NOT NULL,
+        mode TEXT NOT NULL,
+        status TEXT NOT NULL,
+        checkout_url TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY(workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
+      );
+    `);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS paystack_payments (
+      reference TEXT PRIMARY KEY,
+      transaction_id TEXT NOT NULL,
+      workspace_id TEXT NOT NULL REFERENCES workspaces(id),
+      customer_code TEXT NOT NULL,
+      plan_code TEXT NOT NULL,
+      mode TEXT NOT NULL,
+      paid_at TEXT NOT NULL,
+      paid_until TEXT NOT NULL,
+      UNIQUE(mode, transaction_id)
+    );
+    CREATE TABLE IF NOT EXISTS paystack_subscriptions (
+      subscription_code TEXT PRIMARY KEY,
+      workspace_id TEXT REFERENCES workspaces(id),
+      customer_code TEXT NOT NULL,
+      plan_code TEXT NOT NULL,
+      mode TEXT NOT NULL,
+      status TEXT NOT NULL,
+      cancel_at_period_end INTEGER NOT NULL DEFAULT 0
+    );
+  `);
+
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS processed_webhook_events (
+        id TEXT PRIMARY KEY,
+        created_at TEXT NOT NULL
+      );
+    `);
+  } catch (e) {}
+
   // Migrate safely from legacy streaming_sessions without destructive data loss
   try {
     const legacySessions = db.prepare("SELECT * FROM streaming_sessions").all();

@@ -1,206 +1,551 @@
 (function () {
   'use strict';
+  // OBS owns all capture. The dock sends explicit scene-item commands and uses
+  // OBS screenshots for previews; it never requests browser camera permission.
   const app = document.getElementById('media-app');
-  const channel = new BroadcastChannel('emberstage-camera-v1');
-  let devices = [], selected = '', outputState = 'waiting', liveDeviceId = '';
-  let previewStream = null, previewDeviceId = '', previewVersion = 0, previewEnabled = false;
-  const el = (tag, className, text) => { const node = document.createElement(tag); if (className) node.className = className; if (text !== undefined) node.textContent = text; return node; };
-  const button = (text, action, className = '') => { const node = el('button', className, text); node.type = 'button'; node.addEventListener('click', action); return node; };
-
-  function selectorValue(value) {
-    return typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(value) : value.replace(/(["\\])/g, '\\$1');
-  }
-
-  function previewMonogram(device, index) {
-    const label = (device.label || `Camera ${index + 1}`).replace(/[^a-z0-9 ]/gi, ' ').trim();
-    const letters = label.split(/\s+/).filter(Boolean).slice(0, 2).map(part => part[0].toUpperCase()).join('');
-    return letters || String(index + 1).padStart(2, '0');
-  }
-
-  function stopPreview(invalidate = true) {
-    if (invalidate) previewVersion++;
-    if (previewStream) previewStream.getTracks().forEach(track => track.stop());
-    previewStream = null;
-    previewDeviceId = '';
-  }
-
-  function previewFrame(device, index, note = 'Select') {
-    const frame = el('span', 'source-preview source-preview-camera');
-    frame.setAttribute('aria-hidden', 'true');
-    frame.append(
-      el('span', 'source-preview-placeholder', previewMonogram(device, index)),
-      el('span', 'source-preview-index', String(index + 1).padStart(2, '0')),
-      el('span', 'source-preview-note', note)
-    );
-    return frame;
-  }
-
-  function setPreviewState(deviceId, note, live = false) {
-    if (!deviceId) return;
-    const frame = list.querySelector(`.source-row[data-device-id="${selectorValue(deviceId)}"] .source-preview`);
-    if (!frame) return;
-    const index = devices.findIndex(device => device.deviceId === deviceId);
-    const device = devices[index];
-    if (!device) return;
-    frame.replaceChildren(
-      el('span', 'source-preview-placeholder', previewMonogram(device, index)),
-      el('span', 'source-preview-index', String(index + 1).padStart(2, '0')),
-      el('span', 'source-preview-note', note)
-    );
-    frame.classList.toggle('source-preview-live', live);
-    const row = frame.closest('.source-row');
-    row?.setAttribute('data-preview-state', live ? 'live' : note === 'Opening…' ? 'loading' : note === 'Preview unavailable' ? 'unavailable' : 'idle');
-  }
-
-  function mountPreview(stream, deviceId) {
-    const frame = list.querySelector(`.source-row[data-device-id="${selectorValue(deviceId)}"] .source-preview`);
-    if (!frame) return;
-    const index = devices.findIndex(device => device.deviceId === deviceId);
-    const video = document.createElement('video');
-    video.autoplay = true;
-    video.muted = true;
-    video.defaultMuted = true;
-    video.playsInline = true;
-    video.srcObject = stream;
-    video.setAttribute('aria-hidden', 'true');
-    video.addEventListener('loadedmetadata', () => video.play().catch(() => {}), { once: true });
-    frame.replaceChildren(video, el('span', 'source-preview-index', String(index + 1).padStart(2, '0')), el('span', 'source-preview-note', 'Local preview'));
-    frame.classList.add('source-preview-live');
-    frame.closest('.source-row')?.setAttribute('data-preview-state', 'live');
-  }
-
-  async function syncPreview() {
-    if (!selected || !previewEnabled) {
-      stopPreview();
-      return;
-    }
-    if (outputState === 'live' && liveDeviceId === selected) {
-      stopPreview();
-      setPreviewState(selected, 'On air');
-      return;
-    }
-    if (!navigator.mediaDevices?.getUserMedia) {
-      stopPreview(false);
-      setPreviewState(selected, 'Preview off');
-      return;
-    }
-    if (previewStream && previewDeviceId === selected) {
-      mountPreview(previewStream, selected);
-      return;
-    }
-    stopPreview();
-    setPreviewState(selected, 'Opening…');
-    const version = previewVersion;
-    try {
-      const nextStream = await navigator.mediaDevices.getUserMedia({
-        audio: false,
-        video: { deviceId: { exact: selected }, width: { ideal: 320 }, height: { ideal: 180 } }
-      });
-      if (version !== previewVersion) {
-        nextStream.getTracks().forEach(track => track.stop());
-        return;
-      }
-      previewStream = nextStream;
-      previewDeviceId = selected;
-      mountPreview(nextStream, selected);
-    } catch (_) {
-      if (version === previewVersion) setPreviewState(selected, 'Preview unavailable');
-    }
-  }
+  const client = new OBSClient();
+  const native = new EmberstageNativeCamera(client);
+  const stage = new BroadcastChannel('emberstage-visual-v1');
+  const camera = new BroadcastChannel('emberstage-camera-v1');
+  const KEY = 'emberstage-native-camera-ui-v1';
+  let saved = {};
+  try { saved = JSON.parse(localStorage.getItem(KEY) || '{}'); } catch (_) { /* Defaults. */ }
+  let selected = '', connected = false, busy = false, refreshTimer = 0, previewVersion = 0;
+  let pendingLayout = null, stageTimer = 0, closing = false;
+  let reconnectTimer = 0, reconnectDelay = 500;
+  let previewTimer = 0, previewCursor = 0;
+  let previewTargets = [];
+  const previewImages = new Map();
+  const previewRetryAfter = new Map();
+  const PREVIEW_REFRESH_MS = 1200;
+  const PREVIEW_FAILURE_BACKOFF_MS = 5000;
+  let currentLayout = { preset: 'full', corner: 'bottom-right' };
+  let preDualCameraUuid = saved.preDualCameraUuid || '';
+  let preDualFit = saved.preDualFit || '';
+  let mediaLive = false;
+  const labels = saved.labels && typeof saved.labels === 'object' ? saved.labels : {};
+  const el = (tag, cls = '', text) => { const node = document.createElement(tag); node.className = cls; if (text !== undefined) node.textContent = text; return node; };
+  const button = (text, action, cls = '') => { const node = el('button', cls, text); node.type = 'button'; node.addEventListener('click', action); return node; };
+  const field = (title, input) => { const label = el('label', 'camera-settings-field'); label.append(el('span', '', title), input); return label; };
+  const options = (items, value) => { const node = el('select'); for (const [id, label] of items) { const opt = el('option', '', label); opt.value = id; node.append(opt); } node.value = value; return node; };
+  const uuid = input => input.inputUuid;
+  const inputName = input => input ? labels[uuid(input)] || input.inputName : 'Choose camera';
+  const captureKinds = new Set(['dshow_input', 'av_capture_input', 'macos-avcapture', 'v4l2_input', 'decklink-input', 'aja_source']);
+  const available = () => (native.allInputs || []).filter(input => sourceView.value === 'all' || captureKinds.has(input.unversionedInputKind || input.inputKind));
+  const current = () => available().find(input => uuid(input) === selected);
+  const activeId = () => native.activeInputUuid || '';
 
   const header = el('header', 'deckbar');
-  const brand = el('div', 'dock-brand-lockup');
-  const brandLogo = document.createElement('img'); brandLogo.className = 'ember-brand-logo'; brandLogo.src = 'assets/brand/emberstage-logo.svg'; brandLogo.alt = '';
-  const brandStack = el('div', 'dock-brand-stack');
-  const brandWordmark = document.createElement('img'); brandWordmark.className = 'ember-brand-wordmark'; brandWordmark.src = 'assets/brand/emberstage-wordmark.svg'; brandWordmark.alt = 'Emberstage for OBS';
-  brandStack.append(brandWordmark, el('span', 'dock-brand-kicker', 'Camera dock'));
-  brand.append(brandLogo, brandStack);
-  header.append(brand, el('h1', '', 'Cameras'));
-  const state = el('span', 'badge', 'OUTPUT'); header.append(state); const scan = button('Scan cameras', discover, 'primary'); header.append(scan); app.append(header);
-  const notice = el('div', 'notice'); notice.hidden = true; app.append(notice);
-  const list = el('div', 'source-list owned-library'); list.setAttribute('aria-label', 'Available camera devices'); app.append(list);
-  const footer = el('footer', 'actionbar'); const selection = el('div', 'selection', 'Choose camera');
-  const fitLabel = el('label', 'check'); const fit = el('input'); fit.type = 'checkbox'; fit.checked = true; fitLabel.append(fit, document.createTextNode('Fill'));
-  const turnOff = button('Turn camera off', () => {
-    previewEnabled = false;
-    stopPreview();
-    channel.postMessage({ version: 1, type: 'hide' });
-    render();
-  });
-  const take = button('Show camera', () => {
-    if (!selected) return;
-    stopPreview();
-    if (outputState === 'live' && liveDeviceId === selected) {
-      previewEnabled = false;
-      channel.postMessage({ version: 1, type: 'hide' });
-    }
-    else channel.postMessage({ version: 1, type: 'take', deviceId: selected, fit: fit.checked ? 'cover' : 'contain' });
-  }, 'primary');
-  footer.append(selection, fitLabel, turnOff, take); app.append(footer);
+  const logo = el('img', 'ember-brand-logo'); logo.src = 'assets/brand/emberstage-logo.svg'; logo.alt = '';
+  const state = el('span', 'badge', 'NOT CONNECTED');
+  const scan = button('Rescan', () => void refresh(), 'camera-rescan');
+  header.append(logo, el('h1', '', 'Cameras'), state, scan); app.append(header);
+  const sourceView = options([['capture', 'Video Capture'], ['all', 'All sources']], saved.sourceView === 'all' ? 'all' : 'capture');
+  sourceView.setAttribute('aria-label', 'Source types');
+  header.append(field('Sources', sourceView));
+  sourceView.addEventListener('change', () => { selected = ''; save(); render(); });
+  const dualMenuButton = button('Dual', () => toggleDualMenu(), 'quiet camera-dual-toggle');
+  dualMenuButton.setAttribute('aria-label', 'Dual camera settings');
+  dualMenuButton.setAttribute('aria-haspopup', 'dialog');
+  dualMenuButton.setAttribute('aria-expanded', 'false');
+  header.append(dualMenuButton);
+  const sizeWrap = el('label', 'dock-ui-scale');
+  sizeWrap.setAttribute('aria-label', 'Cameras dock size');
+  sizeWrap.append(el('span', 'dock-ui-scale-label', 'Size'));
+  const sizeSlider = el('input', 'dock-ui-scale-slider');
+  sizeSlider.type = 'range';
+  sizeSlider.id = 'camera-dock-scale';
+  sizeSlider.min = '80';
+  sizeSlider.max = '120';
+  sizeSlider.step = '1';
+  sizeSlider.value = '100';
+  sizeSlider.setAttribute('aria-label', 'Cameras dock size slider');
+  const sizeValue = el('span', 'dock-ui-scale-readout', '100%');
+  sizeValue.id = 'camera-dock-scale-value';
+  sizeWrap.append(sizeSlider, sizeValue); header.append(sizeWrap);
+  if (window.EmberstageDockScale) {
+    window.EmberstageDockScale.init({
+      root: document.body,
+      control: sizeSlider,
+      output: sizeValue,
+      storageKey: 'obs-bible:cameras:ui-scale',
+      defaultValue: 100,
+      min: 70,
+      max: 120,
+      step: 1
+    });
+  }
+  const notice = el('div', 'notice'); notice.setAttribute('role', 'status'); notice.hidden = true; app.append(notice);
 
-  async function discover() {
-    notice.hidden = true; scan.disabled = true;
+  const dualSection = el('div', 'camera-dual-popover');
+  dualSection.hidden = true;
+  dualSection.setAttribute('role', 'dialog');
+  dualSection.setAttribute('aria-label', 'Dual camera settings');
+  const dualTitle = el('strong', 'dual-title', 'Dual cameras');
+  const dualLayout = options([['split', '50/50'], ['inset', 'Big + small']], saved.dualLayout === 'inset' ? 'inset' : 'split');
+  const corners = ['top-left', 'top-right', 'bottom-left', 'bottom-right'];
+  const dualCorner = options(corners.map(corner => [corner, corner.replace('-', ' ')]), corners.includes(saved.dualCorner) ? saved.dualCorner : 'bottom-right');
+  const dualTransition = options([['fade', 'Fade'], ['dip', 'Dip to black'], ['cut', 'Cut']], ['cut', 'fade', 'dip'].includes(saved.dualTransition) ? saved.dualTransition : 'fade');
+  const dualDuration = options([['150', '150 ms'], ['300', '300 ms'], ['500', '500 ms']], ['150', '300', '500'].includes(String(saved.dualDuration)) ? String(saved.dualDuration) : '300');
+  const dualField = (title, input) => { const node = field(title, input); node.className = 'dual-label'; input.className = 'dual-select'; input.setAttribute('aria-label', title); return node; };
+  const dualLeftSelect = el('select', 'dual-select');
+  const dualRightSelect = el('select', 'dual-select');
+  const fit = options([['cover', 'Fill'], ['contain', 'Fit']], saved.fit === 'contain' ? 'contain' : 'cover');
+
+  function isDualUnchangedActive() {
+    if (!connected || !native.live || !native.dual) return false;
+    const leftUuid = dualLeftSelect.value;
+    const rightUuid = dualRightSelect.value;
+    if (!leftUuid || !rightUuid || leftUuid === rightUuid) return false;
+    return native.dualLayout === dualLayout.value &&
+      (dualLayout.value === 'split' || native.dualCorner === dualCorner.value) &&
+      native.activeLeftUuid === leftUuid &&
+      native.activeRightUuid === rightUuid &&
+      native.currentFit === fit.value;
+  }
+
+  const dualApplyBtn = button('Apply 50/50', () => void run(async () => {
+    const leftUuid = dualLeftSelect.value;
+    const rightUuid = dualRightSelect.value;
+    if (!leftUuid || !rightUuid) {
+      throw new Error('Please select both cameras.');
+    }
+    if (leftUuid === rightUuid) {
+      throw new Error('Choose two different cameras.');
+    }
+    if (isDualUnchangedActive()) {
+      let targetUuid = preDualCameraUuid;
+      let isPriorValid = targetUuid && native.allInputs.some(input => uuid(input) === targetUuid);
+      
+      if (!targetUuid) {
+        targetUuid = leftUuid;
+        isPriorValid = targetUuid && available().some(input => uuid(input) === targetUuid);
+      } else if (!isPriorValid) {
+        throw new Error('The prior single camera is no longer available.');
+      }
+
+      if (!isPriorValid) {
+        throw new Error('No available camera to restore.');
+      }
+      
+      const targetPreset = mediaLive ? currentLayout.preset : 'full';
+      const targetCorner = mediaLive ? currentLayout.corner : 'bottom-right';
+
+      native.currentPreset = targetPreset;
+      native.currentCorner = targetCorner;
+      currentLayout.preset = targetPreset;
+      currentLayout.corner = targetCorner;
+
+      if (preDualFit) {
+        fit.value = preDualFit;
+      }
+
+      await native.take(targetUuid, { fit: fit.value, transition: dualTransition.value, duration: Number(dualDuration.value) });
+      selected = targetUuid;
+
+      preDualCameraUuid = '';
+      preDualFit = '';
+      save();
+
+      announce('active');
+    } else {
+      if (!native.dual) {
+        preDualCameraUuid = native.activeInputUuid || selected;
+        preDualFit = native.currentFit || fit.value;
+        save();
+      }
+      await native.takeDual(leftUuid, rightUuid, { fit: fit.value, layout: dualLayout.value, corner: dualCorner.value, transition: dualTransition.value, duration: Number(dualDuration.value) });
+      announce('active');
+    }
+  }), 'primary');
+  
+  const dualLeftField = el('label', 'dual-label');
+  dualLeftField.append(el('span', '', 'Left Camera'), dualLeftSelect);
+  const dualRightField = el('label', 'dual-label');
+  dualRightField.append(el('span', '', 'Right Camera'), dualRightSelect);
+  const dualCornerField = dualField('Small camera corner', dualCorner);
+  const dualSwap = button('Swap cameras', () => {
+    [dualLeftSelect.value, dualRightSelect.value] = [dualRightSelect.value, dualLeftSelect.value];
+    updateDualControls();
+  });
+
+  const dualControls = el('div', 'dual-controls-row');
+  dualControls.append(dualField('Dual layout', dualLayout), dualCornerField, dualLeftField, dualRightField, dualField('Dual transition', dualTransition), dualField('Dual speed', dualDuration), dualSwap, dualApplyBtn);
+  dualSection.append(dualTitle, dualControls, el('small', 'dual-note', 'Choose cameras and layout, then Apply. Swap changes the selection only. Click Apply again on the active layout to unapply it.'));
+  header.append(dualSection);
+
+  function toggleDualMenu(force) {
+    if (dualMenuButton.disabled && force !== false) return;
+    const shouldOpen = typeof force === 'boolean' ? force : dualSection.hidden;
+    dualSection.hidden = !shouldOpen;
+    dualMenuButton.setAttribute('aria-expanded', String(shouldOpen));
+    if (shouldOpen) updateDualControls();
+  }
+
+  const list = el('div', 'source-list owned-library camera-library'); list.setAttribute('aria-label', 'OBS camera sources'); app.append(list);
+  const footer = el('footer', 'actionbar');
+  const selection = el('div', 'selection selection-stack');
+  const selectionName = el('strong', 'selection-name', 'Choose camera');
+  const selectionDetail = el('small', 'selection-detail', 'Add a Video Capture Device in OBS.');
+  selection.append(selectionName, selectionDetail);
+  const settings = el('details', 'camera-settings'); settings.append(el('summary', '', 'Settings'));
+  const panel = el('div', 'camera-settings-panel');
+  const label = el('input'); label.maxLength = 48;
+  const transition = options([['cut', 'Cut'], ['fade', 'Crossfade'], ['dip', 'Dip to black']], ['cut', 'fade', 'dip'].includes(saved.transition) ? saved.transition : 'cut');
+  const duration = options([['150', '150 ms'], ['300', '300 ms'], ['500', '500 ms']], ['150', '300', '500'].includes(String(saved.duration)) ? String(saved.duration) : '300');
+  panel.append(field('Camera label', label), field('Transition', transition), field('Speed', duration), field('Framing', fit), el('p', 'camera-settings-note', 'Video Capture shows cameras and capture cards. Choose All sources for plugin, network, browser and media inputs. Audio-only inputs have no picture. Emberstage internal sources are excluded.'));
+  settings.append(panel);
+  const take = button('Show camera', () => void run(async () => {
+    if (!native.dual && native.live && activeId() === selected) {
+      await native.hide({ transition: transition.value, duration: Number(duration.value) }); announce('inactive');
+    } else {
+      if (!current()) throw new Error('The selected source is no longer available. Rescan and choose again.');
+      
+      const targetPreset = mediaLive ? currentLayout.preset : 'full';
+      const targetCorner = mediaLive ? currentLayout.corner : 'bottom-right';
+
+      native.currentPreset = targetPreset;
+      native.currentCorner = targetCorner;
+      currentLayout.preset = targetPreset;
+      currentLayout.corner = targetCorner;
+
+      await native.take(selected, { fit: fit.value, transition: transition.value, duration: Number(duration.value) });
+      
+      preDualCameraUuid = '';
+      preDualFit = '';
+      save();
+
+      announce('active');
+    }
+  }), 'primary');
+  const hide = button('Hide all', () => void run(async () => { await native.hide({ transition: native.dual ? dualTransition.value : transition.value, duration: Number(native.dual ? dualDuration.value : duration.value) }); announce('inactive'); }));
+  footer.append(selection, settings, hide, take); app.append(footer);
+
+  function save() {
+    // Explicit allowlist: passwords and authentication responses never persist.
+    const value = { labels, transition: transition.value, duration: Number(duration.value), fit: fit.value, sourceView: sourceView.value, dualLayout: dualLayout.value, dualCorner: dualCorner.value, dualTransition: dualTransition.value, dualDuration: Number(dualDuration.value), preDualCameraUuid, preDualFit };
+    try { localStorage.setItem(KEY, JSON.stringify(value)); } catch (_) { message('Settings could not be saved. Current controls still work.'); }
+  }
+  for (const input of [transition, duration]) input.addEventListener('change', save);
+  for (const input of [fit, dualLayout, dualCorner, dualTransition, dualDuration]) input.addEventListener('change', () => { save(); updateDualControls(); });
+  for (const input of [dualLeftSelect, dualRightSelect]) input.addEventListener('change', updateDualControls);
+  function updateDualControls() {
+    const inset = dualLayout.value === 'inset';
+    dualLeftField.firstChild.textContent = inset ? 'Big camera' : 'Left Camera';
+    dualRightField.firstChild.textContent = inset ? 'Small camera' : 'Right Camera';
+    dualLeftSelect.setAttribute('aria-label', dualLeftField.firstChild.textContent);
+    dualRightSelect.setAttribute('aria-label', dualRightField.firstChild.textContent);
+    dualCornerField.hidden = !inset;
+    const isUnchanged = isDualUnchangedActive();
+    if (isUnchanged) {
+      dualApplyBtn.textContent = inset ? 'Unapply big + small' : 'Unapply 50/50';
+      dualApplyBtn.setAttribute('aria-pressed', 'true');
+    } else {
+      dualApplyBtn.textContent = inset ? 'Apply big + small' : 'Apply 50/50';
+      dualApplyBtn.setAttribute('aria-pressed', 'false');
+    }
+    dualApplyBtn.disabled = busy || !connected || !dualLeftSelect.value || !dualRightSelect.value || dualLeftSelect.value === dualRightSelect.value;
+    dualSwap.disabled = busy || !connected || !dualLeftSelect.value || !dualRightSelect.value;
+    for (const input of [dualLayout, dualCorner, dualLeftSelect, dualRightSelect, dualTransition, dualDuration]) input.disabled = busy || !connected;
+  }
+  label.addEventListener('change', () => { if (!selected) return; labels[selected] = label.value.trim(); save(); render(); });
+  function message(text = '') { notice.textContent = text; notice.hidden = !text; }
+  function announce(action = 'status') {
+    if (!connected) return;
+    const status = native.live ? 'live' : 'hidden';
+    stage.postMessage({ version: 1, output: 'camera', action, state: status });
+    camera.postMessage({ version: 1, type: 'status', state: status, deviceId: activeId(), native: true });
+  }
+  function syncLayoutFromNative() {
+    currentLayout = {
+      preset: native.currentPreset || 'full',
+      corner: native.currentCorner || 'bottom-right'
+    };
+  }
+  async function connect() {
+    if (busy || connected || closing) return;
+    clearTimeout(reconnectTimer);
+    busy = true; render(); message('');
     try {
-      if (!navigator.mediaDevices?.enumerateDevices) {
-        throw new DOMException('Camera APIs are disabled in this OBS browser session.', 'NotAllowedError');
+      if (!window.EmberstageNativeInstall) throw new Error('Install the current Emberstage update while OBS is closed to create the native output scene.');
+      const config = await loadConnection();
+      if (closing) return;
+      await client.connect({ url: `ws://127.0.0.1:${config.port}`, password: config.password, requireAuthentication: true });
+      await native.initialize(window.EmberstageNativeInstall);
+      syncLayoutFromNative();
+      connected = true; reconnectDelay = 500; clearTimeout(reconnectTimer); save();
+      announce(); stage.postMessage({ version: 1, output: 'camera', action: 'ping' });
+    } catch (_) { connected = false; client.disconnect(); message('Waiting for the local OBS connection — retrying automatically. If OBS server settings changed, close OBS and rerun the Emberstage installer.'); }
+    finally { busy = false; render(); if (!connected) scheduleReconnect(); }
+  }
+  async function loadConnection() {
+    // The credential is outside the shared app/static directory. A hosted page
+    // must never attempt to load it, and no secret is stored in browser storage.
+    const value = window.EmberstageNativeInstall?.connectionScript;
+    if (location.protocol !== 'file:' || typeof value !== 'string') throw new Error('Automatic local connection is not installed.');
+    const url = new URL(value);
+    if (url.protocol !== 'file:' || url.host || url.search || url.hash || !url.pathname.endsWith('/Emberstage-private/obs-connection.js')) throw new Error('Invalid private connection path.');
+    return new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      const finish = (loaded) => {
+        const config = window.EmberstageNativeConnection;
+        delete window.EmberstageNativeConnection;
+        script.onload = script.onerror = null;
+        script.remove();
+        if (!loaded || config?.version !== 1 || !Number.isInteger(config.port) || config.port < 1 || config.port > 65535 || typeof config.password !== 'string' || !config.password) reject(new Error('Private connection configuration unavailable.'));
+        else resolve(config);
+      };
+      script.onload = () => finish(true); script.onerror = () => finish(false);
+      script.src = url.href;
+      document.head.append(script);
+    });
+  }
+  function scheduleReconnect() {
+    clearTimeout(reconnectTimer);
+    if (closing) return;
+    reconnectTimer = setTimeout(() => void connect(), reconnectDelay);
+    reconnectDelay = Math.min(reconnectDelay * 2, 10000);
+  }
+  async function run(action) {
+    if (!connected || busy) return;
+    busy = true; message(''); render();
+    try { await action(); }
+    catch (error) {
+      message(error.message);
+      try { if (client.ready) await native.refresh(); } catch (_) { connected = false; }
+    } finally { busy = false; render(); announce(); flushLayout(); }
+  }
+  async function refresh() {
+    if (!connected || busy) return;
+    await run(async () => { await native.refresh(); syncLayoutFromNative(); });
+  }
+  function getLayoutTransition(data) {
+    if (data?.transition) {
+      return {
+        transition: data.transition,
+        duration: data.duration !== undefined ? Number(data.duration) : 300
+      };
+    }
+    if (transition.value === 'cut') {
+      return { transition: 'cut', duration: 0 };
+    }
+    return { transition: 'fade', duration: 300 };
+  }
+
+  function flushLayout() {
+    if (!connected || busy || !pendingLayout || closing) return;
+    const next = pendingLayout; pendingLayout = null;
+    if (next.preset === currentLayout.preset && next.corner === currentLayout.corner) return;
+    void run(async () => { await native.layout(next); currentLayout = { preset: next.preset, corner: next.corner }; });
+  }
+  async function preview(input, frame) {
+    const version = previewVersion;
+    const id = uuid(input);
+    try {
+      const result = await native.screenshot(id);
+      if (closing || !connected || version !== previewVersion || !frame.isConnected) return;
+      const data = typeof result === 'string' ? result : result?.imageData;
+      if (!/^data:image\/(png|jpe?g);base64,/.test(data || '')) return;
+      previewRetryAfter.delete(id);
+      const image = previewImages.get(id) || el('img');
+      image.src = data; image.alt = 'Updating OBS thumbnail';
+      previewImages.set(id, image);
+      if (frame.firstChild !== image) frame.replaceChildren(image);
+      frame.title = 'Updating OBS thumbnail (not full-frame-rate video)';
+    } catch (_) {
+      previewRetryAfter.set(id, Date.now() + PREVIEW_FAILURE_BACKOFF_MS);
+      // Keep the last decoded frame during temporary OBS/driver failures.
+      if (frame.isConnected) frame.title = previewImages.has(id) ? 'Preview unavailable — showing last frame' : 'OBS preview unavailable for this source';
+    }
+  }
+  async function refreshPreviews() {
+    if (closing) return;
+    try {
+      if (!connected || busy || native.transitioning || document.hidden) return;
+      const visible = previewTargets.filter(({ input, frame }) => {
+        const rect = frame.getBoundingClientRect?.();
+        const bounds = list.getBoundingClientRect?.();
+        return frame.isConnected && (previewRetryAfter.get(uuid(input)) || 0) <= Date.now() && rect && bounds && rect.width > 0 && rect.height > 0 && rect.bottom > Math.max(0, bounds.top) && rect.top < Math.min(window.innerHeight, bounds.bottom);
+      });
+      if (visible.length) {
+        const { input, frame } = visible[previewCursor++ % visible.length];
+        await preview(input, frame);
       }
-      devices = (await navigator.mediaDevices.enumerateDevices()).filter(device => device.kind === 'videoinput');
-      if (!devices.length || devices.every(device => !device.label)) {
-        const permission = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-        permission.getTracks().forEach(track => track.stop());
-        devices = (await navigator.mediaDevices.enumerateDevices()).filter(device => device.kind === 'videoinput');
-      }
-      if (!selected && devices.length) selected = devices[0].deviceId;
-      if (!devices.length) throw new Error('No browser-visible cameras were found.');
-    } catch (error) {
-      try { devices = (await navigator.mediaDevices?.enumerateDevices?.() || []).filter(device => device.kind === 'videoinput'); } catch (_) { devices = []; }
-      const denied = error?.name === 'NotAllowedError' || error?.name === 'SecurityError';
-      const unavailable = !navigator.mediaDevices?.enumerateDevices;
-      notice.textContent = denied
-        ? unavailable
-          ? 'Camera access is disabled for this OBS session. Fully quit OBS, then start it with --enable-media-stream. On macOS, use scripts/start-obs-camera-mode-macos.command.'
-          : 'Camera access was denied. Allow OBS under System Settings → Privacy & Security → Camera, then fully restart OBS with --enable-media-stream.'
-        : `${error?.message || 'No browser-visible cameras were found.'} If Iriun is already active as an OBS Video Capture Device, disable that source first so the browser output can open it.`;
-      notice.hidden = false;
-    } finally { scan.disabled = false; render(); }
+    } finally {
+      // Old integrated GPUs can fail OBS staging-surface reads under sustained
+      // screenshot pressure. Keep previews lightweight and back off failed inputs.
+      if (!closing) previewTimer = setTimeout(refreshPreviews, PREVIEW_REFRESH_MS);
+    }
   }
   function render() {
+    previewVersion++;
+    previewTargets = [];
+    const focusId = document.activeElement?.closest?.('[data-device-id]')?.dataset.deviceId;
+    const entries = connected ? available() : [];
+    const ids = new Set(entries.map(uuid));
+    for (const id of previewImages.keys()) if (!ids.has(id)) previewImages.delete(id);
+    for (const id of previewRetryAfter.keys()) if (!ids.has(id)) previewRetryAfter.delete(id);
     list.replaceChildren();
-    if (!devices.length) {
-      const empty = el('div', 'empty'); empty.append(el('strong', '', 'Scan connected cameras'), el('small', '', 'OBS must be started in camera mode; a camera already active in another OBS source may be unavailable.')); list.append(empty);
+    for (const [index, input] of entries.entries()) {
+      const id = uuid(input);
+      const row = button('', () => { selected = id; render(); }, 'source-row camera-card');
+      row.dataset.deviceId = id; row.setAttribute('aria-pressed', String(selected === id));
+      const frame = el('span', 'source-preview source-preview-camera');
+      frame.append(previewImages.get(id) || el('span', 'source-preview-placeholder', String(index + 1).padStart(2, '0')));
+      const copy = el('span', 'source-copy'); copy.append(el('span', 'source-name', inputName(input)), el('span', 'source-meta', input.inputName));
+      const on = native.live && (native.dual ? [native.activeLeftUuid, native.activeRightUuid].includes(id) : activeId() === id);
+      row.append(frame, copy, el('span', on ? 'badge on' : 'badge', on ? 'ON' : selected === id ? 'SELECTED' : 'SOURCE'));
+      list.append(row);
+      previewTargets.push({ input, frame });
     }
-    devices.forEach((device, index) => {
-      const row = button('', () => { selected = device.deviceId; previewEnabled = true; render(); }, 'source-row'); row.setAttribute('aria-pressed', String(device.deviceId === selected));
-      row.dataset.deviceId = device.deviceId;
-      row.addEventListener('keydown', event => {
-        if (event.key !== 'Enter' && event.key !== ' ') return;
-        event.preventDefault(); event.stopPropagation();
-        if (selected !== device.deviceId) {
-          selected = device.deviceId; previewEnabled = true; render();
-          requestAnimationFrame(() => Array.from(list.querySelectorAll('.source-row')).find(item => item.dataset.deviceId === device.deviceId)?.focus());
-          return;
-        }
-        take.click();
-      });
-      row.append(previewFrame(device, index, device.deviceId === selected ? 'Select' : 'Ready'));
-      const copy = el('span', 'source-copy'); copy.append(el('span', 'source-name', device.label || `Camera ${index + 1}`), el('span', 'source-meta', 'Local video device'));
-      const rowState = liveDeviceId === device.deviceId && outputState === 'live' ? 'LIVE' : device.deviceId === selected ? 'SELECTED' : 'CAMERA';
-      row.append(copy, el('span', `badge${rowState === 'LIVE' ? ' on' : ''}`, rowState)); list.append(row);
-    });
-    const index = devices.findIndex(device => device.deviceId === selected);
-    selection.textContent = index < 0 ? 'Choose camera' : devices[index].label || `Camera ${index + 1}`;
-    turnOff.hidden = outputState !== 'live' && !previewEnabled;
-    take.disabled = !selected || outputState === 'waiting';
-    take.textContent = outputState === 'live' && liveDeviceId === selected ? 'Hide camera' : 'Show camera';
-    state.textContent = outputState === 'live' ? 'LIVE' : outputState === 'error' ? 'CAMERA ERROR' : outputState === 'hidden' ? 'HIDDEN' : 'WAITING'; state.classList.toggle('on', outputState === 'live');
-    queueMicrotask(syncPreview);
+    if (!entries.length) {
+      const empty = el('div', 'empty');
+      empty.append(el('strong', '', connected ? 'Add sources in OBS' : 'Connecting to OBS automatically'), el('small', '', connected ? (sourceView.value === 'all' ? 'Sources → + → choose any input type.' : 'Sources → + → Video Capture Device. For other inputs choose All sources.') : 'Open OBS normally. No password or special shortcut needed.'));
+      list.append(empty);
+    }
+    // Render Dual Selects
+    const prevLeft = dualLeftSelect.value;
+    const prevRight = dualRightSelect.value;
+    dualLeftSelect.replaceChildren();
+    dualRightSelect.replaceChildren();
+
+    if (entries.length > 0) {
+      for (const input of entries) {
+        const id = uuid(input);
+        const name = inputName(input);
+        
+        const optL = el('option', '', name);
+        optL.value = id;
+        dualLeftSelect.append(optL);
+
+        const optR = el('option', '', name);
+        optR.value = id;
+        dualRightSelect.append(optR);
+      }
+      
+      // Restore previous selections or set defaults
+      if (prevLeft && [...dualLeftSelect.options].some(o => o.value === prevLeft)) {
+        dualLeftSelect.value = prevLeft;
+      } else {
+        dualLeftSelect.value = uuid(entries[0]);
+      }
+
+      if (prevRight && [...dualRightSelect.options].some(o => o.value === prevRight)) {
+        dualRightSelect.value = prevRight;
+      } else if (entries.length > 1) {
+        dualRightSelect.value = uuid(entries[1]);
+      } else {
+        dualRightSelect.value = uuid(entries[0]);
+      }
+    } else {
+      const optL = el('option', '', 'No cameras');
+      optL.value = '';
+      dualLeftSelect.append(optL);
+
+      const optR = el('option', '', 'No cameras');
+      optR.value = '';
+      dualRightSelect.append(optR);
+    }
+
+    updateDualControls();
+    state.textContent = busy ? 'WORKING' : !connected ? 'NOT CONNECTED' : native.live ? (native.dual ? (native.dualLayout === 'inset' ? 'INSET ON' : '50/50 ON') : 'ON') : 'CONNECTED';
+    state.className = `badge${connected ? ' on' : ''}`;
+    scan.disabled = !connected || busy;
+    dualMenuButton.disabled = !connected;
+    selectionName.textContent = inputName(current());
+    selectionDetail.textContent = !connected ? 'Automatic local connection.' : !current() ? 'Selection never changes the output.' : native.dual ? 'Dual camera active. Show camera will return to single camera.' : native.live && activeId() === selected ? 'On in Emberstage Program · show that scene in OBS to use it.' : 'Preview only — Show camera applies these settings.';
+    take.disabled = busy || !connected || !current();
+    take.textContent = !native.dual && native.live && activeId() === selected ? 'Hide camera' : (native.dual ? 'Show Single' : 'Show camera');
+    hide.disabled = busy || !connected || !native.live;
+    label.disabled = !current(); label.value = current() ? labels[selected] || '' : '';
+    if (focusId) [...list.querySelectorAll('[data-device-id]')].find(row => row.dataset.deviceId === focusId)?.focus({ preventScroll: true });
   }
-  channel.onmessage = ({ data }) => {
-    if (data?.version !== 1) return;
-    if (data.type === 'ready') { outputState = 'hidden'; render(); }
-    if (data.type === 'status') { outputState = data.state; liveDeviceId = data.deviceId || liveDeviceId; render(); }
+  client.on('status', ({ state }) => {
+    if (state !== 'disconnected') return;
+    connected = false; pendingLayout = null; mediaLive = false; previewVersion++;
+    if (!closing) { render(); scheduleReconnect(); }
+  });
+  client.on('event', ({ type }) => {
+    if (!/InputCreated|InputRemoved|InputNameChanged|SceneItem|SceneCollection|SceneNameChanged/.test(type)) return;
+    clearTimeout(refreshTimer);
+    refreshTimer = setTimeout(() => void refresh(), 350);
+  });
+  stage.onmessage = ({ data }) => {
+    if (!data || data.version !== 1 || !connected) return;
+    if (data.action === 'ping') { announce(); return; }
+    if (data.output !== 'media') return;
+    if (data.action === 'active' && data.layout === 'full') {
+      // Graphics are above the native camera slots. Full-screen media covers
+      // cameras without taking them off air; hiding it reveals the same view.
+      mediaLive = true;
+      return;
+    }
+    if (data.action === 'layout-change' || data.action === 'inactive') {
+      mediaLive = (data.action !== 'inactive');
+      const transOpts = getLayoutTransition(data);
+      let presetStr = 'full';
+      let cornerStr = 'bottom-right';
+      if (data.action === 'inactive') {
+        presetStr = 'full';
+      } else if (data.preset) {
+        presetStr = data.preset;
+        cornerStr = data.corner || 'bottom-right';
+      } else if (data.layout) {
+        if (typeof data.layout === 'object') {
+          presetStr = data.layout.preset || 'full';
+          cornerStr = data.layout.corner || data.corner || 'bottom-right';
+        } else {
+          presetStr = data.layout;
+          cornerStr = data.corner || 'bottom-right';
+        }
+      }
+      pendingLayout = {
+        preset: presetStr,
+        corner: cornerStr,
+        transition: transOpts.transition,
+        duration: transOpts.duration,
+        isExplicit: true
+      };
+      clearTimeout(stageTimer); stageTimer = setTimeout(flushLayout, 25);
+    } else if (data.action === 'status' && data.layout) {
+      if (busy || native.transitioning || (pendingLayout && pendingLayout.isExplicit)) return;
+      mediaLive = (data.state === 'live');
+      const transOpts = getLayoutTransition(data);
+      let presetStr = 'full';
+      let cornerStr = 'bottom-right';
+      if (typeof data.layout === 'object') {
+        presetStr = data.layout.preset || 'full';
+        cornerStr = data.layout.corner || data.corner || 'bottom-right';
+      } else {
+        presetStr = data.layout;
+        cornerStr = data.corner || 'bottom-right';
+      }
+      if (data.state === 'live' && presetStr === 'full') {
+        return;
+      }
+      pendingLayout = {
+        preset: data.state === 'live' && native.live ? presetStr : 'full',
+        corner: data.state === 'live' && native.live ? cornerStr : 'bottom-right',
+        transition: transOpts.transition,
+        duration: transOpts.duration,
+        isExplicit: false
+      };
+      clearTimeout(stageTimer); stageTimer = setTimeout(flushLayout, 25);
+    }
   };
-  channel.postMessage({ version: 1, type: 'ping' });
-  addEventListener('pagehide', () => { stopPreview(); channel.close(); });
+  camera.onmessage = ({ data }) => { if (data?.version === 1 && data.type === 'ping') announce(); };
+  document.addEventListener?.('pointerdown', event => {
+    if (!dualSection.hidden && !dualSection.contains(event.target) && !dualMenuButton.contains(event.target)) toggleDualMenu(false);
+  });
+  document.addEventListener?.('keydown', event => {
+    if (event.key === 'Escape' && !dualSection.hidden) {
+      toggleDualMenu(false);
+      dualMenuButton.focus();
+    }
+  });
+  const heartbeat = setInterval(() => { announce(); }, 2000);
+  addEventListener('pagehide', () => { closing = true; previewVersion++; clearTimeout(previewTimer); previewImages.clear(); previewRetryAfter.clear(); clearInterval(heartbeat); clearTimeout(refreshTimer); clearTimeout(stageTimer); clearTimeout(reconnectTimer); native.dispose(); client.disconnect(); stage.close(); camera.close(); });
   render();
+  void connect();
+  void refreshPreviews();
 })();

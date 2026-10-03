@@ -102,10 +102,69 @@ Emberstage includes a single-node managed relay path:
 
 ### Paystack billing setup
 
-1. Create a recurring Paystack plan and set `PAYSTACK_PLAN_CODE`, `PAYSTACK_PLAN_AMOUNT` (currency subunit), and `PAYSTACK_CURRENCY`.
-2. Set `PAYSTACK_SECRET_KEY` and a public HTTPS `APP_BASE_URL`.
-3. Configure the Paystack webhook URL as `https://<control-plane-host>/api/billing/webhook`.
-4. Test-mode checkout and signed webhooks use the same flow as production; only the Paystack key and plan code change.
+**Product boundary:** Free Local Core includes the offline Scripture/text, media,
+camera and OBS output tools. Pro is **NGN 3,000 per month per workspace**, with up to
+three paired OBS devices and one active broadcast distributed to up to three
+destinations. It pays for software/control-service access, **not unlimited hosted
+relay bandwidth**. Provider approval and platform streaming eligibility are
+separate from an Emberstage subscription.
+
+1. Confirm that the intended Paystack merchant account is approved to collect
+   **NGN recurring payments**. International-card acceptance alone does not prove
+   NGN collection or NGN subscription eligibility. Do not reuse another
+   business's credentials.
+2. Create a **monthly NGN plan for 300000 minor units** in Paystack test mode. Configure
+   `PAYSTACK_PLAN_CODE`, `PAYSTACK_PLAN_AMOUNT=300000`, `PAYSTACK_CURRENCY=NGN`, and
+   the corresponding `PAYSTACK_SECRET_KEY` in the private server environment.
+   Never put the secret key in the site, OBS assets, screenshots or source control.
+3. Set `APP_BASE_URL` to the control plane's public HTTPS origin. Configure the
+   Paystack webhook URL as `https://<control-plane-host>/api/billing/webhook`.
+   A localhost URL, or the separate Nango OAuth redirect, is not a publicly
+   reachable Paystack webhook endpoint.
+4. Verify checkout, the server-side return verification, signed webhooks,
+   cancellation and renewal with the test key and matching test plan. The
+   provider's plan amount overrides the transaction initialization amount, so
+   both must match the advertised price. Do not silently substitute a USD plan
+   or perform an undisclosed exchange-rate conversion.
+5. Before enabling live checkout, verify merchant ownership, NGN subscription
+   eligibility, the live key/plan environment, the exact amount and monthly
+   interval, and public webhook reachability. Live charges require separate
+   approval; passing mocked tests does not establish live-payment readiness.
+
+#### Enforcement and operational safety
+
+- Billing belongs to a workspace. Only owners and finance members can initiate
+  checkout or manage its subscription; operators can inspect its status.
+- A browser redirect and `subscription.create` are not proof of payment.
+  Entitlement requires a server-verified successful transaction bound to a
+  stored checkout reference or an already correlated subscription. Customer
+  email/code alone must never select a workspace.
+- Payment amount, currency, plan and test/live environment must match. Duplicate
+  notifications cannot extend access twice. Uncorrelated subscription events
+  remain pending rather than guessing which workspace they belong to.
+- Access is bounded by a paid-through timestamp, not a permanent `active` flag.
+  Cancellation preserves paid time; failed renewal does not erase time already
+  purchased. Missing billing evidence must not silently migrate a legacy
+  `stripe_status=active` row into an indefinite paid entitlement.
+- Admission must be enforced at actual OBS publishing, not just in the portal.
+  Stream keys identify devices; they are not perpetual licenses. Device and
+  broadcast slots require atomic reservations.
+- After paid access expires, no new paid broadcasts are admitted. An already
+  live broadcast may finish for at most two hours after expiry; an unused
+  reservation does not qualify. Reconnects within the same active session
+  must not renew that deadline. Stopping must use the normal relay/provider
+  cleanup path, never terminate OBS or interrupt local recording/output tools.
+- Keep sign-in, billing recovery, status, stopping and disconnection available
+  after expiry. Preserve settings and device registrations for reactivation.
+- Enforcement is authoritative only on a service Emberstage controls. An owner
+  with editable self-hosted code/database can remove local license checks;
+  signed grants cannot make an owner-controlled relay tamper-proof.
+
+Before rolling this out to a running installation, stop its broadcasts, back up
+the database, and verify migration and expiry behaviour against an isolated
+copy. Do not infer paid entitlement from previous synthetic streaming tests.
+
+Official integration reference: [Paystack subscriptions](https://paystack.com/docs/payments/subscriptions/).
 
 ### Auth0 OpenID Connect (OIDC) Sign-In Setup
 

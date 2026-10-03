@@ -3,557 +3,244 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta
-      name="description"
-      content="Emberstage for OBS is a local-first service operator for Scripture, songs, text, media, and camera control with an explicit Select, Take, and Hide workflow."
-    />
-    <title>Emberstage for OBS · Local-first service operator</title>
-    <link rel="icon" type="image/svg+xml" href="../assets/brand/favicon.svg" />
-    <link rel="shortcut icon" href="../assets/brand/favicon.svg" />
-    <link rel="stylesheet" href="../assets/css/emberstage_brand.css?v=1" />
-    <link rel="stylesheet" href="styles.css?v=3" />
+    <meta name="description" content="Your Emberstage operator guide: get oriented in OBS, run Scripture, songs, text, media and cameras, then set up managed streaming." />
+    <title>Emberstage for OBS · Operator guide</title>
+    <link rel="icon" type="image/svg+xml" href="brand/favicon.svg" />
+    <link rel="stylesheet" href="styles.css?v=5" />
   </head>
   <body>
     <a class="skip-link" href="#main-content">Skip to content</a>
-
     <div class="site-shell">
       <header class="site-header">
-        <div class="brand-lockup brand-lockup--svg" aria-label="Emberstage home">
-          <img class="brand-logo" src="../assets/brand/emberstage-logo.svg" alt="" />
-          <div>
-            <h1 class="brand-name">
-              <span class="sr-only">Emberstage for OBS</span>
-              <img class="brand-wordmark" src="../assets/brand/emberstage-wordmark.svg" alt="" />
-            </h1>
-            <p class="brand-kicker">Local-first service operator</p>
-          </div>
-        </div>
-
-        <button
-          class="menu-toggle"
-          type="button"
-          aria-expanded="false"
-          aria-controls="site-nav"
-        >
-          Menu
-        </button>
-
+        <a class="brand-lockup" href="#main-content" aria-label="Emberstage home">
+          <img class="brand-logo" src="brand/emberstage-logo.svg" alt="" />
+          <img class="brand-wordmark" src="brand/emberstage-wordmark.svg" alt="Emberstage for OBS" />
+        </a>
+        <button class="menu-toggle" type="button" aria-expanded="false" aria-controls="site-nav" hidden>Menu</button>
         <nav id="site-nav" class="site-nav" aria-label="Primary">
-          <a href="#workflow">Workflow</a>
-          <a href="#docks">Docks</a>
-          <a href="#demo">Demo</a>
+          <a href="#operator-guide">Usage guide</a>
+          <a href="#streaming-guide">Streaming</a>
           <a href="#plans">Plans</a>
           <a href="#providers">Providers</a>
         </nav>
       </header>
 
       <main id="main-content">
-        <section class="hero section-frame">
-          <div class="hero-copy">
-            <p class="eyebrow">Local-first control inside OBS</p>
-            <h2>Your service.<br />Ready for live.</h2>
-            <p class="hero-lead">
-              Scripture, songs, text, media, and cameras — together inside OBS.
-              Prepare your next moment privately, then take it live with clear,
-              deliberate controls.
-            </p>
-
-            <div class="hero-actions">
-              <a class="button button-primary" href="#demo">See the live workflow</a>
-              <a class="button button-secondary" href="#plans">View local core plan</a>
-            </div>
-
-            <p class="hero-note">
-              The local core runs without a product account. Account, billing, and provider tools are
-              separate services and appear only when their server-side integrations are configured.
-            </p>
-
-            <dl class="hero-metrics" aria-label="Emberstage product highlights">
-              <div>
-                <dt>Local core</dt>
-                <dd>Usable without forced cloud login</dd>
-              </div>
-              <div>
-                <dt>Dock family</dt>
-                <dd>Text, Scripture, Songs, Media, Cameras, Streaming</dd>
-              </div>
-              <div>
-                <dt>Output model</dt>
-                <dd>Select → Take → Hide text</dd>
-              </div>
-            </dl>
+        <section class="hero">
+          <div>
+            <p class="eyebrow">Emberstage for OBS · After installation</p>
+            <h1>Your service.<br />One clear workflow.</h1>
+            <p class="hero-lead">From the first verse to the final stream. Learn the controls, prepare each cue, and know exactly what changes on screen.</p>
+            <a class="button button-primary" href="#guide-orientation">Start with the basics <span aria-hidden="true">↓</span></a>
           </div>
-
-          <div class="hero-stage" aria-label="Emberstage product preview">
-            <div class="stage-card obs-window">
-              <div class="window-topline">
-                <span class="window-dots" aria-hidden="true">
-                  <i></i><i></i><i></i>
-                </span>
-                <span>OBS · Emberstage docks</span>
-              </div>
-
-              <div class="stage-grid">
-                <article class="mini-dock scripture-dock">
-                  <div class="dock-status-row">
-                    <span class="dock-label">Scripture</span>
-                    <span class="status-chip status-program">On Program</span>
-                  </div>
-                  <label class="mini-search">
-                    <span class="sr-only">Search Scripture</span>
-                    <input type="text" value="Jn 3:16" aria-label="Scripture search demo" readonly />
-                  </label>
-                  <div class="mini-list" aria-hidden="true">
-                    <button class="mini-row selected" type="button">John 3:16 · For God so loved the world…</button>
-                    <button class="mini-row" type="button">John 3:17 · For God did not send his Son…</button>
-                    <button class="mini-row" type="button">John 3:18 · Whoever believes in him…</button>
-                  </div>
-                  <div class="mini-footer">
-                    <span>Selected: John 3:16</span>
-                    <div>
-                      <button type="button">Hide text</button>
-                      <button class="button-accent" type="button">Take</button>
-                    </div>
-                  </div>
-                </article>
-
-                <article class="program-card">
-                  <div class="program-card-head">
-                    <span>Mapped output scene</span>
-                    <span class="status-chip">Local preview</span>
-                  </div>
-                  <div class="program-frame" aria-hidden="true">
-                    <div class="camera-shape"></div>
-                    <div class="text-overlay-card">
-                      <p class="overlay-ref">JOHN 3:16</p>
-                      <p class="overlay-copy">
-                        For God so loved the world that he gave his one and only Son…
-                      </p>
-                    </div>
-                  </div>
-                  <p class="program-caption">
-                    Preview illustration only. Emberstage controls mapped content inside OBS; it does not replace OBS as the compositor.
-                  </p>
-                </article>
-              </div>
-            </div>
+          <div class="hero-note">
+            <span class="status-chip">Local first</span>
+            <p>Text, Scripture, Songs, Media, and Cameras run locally without a product account.</p>
+            <p>Managed streaming is a separate, server-configured service. OBS remains your compositor and encoder.</p>
           </div>
         </section>
 
-        <section class="section-frame value-band" aria-labelledby="why-title">
-          <div class="section-heading">
-            <p class="eyebrow">Why it feels different</p>
-            <h2 id="why-title">Built for operators who need calm control, not one more fragile layer.</h2>
+        <section id="operator-guide" aria-labelledby="operator-guide-title">
+          <div class="section-heading guide-heading">
+            <p class="eyebrow">The operator guide</p>
+            <h2 id="operator-guide-title">Run the whole service.</h2>
+            <p>Read in order once. Jump straight to the dock you need during rehearsal.</p>
           </div>
+          <div class="guide-layout">
+            <nav class="guide-jump-nav" aria-label="Usage guide sections">
+              <span class="eyebrow">In this guide</span>
+              <a href="#guide-orientation"><span>01</span> Get oriented</a>
+              <a href="#guide-scripture"><span>02</span> Scripture</a>
+              <a href="#guide-songs"><span>03</span> Songs</a>
+              <a href="#guide-text"><span>04</span> Text</a>
+              <a href="#guide-media"><span>05</span> Media</a>
+              <a href="#guide-cameras"><span>06</span> Cameras</a>
+              <a href="#streaming-guide"><span>07</span> Streaming</a>
+            </nav>
 
-          <div class="value-grid">
-            <article class="value-card">
-              <h3>Local first</h3>
-              <p>
-                Scripture, songs, text overlays, and mapped local media should stay usable on the machine running OBS.
-              </p>
-            </article>
-            <article class="value-card">
-              <h3>Explicit output</h3>
-              <p>
-                Selection is private. Take updates the mapped output. Hide text affects text only.
-              </p>
-            </article>
-            <article class="value-card">
-              <h3>OBS-native mindset</h3>
-              <p>
-                Emberstage works with scenes, sources, and operator habits already inside OBS instead of building a second desktop switcher.
-              </p>
-            </article>
-          </div>
-        </section>
-
-        <section id="workflow" class="section-frame workflow-section" aria-labelledby="workflow-title">
-          <div class="section-heading">
-            <p class="eyebrow">Core interaction</p>
-            <h2 id="workflow-title">The service rhythm stays simple.</h2>
-          </div>
-
-          <ol class="workflow-track">
-            <li>
-              <span class="step-index">01</span>
-              <h3>Find</h3>
-              <p>Search Scripture, songs, text drafts, cameras, or mapped media.</p>
-            </li>
-            <li>
-              <span class="step-index">02</span>
-              <h3>Select</h3>
-              <p>Build the next cue privately without assuming viewers can see it.</p>
-            </li>
-            <li>
-              <span class="step-index">03</span>
-              <h3>Review</h3>
-              <p>See what is next, where it is mapped, and whether OBS reports it on program.</p>
-            </li>
-            <li>
-              <span class="step-index">04</span>
-              <h3>Take</h3>
-              <p>Apply the selected cue to its mapped output target with an explicit action.</p>
-            </li>
-            <li>
-              <span class="step-index">05</span>
-              <h3>Hide text</h3>
-              <p>Clear the text overlay immediately without touching media or stream state.</p>
-            </li>
-          </ol>
-        </section>
-
-        <section id="docks" class="section-frame" aria-labelledby="docks-title">
-          <div class="section-heading">
-            <p class="eyebrow">Dock family</p>
-            <h2 id="docks-title">Separate docks for the work people actually do during service.</h2>
-          </div>
-
-          <div class="dock-grid">
-            <article class="dock-card">
-              <h3>Text</h3>
-              <p>Compose quick manual overlays, review the draft, then take or hide text explicitly.</p>
-            </article>
-            <article class="dock-card">
-              <h3>Scripture</h3>
-              <p>Search by shorthand reference or verse text and move through results without publishing on selection.</p>
-            </article>
-            <article class="dock-card">
-              <h3>Songs</h3>
-              <p>Keep a local library, choose sections or lines, and move next or previous without surprise output.</p>
-            </article>
-            <article class="dock-card">
-              <h3>Media</h3>
-              <p>Browse mapped pictures and videos already in OBS, then show or hide them with scene-safe intent.</p>
-            </article>
-            <article class="dock-card">
-              <h3>Cameras</h3>
-              <p>Switch included camera sources inside the mapped output scene without switching the OBS program scene.</p>
-            </article>
-            <article class="dock-card dock-card-highlight">
-              <h3>Setup</h3>
-              <p>Review output scene, overlay mapping, source sets, hotkeys, and future account setup in one clear place.</p>
-            </article>
-          </div>
-        </section>
-
-        <section id="demo" class="section-frame demo-section" aria-labelledby="demo-title">
-          <div class="section-heading">
-            <p class="eyebrow">Interactive marketing demo</p>
-            <h2 id="demo-title">Explore the workflow without implying a connected system.</h2>
-            <p>
-              The mockups below are interface previews only. They are not connected to OBS, providers, billing, or accounts.
-            </p>
-          </div>
-
-          <div class="demo-layout">
-            <div class="demo-panel section-card">
-              <div class="demo-topbar">
-                <div>
-                  <p class="demo-eyebrow">Interface preview</p>
-                  <h3>Emberstage dock simulator</h3>
+            <div class="guide-content">
+              <section id="guide-orientation" class="guide-section" aria-labelledby="orientation-title">
+                <p class="eyebrow">01 · Get oriented</p>
+                <h3 id="orientation-title">Controls are not the output.</h3>
+                <p>The docks are your operator workspace. The installed output sources belong in your OBS scene. Viewers see the scene on <strong>OBS Program</strong>, not the dock you are clicking.</p>
+                <div class="orientation-grid">
+                  <article><h4>Prepare in the dock</h4><p>Search Scripture, write a message, or select media and cameras before showing them. Songs behave differently: loading a song or advancing lyrics can update text already on screen. Clicking a verse or lyric cue can show it immediately.</p></article>
+                  <article><h4>Check OBS Program</h4><p>Keep the installed output sources visible in the scene you are using. A dock’s “live” state is not proof that its source is visible on Program. In OBS Studio Mode, Preview and Program are different.</p></article>
+                  <article><h4>Hide the right layer</h4><p>The top <strong>Show/Hide</strong> toggle controls shared Text, Scripture, and Songs output. <strong>Hide media</strong> and camera hide actions are separate. None stops OBS streaming.</p></article>
                 </div>
-                <div class="demo-badges">
-                  <span class="status-chip">Preview only</span>
-                  <span class="status-chip status-muted" id="demo-state-pill">Text hidden</span>
+                <p class="guide-note"><strong>Before the service:</strong> rehearse a cue, check it on OBS Program, then hide it. Keep media and camera visibility separate from text. The dock <strong>Size</strong> slider changes the controls, not the output text size.</p>
+                <p class="capture-note">Real, locally rendered Emberstage UI—not mockups. All operator state, song text, media, names, and streaming data shown are examples. Camera thumbnails are illustrative; no camera hardware, OBS connection, or provider broadcast was used. Amber numbers match each screenshot’s caption. Select an image to view it full size.</p>
+              </section>
+
+              <section id="guide-scripture" class="guide-section" aria-labelledby="scripture-title">
+                <p class="eyebrow">02 · Scripture</p>
+                <h3 id="scripture-title">Find the passage. Take the verse.</h3>
+                <ol class="instructions">
+                  <li><strong>Search.</strong> Open Scripture, choose the Bible version, then enter a reference such as <code>Psalm 23:1-3</code>, a chapter, or words from a verse. Press <kbd>Enter</kbd> or choose <strong>Search</strong>.</li>
+                  <li><strong>Take.</strong> The first Enter searches and focuses the first result without showing it. Press <kbd>Enter</kbd> again on the focused result—or click a verse—to show it. Repeating the same live cue hides it.</li>
+                  <li><strong>Navigate.</strong> <strong>Prev</strong>/<strong>Next</strong> and left/right arrows select the next verse without taking it. Keep keyboard focus out of the search field; click or Enter takes the selected verse.</li>
+                  <li><strong>Set the look.</strong> Open <strong>Style → Scripture broadcast look</strong>, choose the mode and branding, then <strong>Apply broadcast look</strong>. <strong>Restore legacy</strong> returns to the legacy look. Use the top <strong>Show/Hide</strong> control to clear or reveal shared text.</li>
+                </ol>
+                <figure class="marked-shot">
+                  <a href="screenshots/guide-scripture-marked.png" aria-label="View Scripture screenshot full size"><img src="screenshots/guide-scripture-marked.png" width="1000" height="650" loading="lazy" alt="Scripture dock showing Psalm 23 results, with search, selected verse, navigation, Style and Show highlighted" /></a>
+                  <figcaption><strong>1</strong> Search · <strong>2</strong> Verse cue · <strong>3</strong> Select previous/next · <strong>4</strong> Style · <strong>5</strong> Shared text visibility. This capture is after the first Enter: the verse is selected; text is still hidden.</figcaption>
+                </figure>
+              </section>
+
+              <section id="guide-songs" class="guide-section" aria-labelledby="songs-title">
+                <p class="eyebrow">03 · Songs</p>
+                <h3 id="songs-title">Load the song. Follow its parts.</h3>
+                <ol class="instructions">
+                  <li><strong>Load.</strong> Use <strong>Import</strong> for one or more <code>.txt</code> files. A <code>Title:</code> line names the song; headings such as <code>[Verse 1]</code>, <code>[Chorus]</code>, and <code>[Bridge]</code> divide sections.</li>
+                  <li><strong>Select.</strong> Search the Library by <strong>Title</strong>, or choose <strong>Lyrics</strong> to search words across the library. Loading a song sends its opening cue and can replace text already on screen; hide shared text first if you are preparing privately. The separate <strong>Search lyrics…</strong> field searches the loaded song.</li>
+                  <li><strong>Take and move.</strong> Click a section or lyric line to show a cue. Repeating the same live cue hides it. <strong>Prev</strong>/<strong>Next</strong> and up/down arrows advance the output—not just selection. If text is hidden, click a cue or use <strong>Show</strong> to reveal it. Compact looks split longer sections into two-line parts—watch <strong>PART</strong>. With line-by-line mode enabled, cues stay single lines.</li>
+                  <li><strong>Choose the look.</strong> Use the song-look dropdown for <strong>Full screen</strong>, <strong>Clean lower-third</strong>, <strong>Soft gradient strip</strong>, <strong>Compact lyric card</strong>, or <strong>Side panel</strong>. To advance automatically, set a positive number of seconds and choose <strong>Play Lyrics</strong>; <strong>Stop</strong> stops the timer, not the text output.</li>
+                  <li><strong>Edit or delete.</strong> The pencil opens <strong>Edit Song</strong>; update the title/lyrics and choose <strong>Save</strong>. The trash button opens a confirmation before <strong>Delete</strong>. Both update the local library—not the original file or the already displayed output.</li>
+                </ol>
+                <figure class="marked-shot">
+                  <a href="screenshots/guide-songs-marked.png" aria-label="View Songs screenshot full size"><img src="screenshots/guide-songs-marked.png" width="1000" height="650" loading="lazy" alt="Songs dock with a synthetic song, section headings, PART 1/2, local library, Import, Edit and Delete, and Clean lower-third look" /></a>
+                  <figcaption><strong>1</strong> Import · <strong>2</strong> Local library · <strong>3</strong> Sections and lyric cues · <strong>4</strong> Edit, Delete and loaded-song search · <strong>5</strong> Song look. The example’s four-line verse becomes two compact parts.</figcaption>
+                </figure>
+              </section>
+
+              <section id="guide-text" class="guide-section" aria-labelledby="text-title">
+                <p class="eyebrow">04 · Text</p>
+                <h3 id="text-title">A quick message, with a deliberate take.</h3>
+                <ol class="instructions">
+                  <li><strong>Write.</strong> Open <strong>Text</strong> and enter a message. Use <strong>B</strong> and <strong>I</strong> for formatting. Position prefixes such as <code>[top-left] Welcome</code> or <code>[center] Prayer begins now</code> place the message.</li>
+                  <li><strong>Style.</strong> Open <strong>Text style</strong> for Legacy, Lower third, or Full-screen card, church name/logo, and entrance/exit settings. Choose <strong>Apply broadcast look</strong>; <strong>Done</strong> closes the dialog. <strong>Restore legacy</strong> resets the look.</li>
+                  <li><strong>Take.</strong> Choose <strong>Take text</strong> to send the draft and make text visible. Taking the same already-live message again hides it. <strong>History</strong> loads the sent-message history into the editor; edit it and take the draft when ready.</li>
+                  <li><strong>Clear the screen, not the draft.</strong> Use the top <strong>Show/Hide</strong> toggle. It controls the same output used by Scripture and Songs, without hiding media or cameras.</li>
+                </ol>
+                <figure class="marked-shot">
+                  <a href="screenshots/guide-text-marked.png" aria-label="View Text screenshot full size"><img src="screenshots/guide-text-marked.png" width="1000" height="650" loading="lazy" alt="Text dock with an example top-left message, B and I formatting, Text style, Take text, History and shared visibility" /></a>
+                  <figcaption><strong>1</strong> Draft and position prefix · <strong>2</strong> Formatting and Text style · <strong>3</strong> Take text · <strong>4</strong> History · <strong>5</strong> Shared text visibility. Typing alone does not take the draft.</figcaption>
+                </figure>
+              </section>
+
+              <section id="guide-media" class="guide-section" aria-labelledby="media-title">
+                <p class="eyebrow">05 · Media</p>
+                <h3 id="media-title">Bring in a still or clip. Choose its frame.</h3>
+                <ol class="instructions">
+                  <li><strong>Add.</strong> Choose <strong>Add media</strong> for JPG, PNG, GIF, WebP, MP4, or WebM files. The library lives in the local OBS browser storage context. Select a card, then <strong>Show media</strong>; selecting alone does not show it.</li>
+                  <li><strong>Size and play.</strong> <strong>Fit</strong> keeps the whole image visible; <strong>Fill</strong> covers the area and may crop edges. For a live video, use <strong>Play/Pause</strong>, <strong>Restart</strong>, or the seek bar. <strong>Mute video</strong> and <strong>Loop</strong> control sound and repetition.</li>
+                  <li><strong>Share with a camera.</strong> Open <strong>Layout</strong>: <strong>Full media</strong>, <strong>Media left</strong>, <strong>Media right</strong>, or <strong>Camera inset</strong>. Choose the inset corner where offered. For a live item, choose <strong>Apply layout live</strong>; otherwise the layout applies when you show it.</li>
+                  <li><strong>Hide.</strong> The live item’s action becomes <strong>Hide media</strong>. A media/camera layout needs a camera shown from the Cameras dock; choosing the layout does not select or start one for you.</li>
+                </ol>
+                <figure class="marked-shot">
+                  <a href="screenshots/guide-media-marked.png" aria-label="View Media screenshot full size"><img src="screenshots/guide-media-marked.png" width="1000" height="650" loading="lazy" alt="Media dock with generated example clip and still, Layout menu, Apply layout live, video playback, Fit, Mute video, Loop and Hide media" /></a>
+                  <figcaption><strong>1</strong> Add media · <strong>2</strong> Selected item · <strong>3</strong> Layout and Apply layout live · <strong>4</strong> Playback and seek · <strong>5</strong> Sizing, sound, loop and visibility. The LIVE state is simulated; these generated files were not shown in OBS.</figcaption>
+                </figure>
+              </section>
+
+              <section id="guide-cameras" class="guide-section" aria-labelledby="cameras-title">
+                <p class="eyebrow">06 · Cameras</p>
+                <h3 id="cameras-title">One camera, or two in the same scene.</h3>
+                <ol class="instructions">
+                  <li><strong>Find sources.</strong> Add your camera/capture inputs in OBS first, then <strong>Rescan</strong>. <strong>Video Capture</strong> filters normal camera sources; <strong>All sources</strong> also exposes other OBS inputs. The dock uses the local OBS connection, not browser camera permission.</li>
+                  <li><strong>Show one.</strong> Select a camera. In <strong>Settings</strong>, set <strong>Framing</strong> to Fit or Fill, plus Transition and Speed; then <strong>Show camera</strong>. It uses the full frame unless live media is sharing it. The same live single camera gets <strong>Hide camera</strong>. Selection/framing changes alone do not apply them.</li>
+                  <li><strong>Show two.</strong> Open <strong>Dual</strong>, choose <strong>50/50</strong> or <strong>Big + small</strong>, and assign two different cameras. Set the small-camera corner where offered, transition and speed; <strong>Swap cameras</strong> reverses assignments. Choose <strong>Apply 50/50</strong> or <strong>Apply big + small</strong>.</li>
+                  <li><strong>Unapply or hide.</strong> When the settings match the active dual layout, its button becomes <strong>Unapply 50/50</strong> or <strong>Unapply big + small</strong>; changed settings must be applied first. Unapply restores the prior single camera (or the left/big camera if none was saved); it does not hide cameras. If the saved camera is no longer available, the dual view stays active and a notice explains why. <strong>Hide all</strong> clears Emberstage’s camera output. These actions do not switch the OBS Program scene; unrelated OBS source visibility remains separate.</li>
+                </ol>
+                <figure class="marked-shot">
+                  <a href="screenshots/guide-cameras-marked.png" aria-label="View Cameras screenshot full size"><img src="screenshots/guide-cameras-marked.png" width="1000" height="650" loading="lazy" alt="Cameras dock with illustrative Wide and Close sources, source filter, selected camera, Dual 50/50 assignments, Apply, Settings, Hide all and Show camera" /></a>
+                  <figcaption><strong>1</strong> Source filter · <strong>2</strong> Selected camera · <strong>3</strong> Dual assignments and Apply · <strong>4</strong> Single-camera settings and visibility. Thumbnails, names and CONNECTED status are illustrative; no hardware or OBS service was contacted.</figcaption>
+                </figure>
+                <p class="guide-note"><strong>Not visible?</strong> Check the installed Emberstage output in OBS Program and its source visibility. A selected camera is not a shown camera. Text, media, camera composition, and the encoder each have separate controls.</p>
+              </section>
+
+              <section id="streaming-guide" class="guide-section" aria-labelledby="streaming-guide-title">
+                <p class="eyebrow">07 · Managed streaming</p>
+                <h3 id="streaming-guide-title">Ready locally? Connect your destinations.</h3>
+                <p>Only for a configured managed-streaming server. Local docks do not need pairing or a cloud login. OBS sends the video; Emberstage manages the approved destinations.</p>
+                <div class="stream-step">
+                  <h4><span class="step-number">1</span> Open Portal and create a pairing code</h4>
+                  <p>Click <strong>Open portal</strong> in the Streaming dock and sign in to the correct workspace. Go to <strong>Devices → Pairing and device access</strong>, name the OBS computer, then click <strong>Generate code</strong>. Already paired to the right workspace? Skip to step 3.</p>
+                  <figure class="marked-shot">
+                    <a href="screenshots/streaming-pairing-marked.png" aria-label="View step 1 pairing screenshot full size"><img src="screenshots/streaming-pairing-marked.png" width="1280" height="1000" loading="lazy" alt="Portal Devices with step 1 markings around Devices, Generate code and an example pairing code" /></a>
+                    <figcaption><strong>1 · Create your pairing code.</strong> Example workspace and code only; generate your own in Devices. Pair the dock before setting up its OBS key.</figcaption>
+                  </figure>
                 </div>
-              </div>
-
-              <div class="demo-tabs" role="tablist" aria-label="Product demo docks">
-                <button class="demo-tab is-active" type="button" role="tab" aria-selected="true" data-demo-tab="text">Text</button>
-                <button class="demo-tab" type="button" role="tab" aria-selected="false" data-demo-tab="scripture">Scripture</button>
-                <button class="demo-tab" type="button" role="tab" aria-selected="false" data-demo-tab="songs">Songs</button>
-                <button class="demo-tab" type="button" role="tab" aria-selected="false" data-demo-tab="media">Media</button>
-                <button class="demo-tab" type="button" role="tab" aria-selected="false" data-demo-tab="cameras">Cameras</button>
-                <button class="demo-tab" type="button" role="tab" aria-selected="false" data-demo-tab="setup">Setup</button>
-                <button class="demo-tab" type="button" role="tab" aria-selected="false" data-demo-tab="streaming">Streaming</button>
-              </div>
-
-              <div class="demo-shell">
-                <div class="demo-dock" aria-live="polite">
-                  <div class="demo-dock-status">
-                    <div>
-                      <p class="mini-label">Current dock</p>
-                      <strong id="demo-dock-title">Text</strong>
-                    </div>
-                    <div class="demo-status-stack">
-                      <span class="status-chip">Workspace · Local demo</span>
-                      <span class="status-chip status-warn" id="demo-program-state">Not on Program</span>
-                    </div>
-                  </div>
-
-                  <div class="demo-content" id="demo-content">
-                    <section class="demo-view is-visible" data-demo-view="text">
-                      <label class="field-block" for="demo-text-input">
-                        <span>Draft text</span>
-                        <textarea id="demo-text-input" rows="7">Welcome to evening service.
-Selection stays private until Take.</textarea>
-                      </label>
-                      <div class="mini-toolbar" aria-hidden="true">
-                        <span>B</span><span>I</span><span>Align</span>
-                      </div>
-                    </section>
-
-                    <section class="demo-view" data-demo-view="scripture">
-                      <label class="field-block" for="demo-scripture-query">
-                        <span>Reference or verse text</span>
-                        <input id="demo-scripture-query" type="text" value="Psalm 23:1" readonly />
-                      </label>
-                      <div class="demo-list" role="listbox" aria-label="Scripture demo results">
-                        <button class="demo-row is-selected" type="button" data-demo-selection="Psalm 23:1">Psalm 23:1 · The Lord is my shepherd; I shall not want.</button>
-                        <button class="demo-row" type="button" data-demo-selection="Psalm 23:2">Psalm 23:2 · He makes me lie down in green pastures…</button>
-                        <button class="demo-row" type="button" data-demo-selection="Psalm 23:3">Psalm 23:3 · He restores my soul…</button>
-                      </div>
-                    </section>
-
-                    <section class="demo-view" data-demo-view="songs">
-                      <div class="split-demo">
-                        <div>
-                          <p class="mini-label">Local library</p>
-                          <div class="demo-list compact-list">
-                            <button class="demo-row is-selected" type="button" data-demo-selection="Amazing Grace · Verse 1">Amazing Grace</button>
-                            <button class="demo-row" type="button" data-demo-selection="How Great Thou Art · Chorus">How Great Thou Art</button>
-                            <button class="demo-row" type="button" data-demo-selection="Great Is Thy Faithfulness · Verse 2">Great Is Thy Faithfulness</button>
-                          </div>
-                        </div>
-                        <div>
-                          <p class="mini-label">Selected cue</p>
-                          <div class="lyric-card">
-                            <strong>Amazing Grace · Verse 1</strong>
-                            <p>
-                              Amazing grace, how sweet the sound that saved a wretch like me.
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                    </section>
-
-                    <section class="demo-view" data-demo-view="media">
-                      <div class="demo-gallery" role="list" aria-label="Media demo items">
-                        <button class="media-tile is-selected" type="button" data-demo-selection="Opening still · Show">
-                          <span class="media-thumb media-thumb-gold"></span>
-                          <span>Opening still</span>
-                        </button>
-                        <button class="media-tile" type="button" data-demo-selection="Scripture backdrop · Show">
-                          <span class="media-thumb media-thumb-maroon"></span>
-                          <span>Scripture backdrop</span>
-                        </button>
-                        <button class="media-tile" type="button" data-demo-selection="Choir loop · Show">
-                          <span class="media-thumb media-thumb-slate"></span>
-                          <span>Choir loop</span>
-                        </button>
-                      </div>
-                    </section>
-
-                    <section class="demo-view" data-demo-view="cameras">
-                      <div class="demo-list compact-list" role="listbox" aria-label="Camera demo sources">
-                        <button class="demo-row is-selected" type="button" data-demo-selection="Center camera · Take camera">Center camera · Enabled</button>
-                        <button class="demo-row" type="button" data-demo-selection="Pulpit camera · Take camera">Pulpit camera · Hidden</button>
-                        <button class="demo-row" type="button" data-demo-selection="Wide camera · Take camera">Wide camera · Hidden</button>
-                      </div>
-                      <p class="demo-help-copy">
-                        Camera actions here are only a product preview. They are not controlling OBS.
-                      </p>
-                    </section>
-
-                    <section class="demo-view" data-demo-view="setup">
-                      <div class="preview-banner">Interface preview · not connected</div>
-                      <div class="setup-preview-grid">
-                        <article>
-                          <h4>Output mapping</h4>
-                          <p>Shared output scene selected</p>
-                          <p>Overlay mapped to transparent browser source</p>
-                        </article>
-                        <article>
-                          <h4>Local device</h4>
-                          <p>OBS connection status shown here when supported</p>
-                          <p>Hotkeys and source review live here</p>
-                        </article>
-                      </div>
-                    </section>
-
-                    <section class="demo-view" data-demo-view="streaming">
-                      <div class="preview-banner">Configuration-gated · interface preview only</div>
-                      <div class="setup-preview-grid">
-                        <article>
-                          <h4>Contribution</h4>
-                          <p>Managed ingest is separate from Local Core and requires a configured server.</p>
-                        </article>
-                        <article>
-                          <h4>Destinations</h4>
-                          <p>Provider setup here is not connected and should not be read as shipped functionality.</p>
-                        </article>
-                      </div>
-                    </section>
-                  </div>
-
-                  <div class="demo-footer">
-                    <div>
-                      <p class="mini-label">Selected</p>
-                      <strong id="demo-selection-label">Draft text</strong>
-                    </div>
-                    <div class="demo-actions">
-                      <button class="button button-secondary" type="button" id="demo-hide-button">Hide text</button>
-                      <button class="button button-primary" type="button" id="demo-take-button">Take</button>
-                    </div>
-                  </div>
+                <div class="stream-step">
+                  <h4><span class="step-number">2</span> Enter the code in the Streaming dock</h4>
+                  <p>Inside OBS, open <strong>Streaming</strong>, click <strong>Enter code</strong>, paste your portal code, then click <strong>Pair now</strong>. The code expires after ten minutes and works once. Check the paired workspace and device before continuing.</p>
+                  <figure class="marked-shot marked-shot-compact">
+                    <a href="screenshots/streaming-code-marked.png" aria-label="View step 2 link-code screenshot full size"><img src="screenshots/streaming-code-marked.png" width="780" height="400" loading="lazy" alt="Streaming dock link-code dialog with step 2 marking the example code and Pair now" /></a>
+                    <figcaption><strong>2 · Pair inside the dock.</strong> This example code is not a working credential. Enter your own short-lived portal code.</figcaption>
+                  </figure>
                 </div>
-
-                <aside class="demo-preview-panel" aria-label="Preview response panel">
-                  <div class="panel-topline">
-                    <span>Mapped output preview</span>
-                    <span class="status-chip status-program" id="demo-overlay-indicator">Hidden</span>
-                  </div>
-                  <div class="demo-program-stage">
-                    <div class="program-camera-shape"></div>
-                    <div class="program-overlay" id="demo-overlay-card">
-                      <p class="overlay-kicker" id="demo-overlay-kicker">PRIVATE DRAFT</p>
-                      <p id="demo-overlay-copy">Welcome to evening service. Selection stays private until Take.</p>
-                    </div>
-                  </div>
-                  <p class="demo-caption" id="demo-caption">
-                    Selection stays private until Take. This preview illustrates the interaction model only.
-                  </p>
-                </aside>
-              </div>
+                <div class="stream-step">
+                  <h4><span class="step-number">3</span> Approve only the destinations you want live</h4>
+                  <p>In Portal → <strong>Overview → Destinations</strong>, connect accounts available on your server, or add custom RTMP. For YouTube, open <strong>Broadcasts</strong>: choose the channel, click <strong>Use this</strong> on an existing broadcast or <strong>Create and bind broadcast</strong>, and check its privacy. Return to Destinations and enable only intended channels. Selecting a broadcast is not the same as approving its channel.</p>
+                  <figure class="marked-shot">
+                    <a href="screenshots/streaming-broadcast-marked.png" aria-label="View step 3 broadcast screenshot full size"><img src="screenshots/streaming-broadcast-marked.png" width="1280" height="1000" loading="lazy" alt="Portal Broadcasts with step 3 marking Broadcasts, the selected YouTube broadcast and channel approval status" /></a>
+                    <figcaption><strong>3 · Choose the YouTube broadcast.</strong> Example channel and unlisted broadcast; nothing is running. Channel approval is a separate Destinations toggle. Review privacy before enabling it.</figcaption>
+                  </figure>
+                </div>
+                <div class="stream-step">
+                  <h4><span class="step-number">4</span> Configure OBS once</h4>
+                  <p>After pairing, open Portal → <strong>Overview → OBS setup</strong> and select this active device. Click <strong>Set up OBS</strong> if it has no key yet. In OBS <strong>Settings → Stream</strong>, choose <strong>Custom</strong>, paste the portal’s RTMP ingest server and stream key, and apply. Keep the key private; do not rotate a working key just to follow this guide.</p>
+                  <figure class="marked-shot">
+                    <a href="screenshots/streaming-overview-example.png" aria-label="View steps 3 and 4 destination and OBS setup screenshot full size"><img src="screenshots/streaming-overview-example.png" width="1280" height="1000" loading="lazy" alt="Portal Overview with step 3 marking destination approval and step 4 marking the paired device and OBS setup" /></a>
+                    <figcaption><strong>3–4 · Approve the channel, then configure OBS.</strong> Example paired device before key generation. The marked toggle approves auto-go-live; Set up OBS generates its key. The example ingest address is deliberately nonfunctional—copy your own server’s values.</figcaption>
+                  </figure>
+                </div>
+                <div class="stream-step">
+                  <h4><span class="step-number">5</span> Start from OBS, monitor in the dock</h4>
+                  <p>Confirm the dock is paired and readiness checks pass, then click <strong>Start Streaming</strong> in OBS itself. Approved YouTube channels should go live automatically without a second Go Live click. Watch each destination’s relay, receiving, and live status separately: a working relay alone does not prove viewers are live.</p>
+                </div>
+                <div class="stream-step">
+                  <h4><span class="step-number">6</span> End deliberately</h4>
+                  <p>Use the dock’s <strong>End</strong> action to end the managed session, and OBS <strong>Stop Streaming</strong> to stop the encoder signal. Neither the dock’s End nor Portal’s YouTube <strong>End broadcast</strong> stops OBS. Verify the destinations have ended and OBS is no longer sending.</p>
+                  <figure class="marked-shot marked-shot-compact">
+                    <a href="screenshots/streaming-monitor-example.png" aria-label="View steps 5 and 6 Streaming dock screenshot full size"><img src="screenshots/streaming-monitor-example.png" width="780" height="940" loading="lazy" alt="Paired Streaming dock with step 5 marking relay, receiving and live indicators and step 6 marking End" /></a>
+                    <figcaption><strong>5–6 · Monitor, then end.</strong> All live indicators are simulated data. Start Streaming and Stop Streaming belong to OBS, outside this dock; End only ends the managed session.</figcaption>
+                  </figure>
+                </div>
+                <p class="guide-note"><strong>Before going live:</strong> correct workspace/device, only intended destinations approved, correct YouTube broadcast and privacy, current ingest/key in OBS, and readiness checked. These locally rendered portal/dock captures use example data only—no real accounts, keys, or broadcasts.</p>
+              </section>
             </div>
           </div>
         </section>
 
-        <section id="plans" class="section-frame plans-section" aria-labelledby="plans-title">
+        <section id="plans" class="section-frame" aria-labelledby="plans-title">
           <div class="section-heading">
-            <p class="eyebrow">Plans and capability model</p>
-            <h2 id="plans-title">Honest packaging without invented checkout or pricing.</h2>
+            <p class="eyebrow">Simple pricing</p>
+            <h2 id="plans-title">Free at the lectern.<br />US$2 to take it further.</h2>
+            <p>Keep your local OBS tools. Add streaming control when you need it.</p>
           </div>
-
           <div class="plans-grid">
-            <article class="plan-card plan-card-primary">
-              <div class="plan-header">
-                <h3>Local Core</h3>
-                <span class="plan-state">Local-first</span>
-              </div>
-              <p class="plan-summary">
-                The local operating workflow: Scripture, songs, text overlay control, mapped media, camera switching, and setup.
-              </p>
-              <ul>
-                <li>Local-first Scripture and song operation</li>
-                <li>Explicit Select → Take → Hide text model</li>
-                <li>Separate docks for Text, Scripture, Songs, Media, Cameras, Setup</li>
-                <li>No invented pricing, checkout, or forced cloud dependency shown here</li>
-              </ul>
-              <a class="button button-secondary" href="#demo">Explore local workflow</a>
-            </article>
-
             <article class="plan-card">
-              <div class="plan-header">
-                <h3>Managed Streaming</h3>
-                <span class="plan-state plan-state-waitlist">Configuration-gated</span>
-              </div>
-              <p class="plan-summary">
-                Account-based contribution and destination controls are separate from Local Core and depend on a configured Emberstage server.
-              </p>
-              <ul>
-                <li>Separate from the local core</li>
-                <li>Product accounts may use email/password or configured Google sign-in</li>
-                <li>Billing and provider connections appear only when configured</li>
-                <li>Capabilities and limits belong to verified release evidence</li>
-              </ul>
-              <button class="button button-primary" type="button" id="waitlist-button">
-                Join waitlist interest
-              </button>
-              <p class="waitlist-response" id="waitlist-response" aria-live="polite"></p>
+              <div class="plan-header"><h3>Emberstage Free</h3><span class="status-chip">Yours to keep</span></div>
+              <p class="plan-price">US$0 <span>forever</span></p>
+              <p>Everything you need to put your service on screen, right inside OBS.</p>
+              <ul><li>Local-first Scripture and song operation</li><li>Shared text visibility and dedicated media/camera controls</li><li>Text, Scripture, songs, media, and camera docks</li><li>Local recording and presentation stay free</li><li>No account or card required for local tools</li></ul>
+              <a class="button button-secondary" href="#operator-guide">Explore the local workflow</a>
+            </article>
+            <article class="plan-card plan-card-primary">
+              <div class="plan-header"><h3>Emberstage Pro</h3><span class="status-chip">For your whole workspace</span></div>
+              <p class="plan-price">₦3,000 <span>/ month</span></p>
+              <p>One workspace. One OBS start. Your approved channels go live together.</p>
+              <ul><li>Up to 3 paired OBS devices</li><li>Up to 3 simultaneous destinations</li><li>1 active broadcast per workspace</li><li>Connected accounts, broadcast setup, and relay status</li><li>Cancel anytime; keep access through your paid period</li></ul>
+              <button class="button button-primary" type="button" disabled>Checkout coming soon</button>
+              <p class="fine-print">Billed monthly in NGN through Paystack when checkout is enabled. No payment is taken on this page.</p>
             </article>
           </div>
+          <p class="fine-print">Pro covers the streaming control service, not unlimited hosted bandwidth. A configured relay and eligible provider accounts are required. Local OBS tools and saved settings remain yours if Pro expires.</p>
         </section>
 
-        <section id="providers" class="section-frame providers-section" aria-labelledby="providers-title">
-          <div class="section-heading">
-            <p class="eyebrow">Provider status</p>
-            <h2 id="providers-title">Shown with clear release honesty.</h2>
-          </div>
-
+        <section id="providers" class="section-frame" aria-labelledby="providers-title">
+          <div class="section-heading"><p class="eyebrow">Provider status</p><h2 id="providers-title">Know what is available.</h2></div>
           <div class="provider-grid">
-            <article class="provider-card">
-              <div class="provider-topline">
-                <h3>YouTube</h3>
-                <span class="status-chip">Configuration-gated</span>
-              </div>
-              <p>Connected separately in Streaming Setup when YouTube credentials and approval are available.</p>
-            </article>
-            <article class="provider-card">
-              <div class="provider-topline">
-                <h3>Facebook Pages & Profiles</h3>
-                <span class="status-chip">Configuration-gated</span>
-              </div>
-              <p>Connected separately in Streaming Setup. Supports Pages and personal profiles (requires publish_video permission and reauthorization if missing).</p>
-            </article>
-            <article class="provider-card">
-              <div class="provider-topline">
-                <h3>Twitch</h3>
-                <span class="status-chip">Configuration-gated</span>
-              </div>
-              <p>Connected separately in Streaming Setup when Twitch credentials are configured.</p>
-            </article>
-            <article class="provider-card provider-card-blocked">
-              <div class="provider-topline">
-                <h3>Instagram</h3>
-                <span class="status-chip status-blocked">Unavailable</span>
-              </div>
-              <p>Not supported here. No connect button, no promise, no workaround copy.</p>
-            </article>
-          </div>
-        </section>
-
-        <section class="section-frame faq-section" aria-labelledby="faq-title">
-          <div class="section-heading">
-            <p class="eyebrow">FAQ</p>
-            <h2 id="faq-title">Clear boundaries matter.</h2>
-          </div>
-
-          <div class="faq-list">
-            <details>
-              <summary>Does Emberstage replace OBS?</summary>
-              <p>
-                No. The product direction here is for docks and mapped control inside OBS, not a second video compositor.
-              </p>
-            </details>
-            <details>
-              <summary>Can the local core still matter without cloud features?</summary>
-              <p>
-                Yes. This page is intentionally built around the local operator workflow first.
-              </p>
-            </details>
-            <details>
-              <summary>What does Take mean?</summary>
-              <p>
-                Take explicitly applies the selected cue or source action to its mapped target. Selection alone is not treated as live output.
-              </p>
-            </details>
-            <details>
-              <summary>What does Hide text affect?</summary>
-              <p>
-                Text only. It should not imply camera, media, or stream shutdown.
-              </p>
-            </details>
-            <details>
-              <summary>Is managed streaming available from this site?</summary>
-              <p>
-                Only on a configured Emberstage server. Local Core remains usable without an account, billing, or provider OAuth.
-              </p>
-            </details>
+            <article class="provider-card"><h3>YouTube</h3><span class="status-chip">Configuration-gated</span><p>Connected separately in Streaming Setup when YouTube credentials and approval are available.</p></article>
+            <article class="provider-card"><h3>Facebook Pages &amp; Profiles</h3><span class="status-chip">Configuration-gated</span><p>Connected separately in Streaming Setup. Supports Pages and personal profiles (requires publish_video permission and reauthorization if missing).</p></article>
+            <article class="provider-card"><h3>Twitch</h3><span class="status-chip">Configuration-gated</span><p>Connected separately in Streaming Setup when Twitch credentials are configured.</p></article>
+            <article class="provider-card"><h3>Instagram</h3><span class="status-chip status-blocked">Unavailable</span><p>Not supported here. No connect button, no promise, no workaround copy.</p></article>
           </div>
         </section>
       </main>
-
-      <footer class="site-footer section-frame">
-        <div>
-          <p class="eyebrow">Emberstage for OBS</p>
-          <h2>Start with the local operator workflow.</h2>
-        </div>
-        <a class="button button-primary" href="#demo">Open the demo</a>
-      </footer>
+      <footer class="site-footer"><p>Emberstage for OBS · Local-first service operation</p><a href="#operator-guide">Back to the guide ↑</a></footer>
     </div>
-
-    <script src="script.js?v=3"></script>
+    <script src="script.js?v=4"></script>
   </body>
 </html>

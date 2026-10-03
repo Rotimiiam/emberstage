@@ -1,0 +1,402 @@
+body[data-deck="cameras"]{
+  background:
+    radial-gradient(circle at top left,rgba(232,180,92,.14),transparent 26%),
+    radial-gradient(circle at top right,rgba(143,208,173,.1),transparent 22%),
+    #15171b;
+}
+
+body[data-deck="cameras"] #media-app{
+  position:relative;
+}
+
+body[data-deck="cameras"] .native-connection { position:relative; z-index:2; padding:8px 12px; overflow:auto; max-height:50vh; background:#202329; border-bottom:1px solid #383c44; }
+body[data-deck="cameras"] .native-connection p { max-width:640px; color:#b5b9c2; font-size:12px; }
+body[data-deck="cameras"] .native-connection label { display:inline-flex; flex-direction:column; gap:4px; max-width:100%; margin:4px 8px 6px 0; }
+body[data-deck="cameras"] .native-connection input { width:200px; max-width:100%; }
+body[data-deck="cameras"] .native-connection input[type=number] { width:90px; }
+body[data-deck="cameras"] .native-connection button { margin:4px; }
+body[data-deck="cameras"] .deckbar { flex-wrap:wrap; }
+
+body[data-deck="cameras"] #media-app::before{
+  content:"";
+  position:absolute;
+  inset:0;
+  pointer-events:none;
+  background-image:linear-gradient(rgba(255,255,255,.016) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.016) 1px,transparent 1px);
+  background-size:20px 20px;
+  mask-image:linear-gradient(180deg,rgba(0,0,0,.55),transparent 70%);
+}
+
+body[data-deck="cameras"] .deckbar,
+body[data-deck="cameras"] .actionbar{
+  position:relative;
+  z-index:1;
+}
+
+body[data-deck="cameras"] .deckbar{
+  z-index:30;
+  gap:10px;
+  min-height:44px;
+  padding:6px 10px;
+  background:linear-gradient(180deg,rgba(33,36,43,.98),rgba(23,25,29,.98));
+}
+
+body[data-deck="cameras"] .deckbar .dock-ui-scale {
+  margin-left: auto;
+}
+
+body[data-deck="cameras"] .deckbar h1{
+  letter-spacing:.04em;
+  text-transform:uppercase;
+  font:600 13px/1 "Avenir Next Condensed","DIN Condensed","Iowan Old Style",serif;
+}
+
+body[data-deck="cameras"] .notice{
+  position:relative;
+  z-index:1;
+  margin:8px 10px 0;
+  border-radius:10px;
+  border-width:1px;
+  max-height:78px;
+  box-shadow:0 12px 32px rgba(0,0,0,.18);
+}
+
+body[data-deck="cameras"] .camera-library{
+  position:relative;
+  z-index:1;
+  margin:8px 10px;
+  border-radius:12px;
+  background:rgba(25,27,31,.92);
+  box-shadow:0 24px 48px rgba(0,0,0,.26),inset 0 1px 0 rgba(255,255,255,.03);
+  scrollbar-width:thin;
+}
+
+body[data-deck="cameras"] .camera-library.source-list{
+  grid-template-columns:repeat(auto-fill,minmax(clamp(132px,calc(150px * var(--dock-scale, 1)),188px),1fr));
+  gap:var(--dock-gap);
+  padding:var(--dock-gap);
+}
+
+body[data-deck="cameras"] .camera-card{
+  position:relative;
+  isolation:isolate;
+  gap:calc(var(--dock-gap) * .8) var(--dock-gap);
+  padding:calc(var(--dock-gap) * .8);
+  border-color:#333842;
+  border-radius:12px;
+  background:linear-gradient(180deg,rgba(38,41,47,.98),rgba(27,29,34,.98));
+  box-shadow:0 12px 22px rgba(0,0,0,.18);
+}
+
+body[data-deck="cameras"] .camera-card::after{
+  content:"";
+  position:absolute;
+  inset:0;
+  border-radius:inherit;
+  border:1px solid rgba(255,255,255,.02);
+  pointer-events:none;
+}
+
+body[data-deck="cameras"] .camera-card:hover:not(:disabled){
+  transform:translateY(-1px);
+  border-color:#505765;
+  background:linear-gradient(180deg,rgba(42,45,52,.98),rgba(29,31,36,.98));
+}
+
+body[data-deck="cameras"] .camera-card[aria-pressed=true]{
+  border-color:#8b6d36;
+  box-shadow:inset 0 0 0 1px rgba(232,180,92,.22),0 16px 28px rgba(0,0,0,.24);
+}
+
+body[data-deck="cameras"] .camera-card[data-missing=true]{
+  border-style:dashed;
+  border-color:#66504a;
+  background:linear-gradient(180deg,rgba(44,33,31,.94),rgba(32,24,23,.94));
+}
+
+body[data-deck="cameras"] .camera-card .source-preview{
+  border-radius:10px;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.05);
+}
+
+body[data-deck="cameras"] .camera-card .source-name{
+  font:600 12px/1.25 "Avenir Next","Segoe UI",sans-serif;
+}
+
+body[data-deck="cameras"] .camera-card .source-meta{
+  display:block;
+  margin-top:2px;
+  color:#a8acb6;
+  font-size:11px;
+  line-height:1.3;
+}
+
+body[data-deck="cameras"] .camera-card .badge{
+  min-width:56px;
+  justify-content:center;
+}
+
+body[data-deck="cameras"] .badge.warn{
+  color:#ffcf83;
+  border-color:#7f6033;
+  background:rgba(63,44,21,.55);
+}
+
+body[data-deck="cameras"] .badge.error{
+  color:#ffc0b6;
+  border-color:#7c4e46;
+  background:rgba(72,34,31,.58);
+}
+
+body[data-deck="cameras"] .actionbar{
+  gap:8px;
+  align-items:center;
+  min-height:58px;
+  padding:8px 10px 10px;
+  border-top:1px solid rgba(255,255,255,.04);
+  background:linear-gradient(180deg,rgba(24,26,30,.96),rgba(19,20,24,.98));
+}
+
+body[data-deck="cameras"] .selection-stack{
+  display:grid;
+  gap:2px;
+  align-content:center;
+}
+
+body[data-deck="cameras"] .selection-name{
+  overflow:hidden;
+  white-space:nowrap;
+  text-overflow:ellipsis;
+  font:600 calc(13px * var(--dock-scale, 1))/1.25 "Avenir Next","Segoe UI",sans-serif;
+}
+
+body[data-deck="cameras"] .selection-detail{
+  display:block;
+  color:#a6abb4;
+  overflow:hidden;
+  white-space:nowrap;
+  text-overflow:ellipsis;
+  font-size:var(--dock-font-size-sm);
+}
+
+body[data-deck="cameras"] .camera-settings{
+  position:relative;
+  flex:0 0 auto;
+}
+
+body[data-deck="cameras"] .camera-settings summary{
+  list-style:none;
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  min-height:32px;
+  padding:5px 10px;
+  border:1px solid var(--line);
+  border-radius:999px;
+  background:rgba(34,37,43,.92);
+  color:var(--text);
+  user-select:none;
+}
+
+body[data-deck="cameras"] .camera-settings summary::-webkit-details-marker{display:none}
+
+body[data-deck="cameras"] .camera-settings[open] summary{
+  border-color:#8b6d36;
+  background:rgba(54,42,23,.92);
+}
+
+body[data-deck="cameras"] .camera-settings-panel{
+  position:absolute;
+  right:0;
+  bottom:calc(100% + 8px);
+  width:min(280px,calc(100vw - 28px));
+  display:grid;
+  gap:9px;
+  padding:12px;
+  border:1px solid #4c4031;
+  border-radius:14px;
+  background:linear-gradient(180deg,rgba(30,24,18,.98),rgba(21,19,20,.98));
+  box-shadow:0 26px 52px rgba(0,0,0,.38);
+}
+
+body[data-deck="cameras"] .camera-settings-panel::before{
+  content:"";
+  position:absolute;
+  right:16px;
+  bottom:-7px;
+  width:14px;
+  height:14px;
+  transform:rotate(45deg);
+  background:rgba(21,19,20,.98);
+  border-right:1px solid #4c4031;
+  border-bottom:1px solid #4c4031;
+}
+
+body[data-deck="cameras"] .camera-settings-panel label{
+  display:grid;
+  gap:4px;
+  min-width:0;
+  font-size:11px;
+  color:#c6c1b9;
+  text-transform:uppercase;
+  letter-spacing:.06em;
+}
+
+body[data-deck="cameras"] .camera-settings-panel input[type=text],
+body[data-deck="cameras"] .camera-settings-panel select{
+  width:100%;
+  min-height:32px;
+  border-radius:8px;
+  background:rgba(15,16,20,.9);
+}
+
+body[data-deck="cameras"] .camera-settings-row{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:8px;
+}
+
+body[data-deck="cameras"] .camera-settings-check{
+  display:flex;
+  align-items:center;
+  gap:6px;
+  min-height:32px;
+  padding:0;
+  font-size:12px;
+  letter-spacing:0;
+  text-transform:none;
+  color:var(--text);
+}
+
+body[data-deck="cameras"] .camera-settings-note{
+  color:#b1a798;
+  font-size:11px;
+  line-height:1.4;
+}
+
+body[data-deck="cameras"] .camera-preview-off{
+  min-width:0;
+}
+
+@media(max-width:700px){
+  body[data-deck="cameras"] .camera-library.source-list{grid-template-columns:repeat(auto-fill,minmax(142px,1fr))}
+}
+
+@media(max-width:480px){
+  body[data-deck="cameras"] .deckbar{padding:6px 8px;min-height:40px}
+  body[data-deck="cameras"] .notice{margin-inline:8px;margin-top:6px}
+  body[data-deck="cameras"] .camera-library{margin:6px 8px}
+  body[data-deck="cameras"] .camera-library.source-list{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;padding:7px}
+  body[data-deck="cameras"] .camera-card{padding:6px;gap:6px}
+  body[data-deck="cameras"] .actionbar{padding:7px 8px 8px;gap:6px;flex-wrap:wrap}
+  body[data-deck="cameras"] .selection-stack{order:1;flex-basis:100%}
+  body[data-deck="cameras"] .camera-settings{margin-left:0}
+  body[data-deck="cameras"] .camera-settings-panel{right:auto;left:0;width:min(280px,calc(100vw - 20px))}
+  body[data-deck="cameras"] .camera-settings-panel::before{left:18px;right:auto}
+  body[data-deck="cameras"] .camera-dual-popover{right:6px;width:min(430px,calc(100vw - 12px));padding:8px}
+}
+
+@media(max-height:320px) and (min-width:481px){
+  body[data-deck="cameras"] .deckbar{min-height:36px;padding-block:4px}
+  body[data-deck="cameras"] .notice{max-height:54px;margin-top:4px}
+  body[data-deck="cameras"] .camera-library{margin:4px 8px}
+  body[data-deck="cameras"] .camera-library.source-list{grid-template-columns:repeat(auto-fill,minmax(122px,1fr));gap:6px;padding:6px}
+  body[data-deck="cameras"] .camera-card{padding:5px;gap:5px}
+  body[data-deck="cameras"] .camera-card .source-preview{aspect-ratio:16/8.5}
+  body[data-deck="cameras"] .actionbar{min-height:44px;padding:5px 8px 6px}
+  body[data-deck="cameras"] .camera-settings-panel{width:250px;padding:10px}
+  body[data-deck="cameras"] .camera-dual-popover{max-height:calc(100vh - 42px);padding:7px}
+  body[data-deck="cameras"] .dual-title{margin-bottom:4px}
+  body[data-deck="cameras"] .dual-controls-row{gap:5px}
+  body[data-deck="cameras"] .dual-label{gap:2px}
+  body[data-deck="cameras"] .dual-select,
+  body[data-deck="cameras"] .dual-controls-row > button{min-height:28px}
+  body[data-deck="cameras"] .dual-note{display:none}
+}
+
+body[data-deck="cameras"] .camera-dual-toggle {
+  min-height: 28px;
+  padding: 4px 9px;
+  font-size: 11px;
+}
+body[data-deck="cameras"] .camera-dual-popover {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 4px);
+  right: 8px;
+  width: min(900px, calc(100vw - 16px));
+  max-height: calc(100vh - 52px);
+  overflow: auto;
+  padding: 7px 8px;
+  background: linear-gradient(180deg, rgba(30, 24, 18, .98), rgba(21, 19, 20, .98));
+  border: 1px solid #4c4031;
+  border-radius: 12px;
+  box-shadow: 0 18px 44px rgba(0, 0, 0, .48);
+}
+body[data-deck="cameras"] .camera-dual-popover[hidden] { display: none; }
+body[data-deck="cameras"] .dual-title {
+  display: none;
+  font-size: 11px;
+  text-transform: uppercase;
+  color: #c6c1b9;
+  letter-spacing: .06em;
+  margin: 0 0 8px 0;
+}
+body[data-deck="cameras"] .dual-controls-row {
+  display: grid;
+  grid-template-columns: .82fr .94fr 1.18fr 1.18fr .9fr .82fr .86fr .96fr;
+  gap: 6px;
+  align-items: flex-end;
+}
+body[data-deck="cameras"] .dual-label[hidden] { display: none; }
+body[data-deck="cameras"] .dual-note { display: block; margin-top: 6px; color: #a8acb6; }
+body[data-deck="cameras"] .dual-label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 11px;
+  color: #a8acb6;
+  min-width:0;
+}
+body[data-deck="cameras"] .dual-label span{
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+body[data-deck="cameras"] .dual-select {
+  min-height: 28px;
+  border-radius: 8px;
+  border: 1px solid #333842;
+  background: rgba(15, 16, 20, 0.9);
+  color: #fff;
+  padding: 4px 8px;
+  min-width: 0;
+  width: 100%;
+}
+body[data-deck="cameras"] .dual-controls-row > button {
+  min-height: 28px;
+}
+body[data-deck="cameras"] .dual-note { display:none; }
+
+@media(max-width:700px){
+  body[data-deck="cameras"] .camera-dual-popover{
+    width:min(430px,calc(100vw - 12px));
+    padding:8px;
+  }
+  body[data-deck="cameras"] .dual-controls-row{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+}
+
+@media(max-height:320px) and (min-width:481px){
+  body[data-deck="cameras"] .camera-dual-popover{
+    max-height:calc(100vh - 42px);
+    padding:7px;
+  }
+  body[data-deck="cameras"] .dual-title{margin-bottom:4px}
+  body[data-deck="cameras"] .dual-controls-row{gap:5px}
+  body[data-deck="cameras"] .dual-label{gap:2px}
+  body[data-deck="cameras"] .dual-select,
+  body[data-deck="cameras"] .dual-controls-row > button{min-height:28px}
+  body[data-deck="cameras"] .dual-note{display:none}
+}

@@ -1,4 +1,352 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Media · Emberstage for OBS</title><link rel="icon" type="image/svg+xml" href="assets/brand/favicon.svg"><link rel="shortcut icon" href="assets/brand/favicon.svg"><link rel="stylesheet" href="assets/css/emberstage_brand.css"><link rel="stylesheet" href="assets/css/media_deck.css"></head>
-<body data-deck="media"><main id="media-app" aria-label="Media dock"><noscript>Enable JavaScript to use Emberstage Media.</noscript></main>
-<script src="assets/js/media/owned-media-app.js"></script><script src="assets/js/keyboard-navigation.js"></script></body></html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Media · Emberstage for OBS</title>
+  <link rel="icon" type="image/svg+xml" href="assets/brand/favicon.svg">
+  <link rel="shortcut icon" href="assets/brand/favicon.svg">
+  <link rel="stylesheet" href="assets/css/emberstage_brand.css">
+  <link rel="stylesheet" href="assets/css/dock_ui_scale.css">
+  <link rel="stylesheet" href="assets/css/media_deck.css">
+  <style>
+    /* Compact toolbar, avoids massive spacing */
+    .toolbar {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 8px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--line);
+      flex-shrink: 0;
+      min-height: 34px;
+    }
+    .toolbar input[type="search"] {
+      flex: 1;
+      height: 26px;
+      padding: 2px 8px;
+      font-size: 11px;
+      background: var(--bg);
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      color: var(--text);
+    }
+    .toolbar button.clear-btn {
+      height: 26px;
+      min-height: 26px;
+      font-size: 11px;
+      padding: 2px 8px;
+      border-color: var(--line);
+    }
+    .toolbar button.clear-btn:hover {
+      background: var(--red);
+      color: white;
+      border-color: var(--red);
+    }
+    .storage-info {
+      font-size: 10px;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+
+    /* Small card controls for Reordering and Removal */
+    .owned-library .source-row-select-btn {
+      grid-column: 1 / -1;
+      display: grid;
+      gap: 5px;
+      width: 100%;
+      min-width: 0;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      text-align: left;
+    }
+    .owned-library .source-row-select-btn[aria-pressed="true"] {
+      color: var(--amber);
+    }
+    .owned-library .source-row:has(.source-row-select-btn[aria-pressed="true"]) {
+      border-color: #8b6d36;
+    }
+    .owned-library .source-row-select-btn:focus-visible {
+      outline: 2px solid var(--amber);
+      outline-offset: -2px;
+    }
+    .owned-library .source-row > .card-controls {
+      grid-column: 2;
+      grid-row: 2;
+      margin: 0;
+    }
+    .owned-library .source-row > .badge {
+      grid-column: 1;
+      grid-row: 2;
+      justify-self: start;
+    }
+    .toolbar input[type="search"] { min-width: 0; }
+    @media (max-width: 480px) {
+      .toolbar { flex-wrap: wrap; }
+      .storage-info { flex-basis: 100%; }
+      #media-app .actionbar { flex-wrap: wrap; }
+      #media-app .actionbar .selection { flex-basis: 100%; }
+      #media-app .actionbar .check { flex-shrink: 0; }
+      #media-app .actionbar .settings-toggle-btn { margin-left: auto; }
+      #media-app .actionbar .primary { flex-basis: 100%; margin: 0; }
+      #media-app .settings-popover { bottom: 104px; }
+    }
+    .card-controls {
+      display: inline-flex;
+      gap: 2px;
+      align-self: center;
+      margin-left: auto;
+      margin-right: 4px;
+    }
+    .card-btn {
+      min-height: 20px !important;
+      height: 20px !important;
+      min-width: 20px !important;
+      width: 20px !important;
+      padding: 0 !important;
+      font-size: 9px !important;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 3px;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      color: var(--muted);
+      cursor: pointer;
+    }
+    .card-btn:hover:not(:disabled) {
+      background: var(--raised);
+      color: var(--text);
+      border-color: var(--line-strong);
+    }
+    .card-btn.remove:hover {
+      background: #4a1c1a;
+      color: var(--red);
+      border-color: var(--red);
+    }
+    .card-btn:disabled {
+      opacity: 0.25;
+      cursor: not-allowed;
+    }
+
+    /* Video Transport Controls strip right above the footer */
+    .video-controls {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 8px;
+      background: #191a1d;
+      border-top: 1px solid var(--line);
+      flex-shrink: 0;
+      min-height: 32px;
+    }
+    .video-controls button {
+      min-height: 24px;
+      padding: 2px 8px;
+      font-size: 11px;
+    }
+    .progress-container {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex: 1;
+      min-width: 0;
+    }
+    .progress-bar {
+      flex: 1;
+      height: 6px;
+      border-radius: 3px;
+      accent-color: var(--amber);
+      cursor: pointer;
+      min-width: 40px;
+    }
+    .progress-time {
+      font-size: 10px;
+      font-family: Consolas, monospace;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+
+    /* Transition settings popover */
+    .settings-popover {
+      position: absolute;
+      z-index: 100;
+      bottom: 45px;
+      right: 8px;
+      width: 210px;
+      background: var(--surface);
+      border: 1px solid var(--line-strong);
+      border-radius: 6px;
+      padding: 8px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.6);
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .settings-popover.hidden {
+      display: none;
+    }
+    .settings-popover h3 {
+      margin: 0;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--amber);
+      border-bottom: 1px solid var(--line);
+      padding-bottom: 4px;
+    }
+    .popover-field {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 11px;
+    }
+    .popover-field select {
+      height: 22px;
+      min-height: 22px;
+      padding: 0 4px;
+      font-size: 11px;
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      background: var(--bg);
+      width: 105px;
+    }
+
+    /* Make actionbar layout compact */
+    .actionbar {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 8px;
+      min-height: 38px;
+    }
+    .actionbar label.check {
+      font-size: 11px;
+    }
+    .settings-toggle-btn {
+      font-size: 11px;
+      padding: 2px 6px;
+      min-height: 24px;
+    }
+
+    /* Compact 698x238 and 390x720 support */
+    @media (max-height: 240px) {
+      .deckbar h1 {
+        font-size: 12px;
+      }
+      .toolbar {
+        padding: 2px 6px;
+        min-height: 28px;
+      }
+      .toolbar input[type="search"], .toolbar button.clear-btn {
+        height: 22px;
+        min-height: 22px;
+      }
+      .video-controls {
+        padding: 2px 6px;
+        min-height: 26px;
+      }
+      .video-controls button {
+        min-height: 20px;
+        font-size: 10px;
+        padding: 1px 4px;
+      }
+      .actionbar {
+        min-height: 30px;
+        padding: 2px 6px;
+      }
+    }
+
+    /* Top-bar layout popup */
+    .layout-menu-toggle {
+      min-height: 26px;
+      padding: 3px 7px;
+      font-size: 11px;
+    }
+    .layout-menu-popover {
+      position: absolute;
+      z-index: 120;
+      top: calc(100% + 3px);
+      right: 8px;
+      width: min(260px, calc(100vw - 16px));
+      max-height: calc(100vh - 50px);
+      overflow: auto;
+      padding: 8px;
+      background: var(--surface);
+      border: 1px solid var(--line-strong);
+      border-radius: 7px;
+      box-shadow: 0 6px 20px rgba(0,0,0,.65);
+    }
+    .layout-menu-popover[hidden] { display: none; }
+    .layout-menu-content, .layout-menu-section { display: grid; gap: 6px; }
+    .layout-menu-content { gap: 8px; }
+    .layout-menu-title { color: var(--amber); font-size: 11px; text-transform: uppercase; letter-spacing: .05em; }
+    .layout-menu-label { color: var(--muted); font-size: 10px; }
+    .layout-menu-options { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+    .layout-menu-choice {
+      min-height: 26px;
+      padding: 3px 6px;
+      font-size: 10px;
+      text-align: left;
+      white-space: normal;
+    }
+    .layout-menu-choice.active {
+      color: var(--amber);
+      border-color: var(--amber);
+      background: var(--amber-wash);
+    }
+    .layout-menu-footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    /* Miniature diagram styles */
+    .layout-miniature-diagram {
+      position: relative;
+      width: 48px;
+      height: 32px;
+      background: #333;
+      border: 1px solid var(--line-strong);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+    .layout-miniature-image {
+      position: absolute;
+      inset: 0;
+      background: #555;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 8px;
+      color: #aaa;
+    }
+    .layout-miniature-camera {
+      position: absolute;
+      background: var(--amber);
+      opacity: 0.8;
+      border: 1px dashed #fff;
+    }
+    .apply-layout-btn {
+      height: 22px;
+      padding: 2px 8px;
+      font-size: 11px;
+      font-weight: 600;
+      background: var(--surface-raised);
+      border: 1px solid var(--amber);
+      color: var(--amber);
+      border-radius: 4px;
+      cursor: pointer;
+      display: none;
+    }
+    .apply-layout-btn:hover {
+      background: var(--amber);
+      color: #000;
+    }
+  </style>
+</head>
+<body data-deck="media">
+  <main id="media-app" aria-label="Media dock">
+    <noscript>Enable JavaScript to use Emberstage Media.</noscript>
+  </main>
+  <script src="assets/js/dock_ui_scale.js"></script>
+  <script src="assets/js/media/owned-media-app.js"></script>
+  <script src="assets/js/keyboard-navigation.js"></script>
+</body>
+</html>

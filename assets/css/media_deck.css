@@ -197,3 +197,59 @@ dialog{width:min(450px,calc(100vw - 24px));max-height:calc(100vh - 16px);backgro
     aspect-ratio: 16 / 8;
   }
 }
+
+/* Opt-in installed docks only. Density changes controls and card sizing, never page zoom. */
+body[data-ui-scale] #media-app { min-width:0; overflow:auto; font-size:var(--dock-font-size); }
+body[data-ui-scale] #media-app > * { flex-shrink:0; min-width:0; }
+body[data-ui-scale] #media-app .deckbar,
+body[data-ui-scale] #media-app .actionbar,
+body[data-ui-scale] #media-app .toolbar {
+  height:auto; min-height:0; flex-wrap:wrap; gap:var(--dock-gap); padding:var(--dock-gap);
+}
+body[data-ui-scale] #media-app .deckbar .dock-ui-scale { margin-left:auto; }
+body[data-ui-scale] #media-app .owned-library { flex:1 0 80px; }
+body[data-ui-scale] #media-app .owned-library.source-list {
+  grid-template-columns: repeat(auto-fill, minmax(clamp(126px, calc(148px * var(--dock-scale)), 184px), 1fr));
+  gap: var(--dock-gap);
+  padding: var(--dock-gap);
+}
+body[data-ui-scale] #media-app .owned-library .source-row {
+  gap: calc(var(--dock-gap) * 0.75) var(--dock-gap);
+  padding: calc(var(--dock-gap) * 0.75);
+  border-radius: var(--dock-radius);
+}
+body[data-ui-scale] #media-app .actionbar { position:sticky; bottom:0; z-index:3; }
+body[data-ui-scale] #media-app :is(.deckbar,.actionbar,.toolbar,.video-controls,.layout-menu-popover,.camera-settings-panel,.camera-dual-popover) :is(button,input,select,summary,label),
+body[data-ui-scale] #media-app :is(.source-name,.selection-name,.selection,.media-add,.storage-info,.source-kind,.selection-detail) {
+  font-size:var(--dock-font-size);
+}
+body[data-ui-scale] #media-app .source-kind,
+body[data-ui-scale] #media-app .storage-info,
+body[data-ui-scale] #media-app .selection-detail,
+body[data-ui-scale] #media-app .progress-time,
+body[data-ui-scale] #media-app small {
+  font-size: var(--dock-font-size-sm);
+}
+body[data-ui-scale] #media-app :is(.deckbar,.actionbar,.toolbar,.video-controls,.layout-menu-popover,.camera-settings-panel,.camera-dual-popover) :is(button,select,summary),
+body[data-ui-scale] #media-app .media-add {
+  height:auto; min-height:var(--dock-control-height); padding:calc(var(--dock-gap) * 0.75) var(--dock-gap); max-width:100%;
+}
+body[data-ui-scale] #media-app .deckbar .dock-brand-stack { display:none; }
+body[data-ui-scale] #media-app .camera-dual-popover { padding:var(--dock-gap); }
+body[data-ui-scale] #media-app .dual-controls-row { gap:var(--dock-gap); margin-top:var(--dock-gap); }
+body[data-ui-scale] #media-app .dual-label { flex:1 1 120px; min-width:0; }
+body[data-ui-scale] #media-app .dual-select { min-width:0; width:100%; }
+body[data-ui-scale] #media-app .camera-settings-panel {
+  position:fixed; z-index:10; inset:8px 8px auto auto; width:min(280px,calc(100vw - 16px));
+  max-height:calc(100vh - 64px); overflow:auto; padding:var(--dock-gap); gap:var(--dock-gap);
+}
+body[data-ui-scale] #media-app .settings-popover {
+  position:fixed; inset:8px 8px auto auto; max-height:calc(100vh - 64px); overflow:auto;
+}
+body[data-ui-scale] #media-app .layout-field { min-width:0; max-width:100%; }
+body[data-ui-scale] #media-app .video-controls { flex-wrap:wrap; gap:var(--dock-gap); padding:var(--dock-gap); }
+body[data-ui-scale] #media-app .progress-container { flex-basis:160px; }
+body[data-ui-scale] #media-app .storage-info { white-space:normal; overflow-wrap:anywhere; }
+@media (max-width:350px) {
+  body[data-ui-scale] #media-app .owned-library { grid-template-columns:minmax(0,1fr); }
+}

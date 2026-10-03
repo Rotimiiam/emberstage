@@ -9,3 +9,14 @@ server/*.db-shm
 server/*.db-wal
 deploy/nango/.env
 deploy/nango/nango-data/
+dist/
+__pycache__/
+*.pyc
+*.core
+/core
+/powershell-*.tar.gz
+/test_decode*.ps1
+**/.env
+**/.env.*
+!**/.env.example
+**/obs-connection.js

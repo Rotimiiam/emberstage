@@ -103,7 +103,9 @@ function syncMeasureNodeStyles(messageElem, containerElem) {
 function measureContentAtFontSize(messageElem, containerElem, fontSize) {
   const measureNode = syncMeasureNodeStyles(messageElem, containerElem);
   const availableWidth = Math.max(1, Math.floor(messageElem.clientWidth || containerElem.clientWidth || 1));
-  const availableHeight = Math.max(1, Math.floor(containerElem.clientHeight || containerElem.getBoundingClientRect().height || 1));
+  const containerStyle = window.getComputedStyle(containerElem);
+  const availableHeight = Math.max(1, Math.floor((containerElem.clientHeight || containerElem.getBoundingClientRect().height || 1)
+    - (parseFloat(containerStyle.paddingTop) || 0) - (parseFloat(containerStyle.paddingBottom) || 0)));
 
   measureNode.style.fontSize = `${fontSize}px`;
 
@@ -133,7 +135,7 @@ function sanitizeMessageMarkup(markup) {
   const template = document.createElement('template');
   template.innerHTML = String(markup ?? '');
   const fragment = document.createDocumentFragment();
-  const allowedElements = new Set(['BR', 'SPAN']);
+  const allowedElements = new Set(['BR', 'SPAN', 'EM']);
   const blockedElements = new Set(['SCRIPT', 'STYLE', 'IFRAME', 'OBJECT', 'EMBED', 'SVG', 'MATH']);
 
   const appendSafeNode = (sourceNode, destination) => {
@@ -162,11 +164,127 @@ function setSafeMessageMarkup(messageElem, markup) {
   messageElem.replaceChildren(sanitizeMessageMarkup(markup));
 }
 
-var updateMessage = (messageId, message) => {
-  const { messageElem } = getMessageElements(messageId);
+let currentOutputPayload = null;
+function getOutputSongLayout() {
+  let saved;
+  try { saved = JSON.parse(localStorage.getItem(window.OBSBibleBroadcastBranding.SONG_LAYOUT_KEY)); } catch (_) {}
+  return window.OBSBibleBroadcastBranding.sanitizeSongLayout(saved);
+}
+
+function applySongLook(message) {
+  const background = document.getElementById('bg-container');
+  if (!background?.dataset) return;
+  if (message.kind !== 'song') {
+    delete background.dataset.songLayout;
+    delete background.dataset.songPosition;
+    return;
+  }
+  const settings = getOutputSongLayout();
+  background.dataset.songLayout = settings.layout;
+  background.dataset.songPosition = settings.position;
+}
+
+function refreshSongLayout(settings) {
+  const api = window.OBSBibleBroadcastBranding;
+  if (settings) localStorage.setItem(api.SONG_LAYOUT_KEY, JSON.stringify(api.sanitizeSongLayout(settings)));
+  if (currentOutputPayload?.kind === 'song') {
+    renderLegacyMessagePayload({ ...currentOutputPayload, fadein: false });
+  }
+}
+window.addEventListener('storage', event => {
+  if (event.key === window.OBSBibleBroadcastBranding?.SONG_LAYOUT_KEY) refreshSongLayout();
+});
+
+function renderLegacyMessagePayload(message, providedMessageElem) {
+  const messageElem = providedMessageElem || getMessageElements('messageDisplay').messageElem;
   if (!messageElem) {
     return;
   }
+
+  const bgContainer = document.getElementById('bg-container');
+  const containerElem = document.getElementById('container') || messageElem?.parentElement;
+
+  // Always reset to standard styles first, so scripture, songs or default positions are clean!
+  applySongLook(message);
+  if (message.kind === 'song' && message.song) {
+    const lines = window.OBSBibleBroadcastBranding.songCueLines(message.song, getOutputSongLayout().layout);
+    const escape = text => text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    message = { ...message, messageContent: lines.map(escape).join('<br>') };
+  }
+  if (bgContainer) {
+    bgContainer.style.justifyContent = '';
+    bgContainer.style.alignItems = '';
+  }
+  if (containerElem) {
+    containerElem.style.justifyContent = '';
+    containerElem.style.alignItems = '';
+  }
+  if (messageElem) {
+    messageElem.style.textAlign = '';
+  }
+
+  const isScriptureOrSong = message.kind === 'scripture' || message.kind === 'song';
+  const pos = (!isScriptureOrSong && message.position) ? String(message.position).toLowerCase() : null;
+
+  if (pos) {
+    let bgJustify = 'center';
+    let bgAlign = 'flex-end';
+    let containerJustify = 'center';
+    let containerAlign = 'flex-end';
+    let textAlign = localStorage.getItem('textAlign') || 'center';
+
+    if (pos === 'top-left') {
+      bgJustify = 'flex-start'; bgAlign = 'flex-start';
+      containerJustify = 'flex-start'; containerAlign = 'flex-start';
+      textAlign = 'left';
+    } else if (pos === 'top-center') {
+      bgJustify = 'center'; bgAlign = 'flex-start';
+      containerJustify = 'center'; containerAlign = 'flex-start';
+      textAlign = 'center';
+    } else if (pos === 'top-right') {
+      bgJustify = 'flex-end'; bgAlign = 'flex-start';
+      containerJustify = 'flex-end'; containerAlign = 'flex-start';
+      textAlign = 'right';
+    } else if (pos === 'middle-left') {
+      bgJustify = 'flex-start'; bgAlign = 'center';
+      containerJustify = 'flex-start'; containerAlign = 'center';
+      textAlign = 'left';
+    } else if (pos === 'middle-center' || pos === 'center') {
+      bgJustify = 'center'; bgAlign = 'center';
+      containerJustify = 'center'; containerAlign = 'center';
+      textAlign = 'center';
+    } else if (pos === 'middle-right') {
+      bgJustify = 'flex-end'; bgAlign = 'center';
+      containerJustify = 'flex-end'; containerAlign = 'center';
+      textAlign = 'right';
+    } else if (pos === 'bottom-left') {
+      bgJustify = 'flex-start'; bgAlign = 'flex-end';
+      containerJustify = 'flex-start'; containerAlign = 'flex-end';
+      textAlign = 'left';
+    } else if (pos === 'bottom-center') {
+      bgJustify = 'center'; bgAlign = 'flex-end';
+      containerJustify = 'center'; containerAlign = 'flex-end';
+      textAlign = 'center';
+    } else if (pos === 'bottom-right') {
+      bgJustify = 'flex-end'; bgAlign = 'flex-end';
+      containerJustify = 'flex-end'; containerAlign = 'flex-end';
+      textAlign = 'right';
+    }
+
+    if (bgContainer) {
+      bgContainer.style.justifyContent = bgJustify;
+      bgContainer.style.alignItems = bgAlign;
+    }
+    if (containerElem) {
+      containerElem.style.justifyContent = containerJustify;
+      containerElem.style.alignItems = containerAlign;
+    }
+    if (messageElem) {
+      messageElem.style.textAlign = textAlign;
+    }
+  }
+
+  messageElem.hidden = false;
 
   if (message.fadein === true) {
     messageElem.classList.remove('fade-in');
@@ -178,9 +296,38 @@ var updateMessage = (messageId, message) => {
   } else {
     setSafeMessageMarkup(messageElem, message.messageContent);
   }
-
-  localStorage.setItem('savedMessage', messageElem.innerHTML);
   adjustFontSizeBasedOnScroll();
+}
+
+var updateMessage = (messageId, message) => {
+  const { messageElem } = getMessageElements(messageId);
+  if (!messageElem) {
+    return;
+  }
+
+  const normalizedMessage = window.OBSBibleBroadcastBranding
+    ? window.OBSBibleBroadcastBranding.coerceMessagePayload(message)
+    : (typeof message === 'object' ? message : { fadein: false, messageContent: String(message || '') });
+  currentOutputPayload = normalizedMessage;
+  applySongLook(normalizedMessage);
+
+  localStorage.setItem('savedMessage', normalizedMessage.messageContent || '');
+  try {
+    const payloadKey = window.OBSBibleBroadcastBranding?.STORAGE_KEYS?.payload || 'obs-bible-saved-message-payload';
+    localStorage.setItem(payloadKey, JSON.stringify(normalizedMessage));
+  } catch (_) {
+    // Ignore storage quota issues.
+  }
+
+  if (window.obsBibleBroadcasting?.syncBroadcastPayload?.(normalizedMessage)) {
+    return;
+  }
+
+  if (window.obsBibleBroadcasting?.deactivateBroadcastLayer) {
+    window.obsBibleBroadcasting.deactivateBroadcastLayer();
+  }
+
+  renderLegacyMessagePayload(normalizedMessage, messageElem);
 };
 
 function adjustFontSizeBasedOnScroll() {
@@ -221,6 +368,7 @@ function adjustFontSizeBasedOnScroll() {
 
 window.adjustFontSizeBasedOnScroll = adjustFontSizeBasedOnScroll;
 window.updateMessage = updateMessage;
+window.renderLegacyMessagePayload = renderLegacyMessagePayload;
 
 function handleMutation(mutationsList) {
   for (var mutation of mutationsList) {

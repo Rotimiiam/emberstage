@@ -2,6 +2,18 @@
 const submitButton = document.getElementById("bible-submit");
 const inputField = document.getElementById("bible-input");
 
+let selectBibleQueryOnClick = false;
+inputField.addEventListener("pointerdown", function () {
+  selectBibleQueryOnClick = document.activeElement !== inputField;
+});
+inputField.addEventListener("focus", function () {
+  inputField.select();
+});
+inputField.addEventListener("click", function () {
+  if (selectBibleQueryOnClick) inputField.select();
+  selectBibleQueryOnClick = false;
+});
+
 function ensureEndsWithColon(str) {
     if (str.includes(':')) {
         return str;  // Return the string as is if it contains a colon
@@ -14,10 +26,24 @@ function ensureEndsWithColon(str) {
 function searchBible(query, bible_data) {
   bblVerseDiv.innerHTML = "";
   let savedBibleVerse = [];
+  const resolvedBook = getResolvedBookNameFromAlias(query);
   query = normalizeBibleReference(query);
   const lowercaseQuery = query.toLowerCase();
 
-  if (/^.+\s+\d+\s*:\s*\d+\s*-\s*\d+$/.test(lowercaseQuery)) {
+  if (resolvedBook) {
+    // A book-only query is navigation, not fuzzy verse-text search. In
+    // particular, Mal must not match Mark/Matthew, and 1 The has no chapter yet.
+    const prefix = resolvedBook.toLowerCase() + ' ';
+    for (const verse of bible_data) {
+      if (!verse.name.toLowerCase().startsWith(prefix)) continue;
+      savedBibleVerse.push(verse.ari);
+      const pElement = document.createElement('p');
+      pElement.classList.add('verse');
+      pElement.id = verse.name.replace(/:/g, '-').replace(/\s/g, '').toLowerCase();
+      pElement.innerHTML = buildVerseMarkup(verse.name, verse.verse);
+      bblVerseDiv.appendChild(pElement);
+    }
+  } else if (/^.+\s+\d+\s*:\s*\d+\s*-\s*\d+$/.test(lowercaseQuery)) {
     // for searches like John 1: 1-5
     savedBibleVerse = [];
     const [bookAndChapter, verseRange] = lowercaseQuery.split(':');
@@ -147,6 +173,8 @@ submitButton.addEventListener("click", function (event) {
   if (searchQuery !== "") {
     searchBible(searchQuery, bible_data);
     displayBible();
+    // Preview/focus only: a following Enter uses the verse's existing take action.
+    selectBibleVerse(0, false);
   }
 });
 
@@ -154,11 +182,15 @@ submitButton.addEventListener("click", function (event) {
 
 inputField.addEventListener("keydown", function(event) {
   if (event.key === "Enter") {
+    if (event.isComposing) return;
+    event.preventDefault();
+    if (event.repeat) return;
     const searchQuery = inputField.value.trim();
 
     if (searchQuery !== "") {
       searchBible(searchQuery, bible_data);
       displayBible();
+      selectBibleVerse(0, false);
     }
   }
 });

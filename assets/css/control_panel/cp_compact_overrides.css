@@ -1,7 +1,18 @@
 /* Compact OBS text-content dock — final layer loaded after the legacy theme sheets. */
 
+/* Live song looks remain usable in narrow OBS docks. */
+body .song-import-look { display: flex; align-items: center; flex: 1 1 auto; flex-wrap: nowrap; gap: 5px; min-width: 0; max-width: 100%; overflow: hidden; }
+body .song-import-look > * { min-width: 0; }
+body .song-layout-controls { display: flex; align-items: center; flex: 1 1 auto; gap: 5px; padding: 0; min-width: 0; overflow: hidden; }
+body .song-layout-controls label { display: flex; min-width: 0; margin: 0; }
+body .song-layout-controls label:first-child { flex: 1 1 auto; }
+body .song-layout-controls [hidden] { display: none !important; }
+body .song-layout-controls select { width: 100%; max-width: 132px; min-width: 0; height: var(--control-height); padding: 3px 18px 3px 6px; font-size: 11px; }
+body .song-layout-controls #song-layout-position { width: 64px; max-width: 64px; }
+
 :root {
   color-scheme: dark;
+  --dock-scale: 1;
   --nav-bg: #15171a;
   --nav-surface: #1b1e22;
   --nav-surface-raised: #202328;
@@ -17,8 +28,8 @@
   --nav-live: #dd7b73;
   --nav-live-wash: #342121;
   --nav-focus: #dfb268;
-  --control-height: 34px;
-  --dock-gap: 8px;
+  --control-height: clamp(30px, calc(34px * var(--dock-scale)), 42px);
+  --dock-gap: clamp(5px, calc(8px * var(--dock-scale)), 12px);
   --chrome-radius: 7px;
 }
 
@@ -37,7 +48,9 @@ body {
 }
 
 body {
-  font: 13px/1.4 "Segoe UI", Candara, system-ui, sans-serif;
+  font-family: "Segoe UI", Candara, system-ui, sans-serif;
+  font-size: calc(13px * var(--dock-scale));
+  line-height: 1.4;
   color: var(--nav-text);
   background: var(--nav-bg);
 }
@@ -72,6 +85,11 @@ body .app-topbar {
   border-radius: 0;
   box-shadow: none;
   background: transparent;
+}
+
+body .app-topbar > .dock-ui-scale {
+  flex: 0 0 auto;
+  margin-left: auto;
 }
 
 body .dock-brand {
@@ -474,8 +492,38 @@ body #toggle-button-display[aria-pressed="true"] {
 }
 
 /* Text composer */
-body #text .container { display: grid; grid-template-rows: minmax(0, 1fr) auto; }
+body #text .container {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: clamp(6px, calc(8px * var(--dock-scale)), 10px);
+}
+body .text-editor-toolbar {
+  display: flex;
+  min-width: 0;
+}
+body .text-style-toolbar { display: flex; justify-content: flex-end; gap: 6px; }
+body .text-style-toolbar button { flex: 0 0 auto; width: auto; }
+body #text-style-open,
+body .text-style-trigger { font-size: 12px; }
+body #text-style-dialog {
+  position: fixed;
+  inset: 0;
+  width: min(580px, calc(100vw - 16px));
+  max-width: none;
+  max-height: calc(100dvh - 16px);
+  margin: auto;
+  padding: 8px;
+  box-sizing: border-box;
+  overflow: auto;
+  border: 1px solid var(--nav-line);
+  border-radius: 10px;
+  color: var(--nav-text);
+  background: var(--nav-surface);
+}
+body #text-style-dialog::backdrop { background: rgba(0, 0, 0, .55); }
+body #text-style-dialog > .text-style-toolbar { margin-bottom: 8px; }
 body #text .textarea-container {
+  display: flex;
   min-height: 0;
   border: 1px solid var(--nav-line);
   border-radius: 7px;
@@ -483,14 +531,15 @@ body #text .textarea-container {
   box-shadow: inset 0 1px 2px rgba(0,0,0,.14);
 }
 body #text textarea {
+  flex: 1 1 auto;
   height: 100%;
-  min-height: 120px;
-  padding: 16px;
+  min-height: 72px;
+  padding: clamp(10px, calc(14px * var(--dock-scale)), 18px);
   border: 0;
   border-radius: 7px;
   resize: none;
-  font-size: 17px;
-  line-height: 1.55;
+  font-size: clamp(15px, calc(17px * var(--dock-scale)), 19px);
+  line-height: 1.45;
   background: transparent;
   box-shadow: none;
 }
@@ -498,14 +547,37 @@ body #text .action-row {
   position: sticky;
   bottom: 0;
   display: grid;
-  grid-template-columns: minmax(160px, 1fr) minmax(90px, .28fr);
-  gap: 6px;
+  grid-template-columns: minmax(0, 1fr) minmax(86px, .26fr);
+  gap: 5px;
   padding: 0;
   flex: 0 0 auto;
 }
-body #text .action-row button { width: 100%; height: 37px; min-height: 37px; }
-body .message-toolbar { border-radius: 6px; padding: 4px; background: var(--nav-surface-raised); box-shadow: 0 8px 24px rgba(0,0,0,.35); }
-body .message-toolbar-button { min-height: 30px; margin: 0; padding: 4px 9px; }
+body #text .action-row button { width: 100%; height: var(--control-height); min-height: var(--control-height); }
+body .message-toolbar {
+  position: static;
+  display: grid;
+  grid-template-columns: auto auto auto minmax(0, 1fr);
+  align-items: center;
+  width: 100%;
+  gap: 4px 5px;
+  border-radius: 6px;
+  padding: 4px 5px;
+  background: var(--nav-surface-raised);
+  box-shadow: 0 6px 18px rgba(0,0,0,.26);
+}
+body .message-toolbar-button,
+body .text-style-trigger { min-height: calc(var(--control-height) - 6px); margin: 0; padding: 4px 8px; }
+body .position-hint {
+  min-width: 0;
+  justify-self: end;
+  margin-left: auto;
+  padding-right: 2px;
+  color: #a8acb6;
+  font-size: 11px;
+  line-height: 1.3;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
 
 /* Scripture */
 body .bible-search,
@@ -563,6 +635,24 @@ body .library-title {
 }
 body .inline-nav-controls { display: inline-flex; align-items: center; gap: 4px; }
 body .inline-nav-button { width: auto; min-width: 58px; height: 27px; min-height: 27px; padding: 3px 7px; border-radius: 5px; font-size: 12px; }
+body .inline-nav-button:disabled { opacity: .45; cursor: default; }
+body .song-chunk-indicator {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 62px;
+  height: 23px;
+  padding: 0 7px;
+  border: 1px solid #4a3a22;
+  border-radius: 999px;
+  color: var(--nav-amber-bright);
+  background: rgba(221, 169, 85, .13);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
 body .bible-container,
 body .song { flex: 1 1 auto; min-height: 0; height: auto; overflow: auto; padding: 6px; background: transparent; box-shadow: none; border: 0; border-radius: 0; }
 body .bible-verse,
@@ -626,11 +716,13 @@ body .song-search-container .input { height: 32px; min-height: 32px; border: 0; 
 body .song-search-select { width: 70px; min-width: 70px; padding-right: 20px; border: 0; border-right: 1px solid var(--nav-line) !important; border-radius: 0; background: var(--nav-surface-raised); font-size: 12px; }
 body #song-library-search,
 body #lyric-search { min-width: 0; width: 100%; padding-right: 28px; }
-body .song-toolbar { display: flex; align-items: center; flex-wrap: nowrap; gap: 5px; }
-body .song-toolbar > * { width: auto; min-width: 0; }
+body .song-toolbar.compact-action-cluster { display: flex; align-items: center; flex-wrap: wrap; gap: 5px; min-width: 0; }
+body .song-toolbar.compact-action-cluster > *,
+body .song-toolbar.compact-action-cluster > *:first-child { width: auto; min-width: 0; flex: 0 0 auto; }
+body .song-toolbar .song-import-look { flex: 1 1 auto; }
 body #song-line-duration { width: 64px; min-width: 64px; height: var(--control-height); padding: 4px 25px 4px 8px; }
 body #start-song-button { width: 94px; height: var(--control-height); min-width: 94px; padding: 4px 8px; font-size: 12px; }
-body .song-toolbar .btn-file-upload { display: inline-flex; align-items: center; justify-content: center; width: auto; height: var(--control-height); min-width: 76px; padding: 4px 9px; gap: 6px; }
+body .song-toolbar .btn-file-upload { display: inline-flex; align-items: center; justify-content: center; width: auto; height: var(--control-height); min-width: 76px; padding: 4px 9px; gap: 6px; flex: 0 0 auto; }
 body .countdown-timer { right: 5px; bottom: 7px; padding: 1px 4px; border-radius: 3px; color: var(--nav-muted); background: transparent; font-size: 10px; }
 
 body .songs-two-pane-layout { display: flex; flex-direction: row; align-items: stretch; gap: 0; overflow: hidden; }
@@ -657,10 +749,13 @@ body .song-row-title,
 body .active-song-title { font-size: 13px; font-weight: 650; }
 body .song-row-badge { border-radius: 3px; font-size: 10px; }
 body .song-sections-pane { display: flex; flex-direction: column; flex: 1 1 auto; min-width: 0; min-height: 0; height: 100%; }
+/* Song actions and lyric paging must remain reachable in compact docks. */
+body #songs .results-head { display: flex; }
 body .active-song-info { min-width: 0; }
 body .active-song-info #lyric-search { width: min(190px, 100%); height: 27px; min-height: 27px; padding: 3px 8px; }
 body .active-song-title { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-body .song-delete-button { width: 25px; min-width: 25px; height: 25px; min-height: 25px; padding: 5px; }
+body .song-delete-button,
+body .song-edit-button { width: 25px; min-width: 25px; height: 25px; min-height: 25px; padding: 5px; }
 body .song-verse > div { margin: 0 0 4px; padding: 6px 8px; border: 1px solid var(--nav-line-soft); border-radius: 5px; background: #191c20; box-shadow: none; }
 body .song-verse > div::before { margin-bottom: 3px; color: var(--nav-dim); font-size: 10px; letter-spacing: .09em; }
 body .song-verse > .chorus::before { color: var(--nav-amber); }
@@ -742,7 +837,10 @@ body #settings-general .settings-area {
   gap: 7px 12px;
   width: 100%;
   padding: 0;
+  height: auto;
+  flex: 0 0 auto;
 }
+body #settings-general .broadcast-look-panel { grid-column: 1 / -1; }
 body #settings-general .settings-area > .row,
 body #settings-general #shadow-editor,
 body #settings-general #shadow-editor > .row { display: contents; }
@@ -763,6 +861,7 @@ body .settings-icons {
   justify-content: stretch;
   width: 100%;
   min-width: 0;
+  height: auto;
   min-height: 38px;
   gap: 10px;
   padding: 5px 8px;
@@ -779,7 +878,7 @@ body .settings-icons > .column,
 body .settings-icons > .row { display: contents; }
 body .settings-icons select,
 body .settings-icons input:not([type="range"]):not([type="checkbox"]):not([type="color"]) { width: 100%; }
-body .settings-icons:has(input[type="checkbox"]) { grid-template-columns: 1fr auto; }
+body .settings-icons:has(input[type="checkbox"]) { grid-template-columns: auto minmax(0, 1fr); }
 body .checkbox-input { width: 32px; height: 17px; justify-self: end; accent-color: var(--nav-amber); }
 
 body .slider {
@@ -962,6 +1061,8 @@ body.dock-tiny .song-library-pane {
   body .main { padding: 8px; gap: 7px; }
   body .app-topbar { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 6px; }
   body .dock-brand { display: none; }
+  body .app-topbar > .dock-ui-scale { margin-left: 0; justify-self: end; }
+  body .app-topbar > .toggle { grid-column: 1 / -1; }
   body .tabs { overflow: visible; }
   body .tab-button { flex: 1 1 25%; padding: 4px 3px; font-size: 11px; }
   body .tab-button-copy { display: block; }
@@ -972,6 +1073,18 @@ body.dock-tiny .song-library-pane {
   body.dock-short .toggle-copy strong,
   body.dock-tiny .toggle-copy strong { display: block; }
   body .toggle-copy small { font-size: 10px; }
+  body .message-toolbar {
+    grid-template-columns: repeat(3, minmax(0, auto));
+    align-items: start;
+  }
+  body .position-hint {
+    grid-column: 1 / -1;
+    justify-self: start;
+    margin-left: 0;
+    padding-right: 0;
+    font-size: 10px;
+    text-align: left;
+  }
   body #text .action-row { grid-template-columns: minmax(0,1fr) 92px; }
   body .bible-search > .input-group { grid-template-columns: minmax(0,1fr) 76px; gap: 5px; }
   body .bible-search > .input-group > .search-group { grid-column: 1; grid-row: 1; }
@@ -980,9 +1093,12 @@ body.dock-tiny .song-library-pane {
   body .bible-search .compact-action-cluster { grid-column: 1 / -1; grid-row: 2; }
   body .bible-search .compact-action-cluster button { flex: 1 1 50%; }
   body #add-song { grid-template-columns: 1fr; }
-  body .song-toolbar { display: grid; grid-template-columns: 64px minmax(84px, 1fr) 76px; }
+  body .song-toolbar { display: flex; width: 100%; flex-wrap: wrap; justify-content: flex-start; }
+  body .song-toolbar > * { flex: 0 0 auto; }
+  body .song-toolbar .song-import-look { width: 100%; flex: 1 1 100%; min-width: 0; }
   body #start-song-button,
-  body .song-toolbar .btn-file-upload { width: 100%; min-width: 0; }
+  body .song-toolbar .btn-file-upload { width: auto; min-width: 0; }
+  body .song-layout-controls select { max-width: none; }
   body .songs-two-pane-layout { flex-direction: column; }
   body .song-library-pane,
   body.dock-short .song-library-pane,
@@ -999,6 +1115,15 @@ body.dock-tiny .song-library-pane {
   body #settings-animation > .column { grid-template-columns: 1fr; }
 }
 
+@media (max-width: 360px) {
+  body .song-import-look { gap: 4px; }
+  body .song-toolbar .btn-file-upload { min-width: 0; padding-inline: 7px; gap: 4px; }
+  body .song-toolbar .btn-file-upload span { font-size: 11px; }
+  body .song-layout-controls { gap: 4px; }
+  body .song-layout-controls select { padding-inline: 5px 16px; font-size: 10px; }
+  body .song-layout-controls #song-layout-position { width: 58px; max-width: 58px; }
+}
+
 @media (max-height: 460px) and (min-width: 481px) {
   body .main { padding: 6px 8px; gap: 5px; }
   body .app-topbar { min-height: 33px; padding-bottom: 4px; }
@@ -1006,6 +1131,7 @@ body.dock-tiny .song-library-pane {
   body .container { gap: 5px; }
   body .empty-state { padding: 8px; }
   body .empty-state-icon { display: none; }
+  body .position-hint { font-size: 10px; }
   body .song-library-row { padding: 5px 8px; }
   body #settings-general .settings-area { gap-block: 3px; }
   body .settings-icons { min-height: 29px; padding-block: 2px; }

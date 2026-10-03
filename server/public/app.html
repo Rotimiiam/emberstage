@@ -20,52 +20,23 @@
       </div>
 
       <div id="auth-view" class="auth-layout" style="display: none;">
-        <section class="auth-intro panel panel-ornate" aria-label="Portal introduction">
-          <div class="brand-lockup brand-lockup--svg">
-            <img class="brand-logo" src="/assets/brand/emberstage-logo.svg" alt="">
-            <div>
-              <p class="eyebrow">Local-first workspace portal</p>
-              <h1>
-                <span class="sr-only">Emberstage for OBS</span>
-                <img class="brand-wordmark" src="/assets/brand/emberstage-wordmark.svg" alt="">
-              </h1>
-            </div>
-          </div>
-
-          <div class="hero-copy">
-            <h2>One control room for encoder setup, channels, and explicit broadcast moments</h2>
-            <p>
-              Sign in to pair devices, keep OBS pointed at the right ingest, connect destinations,
-              and manage YouTube broadcasts without turning the workspace into a scattered setup checklist.
-            </p>
-          </div>
-
-          <div class="intro-grid">
-            <article class="intro-card">
-              <p class="intro-label">Encoder</p>
-              <p>Keep one RTMP server, one reusable device key, and one honest setup path for each OBS box.</p>
-            </article>
-            <article class="intro-card">
-              <p class="intro-label">Channels</p>
-              <p>Connect providers, add RTMP relays, and turn destinations on or off before the live session starts.</p>
-            </article>
-            <article class="intro-card">
-              <p class="intro-label">Broadcasts</p>
-              <p>Choose or create the right YouTube broadcast, then approve that channel to auto-go-live when OBS starts streaming. Privacy still stays private, unlisted, or public as configured.</p>
-            </article>
-          </div>
-        </section>
-
         <section class="auth-card panel" aria-labelledby="auth-title">
+          <div class="auth-brand" aria-label="Emberstage">
+            <span class="auth-brand-mark" aria-hidden="true">
+              <img class="brand-logo" src="/assets/brand/emberstage-logo.svg" alt="">
+            </span>
+            <img class="auth-brand-wordmark brand-wordmark" src="/assets/brand/emberstage-wordmark.svg" alt="Emberstage">
+          </div>
+
           <div class="auth-card-head">
-            <p class="eyebrow">Portal access</p>
-            <h2 id="auth-title">Emberstage Sign In</h2>
-            <p class="auth-subcopy">Use the owner account for your workspace.</p>
+            <p id="auth-mode-label" class="eyebrow">Sign in</p>
+            <h2 id="auth-title">Welcome back</h2>
+            <p id="auth-subcopy" class="auth-subcopy">Sign in to open your control room.</p>
           </div>
 
           <div id="auth-alert" class="alert alert-danger" style="display: none;"></div>
 
-          <div class="auth-methods">
+          <div id="auth-methods" class="auth-methods" hidden>
             <button type="button" id="auth0-auth-button" class="btn btn-secondary btn-auth0" hidden>
               <span class="oauth-mark" aria-hidden="true">A</span>
               <span>Continue with Auth0</span>
@@ -74,10 +45,10 @@
               <span class="oauth-mark" aria-hidden="true">G</span>
               <span>Continue with Google</span>
             </button>
-            <div class="auth-divider"><span>or continue with email</span></div>
+            <div id="auth-divider" class="auth-divider" hidden><span>or continue with email</span></div>
           </div>
 
-          <form id="auth-form">
+          <form id="auth-form" class="auth-form">
             <div class="form-group" id="workspace-group">
               <label for="reg-workspace">Workspace Name</label>
               <input type="text" id="reg-workspace" class="form-control" placeholder="Acme Streamers">
@@ -93,13 +64,10 @@
 
             <button type="submit" id="auth-submit-btn" class="btn btn-block">Sign In</button>
             <p class="auth-toggle-row">
+              <span id="auth-toggle-copy">Need an account?</span>
               <a href="#" id="auth-toggle-link">Create an account instead</a>
             </p>
           </form>
-
-          <p class="auth-footnote support-copy">
-            Product account sign-in may support email/password and optional OAuth. Provider OAuth remains a separate destination setup step.
-          </p>
         </section>
       </div>
 
@@ -119,7 +87,7 @@
               <span class="workspace-chip-dot" aria-hidden="true"></span>
               <div class="workspace-chip-copy">
                 <strong id="header-workspace-name">--</strong>
-                <span>Active workspace</span>
+                <span id="header-workspace-plan">Active workspace</span>
               </div>
             </div>
 
@@ -140,7 +108,7 @@
               <span class="operator-avatar" aria-hidden="true">EM</span>
               <div class="operator-copy">
                 <strong id="header-user-email">--</strong>
-                <span>Workspace owner</span>
+                <span id="header-user-role">Workspace member</span>
               </div>
             </div>
             <button id="logout-btn" class="btn btn-secondary btn-block" type="button">Sign Out</button>

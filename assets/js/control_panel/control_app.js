@@ -67,7 +67,7 @@ function updateDockLayoutClasses() {
   body.classList.toggle("dock-tiny", isTiny);
   body.style.setProperty("--dock-w", `${viewportWidth}px`);
   body.style.setProperty("--dock-h", `${viewportHeight}px`);
-  body.style.setProperty("--dock-scale", `${dockScale}`);
+  if (!body.dataset.uiScale) body.style.setProperty("--dock-scale", `${dockScale}`);
 }
 
 function observeDockViewport() {
@@ -80,6 +80,23 @@ function observeDockViewport() {
     });
     resizeObserver.observe(document.documentElement);
   }
+}
+
+function initDockScale() {
+  if (!window.EmberstageDockScale) {
+    return;
+  }
+
+  window.EmberstageDockScale.init({
+    root: document.body,
+    control: "control-dock-scale",
+    output: "control-dock-scale-value",
+    storageKey: "obs-bible:text:ui-scale",
+    defaultValue: 100,
+    min: 70,
+    max: 120,
+    step: 1
+  });
 }
 
 function syncOutputStatus() {
@@ -207,6 +224,7 @@ function openSavedTab() {
 // Call the function to open the saved tab when the webpage loads
 window.onload = function() {
   observeDockViewport();
+  initDockScale();
   openSavedTab();
   syncOutputStatus();
 

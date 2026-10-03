@@ -1,53 +1,17 @@
 document.addEventListener('DOMContentLoaded', function () {
     const textArea = document.getElementById('messageInput');
-    const toolbar = document.getElementById('message-toolbar');
     const boldButton = document.getElementById('message-boldButton');
     const italicButton = document.getElementById('message-italicButton');
-
-    // --- SHOW / HIDE TOOLBAR BASED ON SELECTION ---
-    function updateToolbarPosition() {
-        const start = textArea.selectionStart;
-        const end = textArea.selectionEnd;
-
-        const hasSelection = start !== end;
-        const isFocused = document.activeElement === textArea;
-
-        if (hasSelection && isFocused) {
-            const rect = textArea.getBoundingClientRect();
-
-            toolbar.style.display = 'flex';
-            toolbar.style.top = `${rect.top + window.scrollY - 40}px`;
-            toolbar.style.left = `${rect.left + window.scrollX + 10}px`;
-        } else {
-            toolbar.style.display = 'none';
-        }
-    }
-
-    // --- CLEAR SELECTION + HIDE TOOLBAR ---
-    function clearSelection() {
-        textArea.selectionStart = textArea.selectionEnd; // collapse selection
-        toolbar.style.display = 'none';
-    }
-
-    // Mouse selection
-    textArea.addEventListener('mouseup', updateToolbarPosition);
-
-    // Keyboard selection
-    textArea.addEventListener('keyup', updateToolbarPosition);
-
-    // Click outside → clear selection + hide toolbar
-    document.addEventListener('mousedown', function (e) {
-        if (!textArea.contains(e.target) && !toolbar.contains(e.target)) {
-            clearSelection();
-            textArea.blur();
-        }
+    // The toolbar is now permanent. Never hide Text style or collapse the
+    // editor selection on outside clicks (native edit menus need that selection).
+    [boldButton, italicButton].forEach(button => {
+        button.addEventListener('mousedown', event => event.preventDefault());
     });
 
-    // Escape key → clear selection + hide toolbar
     textArea.addEventListener('keydown', function (event) {
         if (event.key === 'Escape') {
             event.preventDefault();
-            clearSelection();
+            textArea.selectionStart = textArea.selectionEnd;
             textArea.blur();
             return;
         }
@@ -107,6 +71,6 @@ document.addEventListener('DOMContentLoaded', function () {
         textarea.selectionStart = startPos + delimiter.length;
         textarea.selectionEnd = endPos + delimiter.length;
 
-        updateToolbarPosition();
+        textarea.dispatchEvent(new Event('input', { bubbles: true }));
     }
 });

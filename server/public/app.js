@@ -18,11 +18,24 @@ const YOUTUBE_PRIVACY = [
   { value: 'unlisted', label: 'Unlisted' },
   { value: 'public', label: 'Public' }
 ];
+const BILLING_RETURN_STORAGE_KEY = 'emberstage.billingReturn';
+const BILLING_POLL_LIMIT = 4;
+const BILLING_POLL_DELAY_MS = 3500;
+const FREE_PLAN_FALLBACK = {
+  name: 'Free local core',
+  amount: 0,
+  currency: 'NGN',
+  interval: 'monthly',
+  maxDevices: 0,
+  maxDestinations: 0,
+  maxActiveBroadcasts: 0
+};
 
 const state = {
   user: null,
   workspaces: [],
   activeWorkspaceId: null,
+  activeWorkspaceRole: '',
   activeWorkspace: null,
   providers: {},
   providerTargets: [],
@@ -64,6 +77,13 @@ const state = {
       categoryId: '',
       targetIds: []
     }
+  },
+  billing: {
+    workspace: null,
+    summaryError: '',
+    returnFlow: null,
+    pollTimer: null,
+    stickyNotice: null
   },
   ui: {
     busy: {},
@@ -168,6 +188,280 @@ function fromLocalDateTimeInput(value) {
   return date.toISOString();
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function formatMoneyMinor(amount, currency = 'NGN') {
+  const minor = Number(amount);
+  if (!Number.isFinite(minor)) return '—';
+  return new Intl.NumberFormat(undefined, {
+    style: 'currency',
+    currency: String(currency || 'NGN').toUpperCase(),
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  }).format(minor / 100);
+}
+
+function formatPlanInterval(interval) {
+  if (!interval) return 'month';
+  const normalized = String(interval).toLowerCase();
+  if (normalized === 'monthly') return 'month';
+  if (normalized === 'yearly' || normalized === 'annual') return 'year';
+  return normalized.replace(/ly$/, '') || 'month';
+}
+
+function formatPlanPrice(plan) {
+  if (!plan) return '—';
+  const amount = Number(plan.amount || 0);
+  if (!Number.isFinite(amount) || amount <= 0) return 'Free';
+  return `${formatMoneyMinor(amount, plan.currency)}/${formatPlanInterval(plan.interval)}`;
+}
+
+function formatPaidUntil(value) {
+  if (!value) return 'No paid access recorded';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'No paid access recorded';
+  return new Intl.DateTimeFormat(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit'
+  }).format(date);
+}
+
+function roleLabel(role) {
+  const normalized = String(role || '').toLowerCase();
+  if (normalized === 'owner') return 'Workspace owner';
+  if (normalized === 'finance') return 'Finance';
+  if (normalized === 'operator') return 'Operator';
+  return 'Workspace member';
+}
+
+function isBillingManager(role = state.activeWorkspaceRole) {
+  return ['owner', 'finance'].includes(String(role || '').toLowerCase());
+}
+
+function currentBillingMode() {
+  return state.billing.workspace?.mode || state.billing.publicPlan?.mode || 'unconfigured';
+}
+
+function billingModeLabel(mode) {
+  if (mode === 'test') return 'Test mode';
+  if (mode === 'live') return 'Live mode';
+  return 'Checkout not configured';
+}
+
+function billingModeCopy(mode) {
+  if (mode === 'test') return 'Test mode is on. No real card charge should happen from this workspace.';
+  if (mode === 'live') return isCheckoutAvailable() ? 'Live payments · charged in NGN through Paystack.' : 'Live keys configured; checkout is not currently available.';
+  return 'Checkout is disabled until Paystack is configured on the server.';
+}
+
+function isCheckoutAvailable() {
+  return !!state.billing.workspace?.checkoutAvailable;
+}
+
+function clearBillingPollTimer() {
+  if (state.billing.pollTimer) {
+    clearTimeout(state.billing.pollTimer);
+    state.billing.pollTimer = null;
+  }
+}
+
+function setBillingStickyNotice(type, message) {
+  state.billing.stickyNotice = message ? { type, message } : null;
+}
+
+function consumeBillingStickyNotice() {
+  const notice = state.billing.stickyNotice;
+  state.billing.stickyNotice = null;
+  return notice;
+}
+
+function safeWorkspaceMatches(workspaceId) {
+  return !!workspaceId && !!state.activeWorkspaceId && String(workspaceId) === String(state.activeWorkspaceId);
+}
+
+function saveBillingReturnFlow(flow) {
+  try {
+    window.sessionStorage?.setItem(BILLING_RETURN_STORAGE_KEY, JSON.stringify(flow));
+  } catch (_) {}
+}
+
+function readBillingReturnFlow() {
+  try {
+    const raw = window.sessionStorage?.getItem(BILLING_RETURN_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+function clearBillingReturnFlow() {
+  state.billing.returnFlow = null;
+  clearBillingPollTimer();
+  try {
+    window.sessionStorage?.removeItem(BILLING_RETURN_STORAGE_KEY);
+  } catch (_) {}
+}
+
+async function loadPublicBillingPlan() {
+  try {
+    const result = await apiCall('GET', '/api/billing/plan');
+    state.billing.publicPlan = result || null;
+  } catch (_) {
+    state.billing.publicPlan = {
+      plan: { name: 'Emberstage Pro', amount: 300000, currency: 'NGN', interval: 'monthly', maxDevices: 3, maxDestinations: 3, maxActiveBroadcasts: 1 },
+      checkoutAvailable: false,
+      checkoutUnavailableReason: 'Billing plan details are not available yet.',
+      mode: 'unconfigured'
+    };
+  }
+}
+
+function getWorkspaceEntitlement() {
+  const workspaceBilling = state.billing.workspace;
+  if (workspaceBilling?.entitlement) return workspaceBilling.entitlement;
+  return {
+    plan: 'free',
+    paidUntil: null,
+    cancelAtPeriodEnd: false,
+    canStream: false,
+    maxDevices: 0,
+    maxDestinations: 0,
+    maxActiveBroadcasts: 0
+  };
+}
+
+function getWorkspacePlan() {
+  const publicPlan = state.billing.workspace?.plan || state.billing.publicPlan?.plan;
+  if (!publicPlan) return { ...FREE_PLAN_FALLBACK };
+  return {
+    ...FREE_PLAN_FALLBACK,
+    ...publicPlan,
+    maxDevices: Number(publicPlan.maxDevices ?? FREE_PLAN_FALLBACK.maxDevices),
+    maxDestinations: Number(publicPlan.maxDestinations ?? FREE_PLAN_FALLBACK.maxDestinations),
+    maxActiveBroadcasts: Number(publicPlan.maxActiveBroadcasts ?? FREE_PLAN_FALLBACK.maxActiveBroadcasts)
+  };
+}
+
+function getWorkspaceSubscription() {
+  return state.billing.workspace?.subscription || {
+    status: 'none',
+    manageAvailable: false
+  };
+}
+
+function billingCheckoutReason() {
+  const workspaceBilling = state.billing.workspace;
+  if (!workspaceBilling) return 'Billing details are still loading.';
+  if (workspaceBilling.checkoutAvailable) return '';
+  return workspaceBilling.checkoutUnavailableReason || 'Checkout is unavailable right now.';
+}
+
+function renderBillingReturnNotice() {
+  const flow = state.billing.returnFlow;
+  if (!flow || flow.resolved) return '';
+  const attemptsRemaining = Math.max(BILLING_POLL_LIMIT - Number(flow.attempts || 0), 0);
+  const statusType = flow.lastError ? 'danger' : flow.checking ? 'pending' : 'warning';
+  const message = flow.lastError
+    ? flow.lastError
+    : flow.checking
+      ? 'Checking Paystack return with the server before showing success…'
+      : attemptsRemaining
+        ? 'Payment is still pending verification. You can retry now or wait a moment.'
+        : 'Verification stayed pending. Retry manually if Paystack already charged your card.';
+  return `
+    <div class="billing-return-notice inline-status inline-status-${escapeHtml(statusType)}">
+      <div>
+        <strong>Billing return</strong>
+        <span>${escapeHtml(message)}</span>
+      </div>
+      <div class="panel-actions panel-actions-wrap">
+        <button class="btn btn-secondary" type="button" data-action="billing-manual-retry" ${flow.checking ? 'disabled' : ''}>${flow.checking ? 'Checking…' : 'Retry verification'}</button>
+        <button class="btn btn-secondary" type="button" data-action="billing-dismiss-return" ${flow.checking ? 'disabled' : ''}>Dismiss</button>
+      </div>
+    </div>
+  `;
+}
+
+async function verifyBillingReturn(options = {}) {
+  const flow = state.billing.returnFlow;
+  if (!flow || flow.checking || flow.resolved) return;
+  if (!safeWorkspaceMatches(flow.workspaceId)) {
+    flow.lastError = 'This payment return belongs to a different workspace. Switch to that workspace to verify it.';
+    renderSubscriptionPanel();
+    return;
+  }
+  flow.checking = true;
+  flow.attempts = Number(flow.attempts || 0) + 1;
+  flow.lastError = '';
+  saveBillingReturnFlow(flow);
+  setStatus('billing', 'pending', 'Checking payment status…');
+  renderSubscriptionPanel();
+  try {
+    const result = await apiCall('POST', `/api/workspaces/${state.activeWorkspaceId}/billing/verify`, { reference: flow.reference });
+    if (!safeWorkspaceMatches(flow.workspaceId)) return;
+    flow.lastResult = result || null;
+    if (result?.verified) {
+      flow.resolved = true;
+      const active = result.entitlement?.canStream === true;
+      const message = active ? 'Payment verified. Pro access is active for this workspace.' : 'Payment verified. Its paid period has ended or access is unavailable; review your subscription.';
+      setBillingStickyNotice(active ? 'success' : 'warning', message);
+      clearBillingReturnFlow();
+      await loadWorkspaceData({ silent: true, force: true });
+      setStatus('billing', active ? 'success' : 'warning', message);
+      renderSubscriptionPanel();
+      return;
+    }
+    const pendingMessage = result?.message || result?.statusMessage || 'Verification is still pending.';
+    if (flow.attempts < BILLING_POLL_LIMIT && !options.manualOnly) {
+      setStatus('billing', 'pending', pendingMessage);
+      flow.checking = false;
+      saveBillingReturnFlow(flow);
+      clearBillingPollTimer();
+      state.billing.pollTimer = setTimeout(() => verifyBillingReturn(), BILLING_POLL_DELAY_MS);
+      renderSubscriptionPanel();
+      return;
+    }
+    flow.lastError = pendingMessage;
+    setStatus('billing', 'warning', pendingMessage);
+  } catch (error) {
+    flow.lastError = apiErrorMessage(error);
+    setStatus('billing', 'danger', flow.lastError);
+  } finally {
+    if (state.billing.returnFlow) {
+      state.billing.returnFlow.checking = false;
+      saveBillingReturnFlow(state.billing.returnFlow);
+    }
+    renderSubscriptionPanel();
+  }
+}
+
+async function resumeBillingReturnFlowIfNeeded() {
+  if (state.billing.returnFlow?.resolved) return;
+  if (!state.billing.returnFlow) state.billing.returnFlow = readBillingReturnFlow();
+  const flow = state.billing.returnFlow;
+  if (!flow) return;
+
+  const matchedWorkspace = state.workspaces.find((workspace) => String(workspace.id) === String(flow.workspaceId));
+  if (!matchedWorkspace) {
+    flow.lastError = 'This payment return is for a workspace you do not belong to.';
+    saveBillingReturnFlow(flow);
+    renderSubscriptionPanel();
+    return;
+  }
+
+  if (!safeWorkspaceMatches(flow.workspaceId)) {
+    state.activeWorkspaceId = matchedWorkspace.id;
+  }
+
+  await loadWorkspaceData({ silent: true, force: true });
+  await verifyBillingReturn();
+}
+
 function isBusy(key) {
   return !!state.ui.busy[key];
 }
@@ -227,7 +521,7 @@ function showView(viewName) {
   const loadingView = document.getElementById('portal-loading');
   if (loadingView) loadingView.style.display = 'none';
   if (viewName === 'auth') {
-    document.getElementById('auth-view').style.display = 'grid';
+    document.getElementById('auth-view').style.display = 'flex';
     document.getElementById('app-view').style.display = 'none';
     renderAuthView();
     return;
@@ -251,23 +545,84 @@ function hideAlert() {
   alertEl.textContent = '';
 }
 
+function currentBillingReferenceFromLocation() {
+  const params = new URLSearchParams(window.location?.search || '');
+  const status = String(params.get('billing') || '').toLowerCase();
+  const workspaceId = params.get('workspaceId') || '';
+  const reference = params.get('reference') || params.get('trxref') || '';
+  if (status !== 'return' || !workspaceId || !reference) return null;
+  return { workspaceId, reference, status: 'return' };
+}
+
+function clearBillingReturnQuery() {
+  if (!window.history?.replaceState || !window.location) return;
+  const url = new URL(window.location.href);
+  url.searchParams.delete('billing');
+  url.searchParams.delete('workspaceId');
+  url.searchParams.delete('reference');
+  url.searchParams.delete('trxref');
+  window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash || '#workspace'}`);
+}
+
+function primeBillingReturnFlowFromLocation() {
+  const incoming = currentBillingReferenceFromLocation();
+  if (!incoming) return;
+  state.billing.returnFlow = {
+    workspaceId: incoming.workspaceId,
+    reference: incoming.reference,
+    attempts: 0,
+    checking: false,
+    resolved: false,
+    lastResult: null,
+    lastError: ''
+  };
+  saveBillingReturnFlow(state.billing.returnFlow);
+  clearBillingReturnQuery();
+}
+
 function renderAuthView() {
   const workspaceGroup = document.getElementById('workspace-group');
+  const modeLabel = document.getElementById('auth-mode-label');
   const authTitle = document.getElementById('auth-title');
+  const authSubcopy = document.getElementById('auth-subcopy');
   const submitBtn = document.getElementById('auth-submit-btn');
+  const toggleCopy = document.getElementById('auth-toggle-copy');
   const toggleLink = document.getElementById('auth-toggle-link');
 
   if (state.isRegisterMode) {
     workspaceGroup.style.display = 'block';
-    authTitle.textContent = 'Create Emberstage Workspace';
-    submitBtn.textContent = 'Register Workspace & Owner';
-    toggleLink.textContent = 'Sign in to an existing account instead';
+    modeLabel.textContent = 'Register';
+    authTitle.textContent = 'Create your workspace';
+    authSubcopy.textContent = 'One account for your channels and devices.';
+    submitBtn.textContent = 'Create workspace';
+    toggleCopy.textContent = 'Already have an account?';
+    toggleLink.textContent = 'Sign in instead';
   } else {
     workspaceGroup.style.display = 'none';
-    authTitle.textContent = 'Emberstage Sign In';
+    modeLabel.textContent = 'Sign in';
+    authTitle.textContent = 'Welcome back';
+    authSubcopy.textContent = 'Sign in to open your control room.';
     submitBtn.textContent = 'Sign In';
-    toggleLink.textContent = 'Create an account instead';
+    toggleCopy.textContent = 'Need an account?';
+    toggleLink.textContent = 'Create one';
   }
+
+  updateAuthMethodsVisibility();
+}
+
+function updateAuthMethodsVisibility() {
+  const methods = document.getElementById('auth-methods');
+  const divider = document.getElementById('auth-divider');
+  const oauthButtons = [
+    document.getElementById('auth0-auth-button'),
+    document.getElementById('google-auth-button')
+  ].filter(Boolean);
+
+  const visibleButtons = oauthButtons.filter((button) => !button.hidden && button.style.display !== 'none');
+  const hasVisibleOauth = visibleButtons.length > 0;
+
+  if (methods) methods.hidden = !hasVisibleOauth;
+  if (divider) divider.hidden = !hasVisibleOauth;
 }
 
 function normalizeViewName(viewName) {
@@ -435,6 +790,7 @@ async function configureProductAuth() {
     const authConfig = await response.json();
     if (auth0Button) {
       auth0Button.hidden = !authConfig?.auth0?.enabled;
+      auth0Button.style.display = authConfig?.auth0?.enabled ? '' : 'none';
       if (!auth0Button.hidden && !auth0Button.dataset.ready) {
         auth0Button.dataset.ready = 'true';
         auth0Button.addEventListener('click', () => {
@@ -443,7 +799,12 @@ async function configureProductAuth() {
       }
     }
   } catch (_) {
-    if (auth0Button) auth0Button.hidden = true;
+    if (auth0Button) {
+      auth0Button.hidden = true;
+      auth0Button.style.display = 'none';
+    }
+  } finally {
+    updateAuthMethodsVisibility();
   }
 }
 
@@ -452,7 +813,7 @@ let workspaceDataLoad = null;
 function loadWorkspaceData(options = {}) {
   const workspaceId = state.activeWorkspaceId;
   if (!workspaceId) return Promise.resolve();
-  if (workspaceDataLoad?.workspaceId === workspaceId) return workspaceDataLoad.promise;
+  if (!options.force && workspaceDataLoad?.workspaceId === workspaceId) return workspaceDataLoad.promise;
   const load = { workspaceId };
   load.promise = fetchWorkspaceData(options, workspaceId).finally(() => {
     if (workspaceDataLoad === load) workspaceDataLoad = null;
@@ -464,23 +825,33 @@ function loadWorkspaceData(options = {}) {
 async function fetchWorkspaceData(options, workspaceId) {
   if (!state.activeWorkspaceId) return;
   try {
-    const [workspaceResult, setupResult, providersResult, targetsResult, customTargetsResult] = await Promise.all([
+    const [workspaceResult, setupResult, providersResult, targetsResult, customTargetsResult, billingResult] = await Promise.all([
       apiCall('GET', `/api/workspaces/${state.activeWorkspaceId}`),
       apiCall('GET', `/api/workspaces/${state.activeWorkspaceId}/streams/setup`),
       apiCall('GET', `/api/workspaces/${state.activeWorkspaceId}/providers`),
       apiCall('GET', `/api/workspaces/${state.activeWorkspaceId}/providers/targets`),
-      apiCall('GET', `/api/workspaces/${state.activeWorkspaceId}/streams/custom-targets`)
+      apiCall('GET', `/api/workspaces/${state.activeWorkspaceId}/streams/custom-targets`),
+      apiCall('GET', `/api/workspaces/${state.activeWorkspaceId}/billing`)
     ]);
 
     if (state.activeWorkspaceId !== workspaceId || !state.user) return;
-    if (workspaceResult?.success) state.activeWorkspace = workspaceResult.workspace;
+    if (workspaceResult?.success) {
+      state.activeWorkspace = workspaceResult.workspace;
+      state.activeWorkspaceRole = workspaceResult.role || state.activeWorkspaceRole;
+    }
     state.setup = setupResult || { ingestServer: '', devices: [], stream: null, destinations: [] };
     state.providers = providersResult?.providers || {};
     state.providerTargets = Array.isArray(targetsResult) ? targetsResult : [];
     state.customTargets = customTargetsResult?.targets || [];
+    state.billing.workspace = billingResult || null;
+    state.billing.summaryError = '';
 
     document.getElementById('header-workspace-name').textContent = state.activeWorkspace?.name || 'Workspace';
     document.getElementById('header-user-email').textContent = state.user?.email || '—';
+    document.getElementById('header-user-role').textContent = roleLabel(state.activeWorkspaceRole);
+    document.getElementById('header-workspace-plan').textContent = getWorkspaceEntitlement().plan === 'pro'
+      ? `${getWorkspacePlan().name || 'Emberstage Pro'} · ${formatPlanPrice(getWorkspacePlan())}`
+      : 'Free local core';
 
     reconcileSelections();
     renderApp();
@@ -491,6 +862,7 @@ async function fetchWorkspaceData(options, workspaceId) {
       await ensureYoutubeBroadcasts(state.selectedYoutubeTargetId, { silent: true });
     }
   } catch (error) {
+    state.billing.summaryError = apiErrorMessage(error);
     if (!options.silent) showAlert(`Error loading workspace details: ${apiErrorMessage(error)}`);
   }
 }
@@ -1190,26 +1562,82 @@ function renderDevicesPanel() {
 function renderSubscriptionPanel() {
   const ws = state.activeWorkspace;
   if (!ws) return;
-  const active = ws.stripe_status === 'active' || ws.stripe_status === 'trialing';
+  const plan = getWorkspacePlan();
+  const entitlement = getWorkspaceEntitlement();
+  const subscription = getWorkspaceSubscription();
+  const mode = currentBillingMode();
+  const manager = isBillingManager();
+  const stickyNotice = consumeBillingStickyNotice();
+  if (stickyNotice) setStatus('billing', stickyNotice.type, stickyNotice.message);
+  const statusCopy = state.billing.summaryError
+    ? state.billing.summaryError
+    : entitlement.plan === 'pro'
+      ? entitlement.cancelAtPeriodEnd
+        ? `Pro access stays on until ${formatPaidUntil(entitlement.paidUntil)}, then new streams stop while any live stream gets up to two hours to finish.`
+        : `Pro access is active${entitlement.paidUntil ? ` until ${formatPaidUntil(entitlement.paidUntil)}` : ''}.`
+      : 'Free local Bible, text, media, camera, and setup tools stay usable even if you cancel paid streaming.';
+  const manageLabel = subscription.manageAvailable ? 'Manage subscription' : 'Portal unavailable';
+  const modeTone = mode === 'live' ? 'success' : mode === 'test' ? 'warning' : 'muted';
+  const canCheckout = manager && isCheckoutAvailable() && entitlement.plan !== 'pro';
+  const canManage = manager && !!subscription.manageAvailable;
+  const limitSummary = entitlement.plan === 'pro'
+    ? 'One active broadcast workspace at a time, with up to three paired OBS devices and three simultaneous destinations.'
+    : 'Free keeps the local operator workflow. Paid is only for the streaming control service.';
   document.getElementById('subscription-panel').innerHTML = `
-    <div class="panel-stack">
+    <div class="panel-stack subscription-stack">
       ${renderStatus('billing')}
-      <div class="subscription-overview">
+      ${renderBillingReturnNotice()}
+      <section class="subscription-hero ${entitlement.plan === 'pro' ? 'subscription-hero-pro' : ''}">
         <div>
-          <p class="field-label">Subscription</p>
+          <p class="field-label">Workspace billing</p>
           <h3>${escapeHtml(ws.name)}</h3>
-          <p class="section-copy">${escapeHtml(active ? `Subscription status: ${String(ws.stripe_status).toUpperCase()}.` : 'Local workspace limits apply until billing is configured.')}</p>
+          <p class="section-copy">${escapeHtml(statusCopy)}</p>
+          <div class="billing-pill-row">
+            ${statusChip(entitlement.plan === 'pro' ? 'Emberstage Pro' : 'Free local core', entitlement.plan === 'pro' ? 'success' : 'muted')}
+            ${subscription.status && subscription.status !== 'none' ? statusChip(titleCase(subscription.status), entitlement.plan === 'pro' ? 'success' : 'warning') : ''}
+            ${statusChip(billingModeLabel(mode), modeTone)}
+          </div>
         </div>
-        ${statusChip(active ? 'Pro plan' : 'Free plan', active ? 'success' : 'muted')}
+        <div class="subscription-price-panel">
+          <span class="subscription-price-kicker">Emberstage Pro · NGN</span>
+          <strong class="subscription-price">${escapeHtml(formatPlanPrice(plan))}</strong>
+          <span class="subscription-price-note">Per workspace</span>
+        </div>
+      </section>
+      <div class="metric-strip metric-strip-3">
+        <article class="metric-tile"><span>Pro · paired OBS devices</span><strong>${escapeHtml(plan.maxDevices)}</strong></article>
+        <article class="metric-tile"><span>Pro · simultaneous destinations</span><strong>${escapeHtml(plan.maxDestinations)}</strong></article>
+        <article class="metric-tile"><span>Pro · active broadcasts</span><strong>${escapeHtml(plan.maxActiveBroadcasts)}</strong></article>
       </div>
-      <div class="metric-strip">
-        <article class="metric-tile"><span>Max devices</span><strong>${escapeHtml(ws.max_devices)}</strong></article>
-        <article class="metric-tile"><span>Max destinations</span><strong>${escapeHtml(ws.max_destinations)}</strong></article>
+      <div class="billing-card-grid">
+        <article class="billing-card billing-card-accent">
+          <p class="field-label">What paid covers</p>
+          <h3>Streaming control service</h3>
+          <p class="section-copy">${escapeHtml(limitSummary)}</p>
+          <p class="billing-mini-note">Automatic approved destination go-live follows OBS start. Platform permissions and server configuration still decide what each provider allows.</p>
+        </article>
+        <article class="billing-card">
+          <p class="field-label">Paid until</p>
+          <h3>${escapeHtml(entitlement.paidUntil ? formatPaidUntil(entitlement.paidUntil) : 'No paid period recorded')}</h3>
+          <p class="section-copy">${escapeHtml(entitlement.cancelAtPeriodEnd ? 'Cancellation is scheduled. Free features and saved config stay intact.' : entitlement.canStream ? 'This workspace can start new streams right now.' : 'At paid expiry, new streams stop. Existing streams may finish within two hours.')}</p>
+        </article>
+        <article class="billing-card">
+          <p class="field-label">Your access</p>
+          <h3>${escapeHtml(roleLabel(state.activeWorkspaceRole))}</h3>
+          <p class="section-copy">${escapeHtml(manager ? 'You can open checkout or manage the subscription for this workspace.' : 'Billing actions are read-only for operators. Ask a workspace owner or finance member to manage payment.')}</p>
+        </article>
+      </div>
+      <div class="billing-detail-list">
+        <div class="billing-detail-row"><span>Checkout mode</span><strong>${escapeHtml(billingModeCopy(mode))}</strong></div>
+        <div class="billing-detail-row"><span>Cancel anytime</span><strong>${escapeHtml(entitlement.plan === 'pro' ? 'Yes. Paid access runs until period end.' : 'Upgrade only when you need streaming control.')}</strong></div>
+        <div class="billing-detail-row"><span>Relay hosting</span><strong>Requires a configured relay; unlimited bandwidth is not included.</strong></div>
       </div>
       <div class="panel-actions panel-actions-wrap">
-        <button class="btn" type="button" data-action="billing-checkout" ${isBusy('billing-checkout') ? 'disabled' : ''}>${isBusy('billing-checkout') ? 'Opening…' : 'Check upgrade availability'}</button>
-        ${(ws.stripe_customer_id || active) ? `<button class="btn btn-secondary" type="button" data-action="billing-portal" ${isBusy('billing-portal') ? 'disabled' : ''}>${isBusy('billing-portal') ? 'Opening…' : 'Open billing portal'}</button>` : ''}
+        <button class="btn" type="button" data-action="billing-checkout" ${(canCheckout && !isBusy('billing-checkout')) ? '' : 'disabled'}>${isBusy('billing-checkout') ? 'Opening…' : entitlement.plan === 'pro' ? 'Pro is active' : mode === 'test' ? 'Try test checkout' : 'Upgrade to Pro'}</button>
+        <button class="btn btn-secondary" type="button" data-action="billing-portal" ${(canManage && !isBusy('billing-portal')) ? '' : 'disabled'}>${isBusy('billing-portal') ? 'Opening…' : manageLabel}</button>
       </div>
+      ${!manager ? '<div class="inline-status inline-status-muted">Operators can review usage, expiry, and plan limits here, but only owner or finance roles can open billing actions.</div>' : ''}
+      ${!isCheckoutAvailable() ? `<div class="inline-status inline-status-${mode === 'unconfigured' ? 'warning' : 'muted'}">${escapeHtml(billingCheckoutReason())}</div>` : ''}
     </div>
   `;
 }
@@ -1776,6 +2204,7 @@ async function handleBulkUpdate(form) {
 }
 
 async function handleBillingCheckout() {
+  if (!isBillingManager() || !isCheckoutAvailable() || getWorkspaceEntitlement().plan === 'pro' || isBusy('billing-checkout')) return;
   setBusy('billing-checkout', true);
   setStatus('billing', 'pending', 'Checking upgrade availability…');
   renderSubscriptionPanel();
@@ -1795,6 +2224,7 @@ async function handleBillingCheckout() {
 }
 
 async function handleBillingPortal() {
+  if (!isBillingManager() || !getWorkspaceSubscription().manageAvailable || isBusy('billing-portal')) return;
   setBusy('billing-portal', true);
   setStatus('billing', 'pending', 'Opening billing portal…');
   renderSubscriptionPanel();
@@ -1887,6 +2317,11 @@ function setupEventListeners() {
     state.workspaces = [];
     state.activeWorkspaceId = null;
     state.activeWorkspace = null;
+    state.activeWorkspaceRole = '';
+    clearBillingReturnFlow();
+    state.billing.workspace = null;
+    state.billing.summaryError = '';
+    state.billing.stickyNotice = null;
     state.providers = {};
     state.providerTargets = [];
     state.customTargets = [];
@@ -2063,6 +2498,12 @@ function setupEventListeners() {
     if (action === 'transition-broadcast') handleTransitionBroadcast(button.dataset.targetId, button.dataset.status);
     if (action === 'billing-checkout') handleBillingCheckout();
     if (action === 'billing-portal') handleBillingPortal();
+    if (action === 'billing-manual-retry') await verifyBillingReturn({ manualOnly: true });
+    if (action === 'billing-dismiss-return' && !state.billing.returnFlow?.checking) {
+      clearBillingReturnFlow();
+      clearStatus('billing');
+      renderSubscriptionPanel();
+    }
   });
 
   modalBackdrop().addEventListener('click', (event) => {
@@ -2079,6 +2520,7 @@ function setupEventListeners() {
 }
 
 async function init() {
+  primeBillingReturnFlowFromLocation();
   setupEventListeners();
   await configureProductAuth();
   try {
@@ -2092,6 +2534,7 @@ async function init() {
         showView('app');
         hideAlert();
         await loadWorkspaceData();
+        await resumeBillingReturnFlowIfNeeded();
       } else {
         showView('auth');
       }

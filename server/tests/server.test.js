@@ -9,7 +9,8 @@ process.env.DATABASE_URL = ':memory:';
 process.env.ENCRYPTION_SECRET = 'test-secret-key-must-be-long-and-secure-32-bytes!';
 process.env.PAYSTACK_SECRET_KEY = 'sk_test_mock';
 process.env.PAYSTACK_PLAN_CODE = 'PLN_emberstage_test';
-process.env.PAYSTACK_PLAN_AMOUNT = '500000';
+process.env.PAYSTACK_PLAN_AMOUNT = '300000';
+process.env.PAYSTACK_CURRENCY = 'NGN';
 process.env.APP_BASE_URL = 'http://127.0.0.1:3000';
 process.env.FAKE_WORKERS = 'true';
 
@@ -120,6 +121,28 @@ async function postPaystackWebhook(event) {
   });
 }
 
+// Exercise the real payment validator with a server-owned checkout and a mocked
+// provider response, never a test-only authorization path in application code.
+async function verifiedTestPayment(workspaceId, reference = `test_${crypto.randomBytes(8).toString('hex')}`) {
+  const now = new Date().toISOString();
+  db.run(`INSERT INTO paystack_checkouts (reference,workspace_id,plan_code,amount,currency,mode,status,created_at,updated_at)
+    VALUES (?,?,?,300000,'NGN','test','pending',?,?)`, [reference, workspaceId, process.env.PAYSTACK_PLAN_CODE, now, now]);
+  const event = { event: 'charge.success', data: {
+    id: crypto.randomInt(1, 1000000000), reference, status: 'success', domain: 'test', amount: 300000, currency: 'NGN',
+    plan: process.env.PAYSTACK_PLAN_CODE, paid_at: now, customer: { customer_code: `CUS_${workspaceId.replace(/[^a-zA-Z0-9]/g, '')}` }
+  } };
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (url, opts) => {
+    if (String(url) === `https://api.paystack.co/transaction/verify/${reference}`) {
+      return new Response(JSON.stringify({ status: true, data: event.data }), { status: 200 });
+    }
+    return originalFetch(url, opts);
+  };
+  try { assert.equal((await postPaystackWebhook(event)).status, 200); }
+  finally { globalThis.fetch = originalFetch; }
+  return event;
+}
+
 // Global test setup
 test.before(async () => {
   // Clear any existing tables to guarantee test isolation and idempotency
@@ -172,6 +195,10 @@ test('1. Product Auth (Register, Login, CSRF protection)', async () => {
   assert.ok(cookies._csrf, 'Should set _csrf cookie');
 
   const workspaceId = regBody.workspace.id;
+  db.run("UPDATE workspaces SET paystack_status = 'active', paid_until = ? WHERE id = ?", [
+    new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString(),
+    workspaceId
+  ]);
 
   // Test duplicate registration rejection
   const dupRes = await fetch(`${baseUrl}/api/auth/register`, {
@@ -376,6 +403,10 @@ test('4. Link Code Replay and Consuming', async () => {
   const body = await reg.json();
   const cookies = parseSetCookies(reg.headers);
   const workspaceId = body.workspace.id;
+  db.run("UPDATE workspaces SET paystack_status = 'active', paid_until = ? WHERE id = ?", [
+    new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString(),
+    workspaceId
+  ]);
 
   // Generate Link Code
   const codeRes = await fetch(`${baseUrl}/api/workspaces/${workspaceId}/devices/link-code`, {
@@ -419,6 +450,10 @@ test('5. Refresh Token Rotation and Replay Protection', async () => {
   const body = await reg.json();
   const cookies = parseSetCookies(reg.headers);
   const workspaceId = body.workspace.id;
+  db.run("UPDATE workspaces SET paystack_status = 'active', paid_until = ? WHERE id = ?", [
+    new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString(),
+    workspaceId
+  ]);
 
   const codeRes = await fetch(`${baseUrl}/api/workspaces/${workspaceId}/devices/link-code`, {
     method: 'POST',
@@ -470,6 +505,10 @@ test('6. Revoked Device rejection', async () => {
   const body = await reg.json();
   const cookies = parseSetCookies(reg.headers);
   const workspaceId = body.workspace.id;
+  db.run("UPDATE workspaces SET paystack_status = 'active', paid_until = ? WHERE id = ?", [
+    new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString(),
+    workspaceId
+  ]);
 
   const codeRes = await fetch(`${baseUrl}/api/workspaces/${workspaceId}/devices/link-code`, {
     method: 'POST',
@@ -526,8 +565,8 @@ test('7. Entitlement Limits (Devices & Expiry)', async () => {
   const cookies = parseSetCookies(reg.headers);
   const workspaceId = body.workspace.id;
 
-  // On Free/default plan, max_devices = 1.
-  // Generate first link code and pair
+  // On Free/default plan, max_devices = 0.
+  // Generate first link code -> Should deny on Free plan with 402
   const code1Res = await fetch(`${baseUrl}/api/workspaces/${workspaceId}/devices/link-code`, {
     method: 'POST',
     headers: {
@@ -537,8 +576,22 @@ test('7. Entitlement Limits (Devices & Expiry)', async () => {
     },
     body: JSON.stringify({ name: 'Device-1' })
   });
-  assert.strictEqual(code1Res.status, 200);
-  const { linkCode: code1 } = await code1Res.json();
+  assert.strictEqual(code1Res.status, 402, 'Should deny generating link code on Free plan');
+
+  await verifiedTestPayment(workspaceId);
+
+  // After upgrade, generating first link code and pairing it succeeds!
+  const code1UpgradeRes = await fetch(`${baseUrl}/api/workspaces/${workspaceId}/devices/link-code`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Cookie': `session_id=${cookies.session_id}; _csrf=${cookies._csrf}`,
+      'X-CSRF-Token': cookies._csrf
+    },
+    body: JSON.stringify({ name: 'Device-1' })
+  });
+  assert.strictEqual(code1UpgradeRes.status, 200, 'Link code creation should succeed after upgrading subscription');
+  const { linkCode: code1 } = await code1UpgradeRes.json();
 
   const pair1Res = await fetch(`${baseUrl}/api/devices/pair`, {
     method: 'POST',
@@ -546,32 +599,6 @@ test('7. Entitlement Limits (Devices & Expiry)', async () => {
     body: JSON.stringify({ link_code: code1 })
   });
   assert.strictEqual(pair1Res.status, 200);
-
-  // Attempt to generate second link code on Free plan (limit = 1) -> Must reject with 402/400
-  const code2Res = await fetch(`${baseUrl}/api/workspaces/${workspaceId}/devices/link-code`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Cookie': `session_id=${cookies.session_id}; _csrf=${cookies._csrf}`,
-      'X-CSRF-Token': cookies._csrf
-    },
-    body: JSON.stringify({ name: 'Device-2' })
-  });
-  assert.strictEqual(code2Res.status, 402, 'Should deny generating link code due to workspace devices limit on Free plan');
-
-  // Upgrade Workspace via simulated Paystack Webhook
-  const upgradeRes = await postPaystackWebhook({
-    event: 'subscription.create',
-    data: {
-      id: 123,
-      subscription_code: 'SUB_test_123',
-      customer: { customer_code: 'CUS_test_123' },
-      status: 'active',
-      plan: { plan_code: process.env.PAYSTACK_PLAN_CODE },
-      metadata: { workspace_id: workspaceId }
-    }
-  });
-  assert.strictEqual(upgradeRes.status, 200);
 
   // Generate second link code now (upgrade sets max_devices = 3) -> Should succeed
   const code2UpgradeRes = await fetch(`${baseUrl}/api/workspaces/${workspaceId}/devices/link-code`, {
@@ -598,9 +625,10 @@ test('8. Max Destinations Limit', async () => {
   const workspaceId = body.workspace.id;
   const streamDevice = createActiveDeviceToken(workspaceId, 'limits');
 
-  // On Free plan, max_destinations = 1.
-  // Set subscription to active to bypass subscription check, but keep max_destinations = 1
-  db.run("UPDATE workspaces SET stripe_status = 'active', max_destinations = 1 WHERE id = ?", [workspaceId]);
+  // Pro always permits exactly three concurrent destinations, regardless of
+  // stale legacy limit columns. Four selected destinations must be rejected.
+  const futurePaidUntil = new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString();
+  db.run("UPDATE workspaces SET paystack_status = 'active', paid_until = ?, max_destinations = 1 WHERE id = ?", [futurePaidUntil, workspaceId]);
 
   // Custom RTMP is the implemented MVP destination type.
   const encryptedKey = cryptoUtils.encrypt('destination-secret', config.ENCRYPTION_SECRET);
@@ -608,6 +636,10 @@ test('8. Max Destinations Limit', async () => {
     ['crt_limit_1', workspaceId, 'Custom One', 'rtmps://one.example/live', encryptedKey, new Date().toISOString()]);
   db.run("INSERT INTO custom_rtmp_targets (id, workspace_id, name, stream_url, encrypted_stream_key, selected, created_at) VALUES (?, ?, ?, ?, ?, 1, ?)",
     ['crt_limit_2', workspaceId, 'Custom Two', 'rtmps://two.example/live', encryptedKey, new Date().toISOString()]);
+  for (const n of [3, 4]) {
+    db.run("INSERT INTO custom_rtmp_targets (id, workspace_id, name, stream_url, encrypted_stream_key, selected, created_at) VALUES (?, ?, ?, ?, ?, 1, ?)",
+      [`crt_limit_${n}`, workspaceId, `Custom ${n}`, 'rtmps://target.example/live', encryptedKey, new Date().toISOString()]);
+  }
 
   const webStartRes = await fetch(`${baseUrl}/api/workspaces/${workspaceId}/streams/start`, {
     method: 'POST',
@@ -620,7 +652,7 @@ test('8. Max Destinations Limit', async () => {
   });
   assert.strictEqual(webStartRes.status, 403, 'Contribution credentials must only be issued to paired devices');
 
-  // Preflight with 2 destinations -> Must fail/reject
+  // Preflight with four destinations must fail.
   const preflightRes = await fetch(`${baseUrl}/api/workspaces/${workspaceId}/streams/preflight`, {
     method: 'POST',
     headers: {
@@ -628,24 +660,13 @@ test('8. Max Destinations Limit', async () => {
       'Cookie': `session_id=${cookies.session_id}; _csrf=${cookies._csrf}`,
       'X-CSRF-Token': cookies._csrf
     },
-    body: JSON.stringify({ destinations: ['crt_limit_1', 'crt_limit_2'] })
+    body: JSON.stringify({ destinations: ['crt_limit_1', 'crt_limit_2', 'crt_limit_3', 'crt_limit_4'] })
   });
   assert.strictEqual(preflightRes.status, 400, 'Preflight with excess destinations must fail');
   const preflightBody = await preflightRes.json();
   assert.strictEqual(preflightBody.eligible, false);
 
-  // Upgrade to Pro (max_destinations = 3)
-  await postPaystackWebhook({
-    event: 'subscription.create',
-    data: {
-      id: 456,
-      subscription_code: 'SUB_test_dest',
-      customer: { customer_code: 'CUS_test_dest' },
-      status: 'active',
-      plan: { plan_code: process.env.PAYSTACK_PLAN_CODE },
-      metadata: { workspace_id: workspaceId }
-    }
-  });
+  db.run("UPDATE custom_rtmp_targets SET selected = 0 WHERE id IN ('crt_limit_3', 'crt_limit_4')");
 
   // A Pro workspace can snapshot both selected destinations when OBS publishes.
   const ingest = await rotateDeviceIngestKey(workspaceId, streamDevice.deviceId, cookies);
@@ -674,7 +695,8 @@ test('9. Usage Counters Tracking', async () => {
   const streamDevice = createActiveDeviceToken(workspaceId, 'usage');
 
   // Upgrade workspace to avoid destination limit and set active subscription
-  db.run("UPDATE workspaces SET stripe_status = 'active', max_destinations = 5 WHERE id = ?", [workspaceId]);
+  const futurePaidUntilUsage = new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString();
+  db.run("UPDATE workspaces SET paystack_status = 'active', paid_until = ?, max_destinations = 5 WHERE id = ?", [futurePaidUntilUsage, workspaceId]);
 
   const usageKey = cryptoUtils.encrypt('usage-destination-secret', config.ENCRYPTION_SECRET);
   db.run("INSERT INTO custom_rtmp_targets (id, workspace_id, name, stream_url, encrypted_stream_key, selected, created_at) VALUES (?, ?, ?, ?, ?, 1, ?)",
@@ -755,10 +777,15 @@ test('10b. Paystack checkout initialization and hosted subscription management',
     const url = String(input);
     if (!url.startsWith('https://api.paystack.co/')) return originalFetch(input, options);
     paystackRequests.push({ url, options });
+    if (url.includes('/plan/')) {
+      return new Response(JSON.stringify({ status: true, data: {
+        plan_code: process.env.PAYSTACK_PLAN_CODE, amount: 300000, currency: 'NGN', interval: 'monthly', domain: 'test'
+      } }), { status: 200 });
+    }
     if (url.endsWith('/transaction/initialize')) {
       return new Response(JSON.stringify({
         status: true,
-        data: { authorization_url: 'https://checkout.paystack.com/mock-checkout' }
+        data: { reference: JSON.parse(options.body).reference, authorization_url: 'https://checkout.paystack.com/mock-checkout' }
       }), { status: 200, headers: { 'Content-Type': 'application/json' } });
     }
     if (url.endsWith('/subscription/SUB_mock/manage/link')) {
@@ -783,14 +810,16 @@ test('10b. Paystack checkout initialization and hosted subscription management',
     assert.strictEqual(checkout.status, 200);
     assert.strictEqual((await checkout.json()).url, 'https://checkout.paystack.com/mock-checkout');
 
-    const checkoutRequest = paystackRequests[0];
+    const checkoutRequest = paystackRequests.find(request => request.url.endsWith('/transaction/initialize'));
     const checkoutBody = JSON.parse(checkoutRequest.options.body);
     assert.strictEqual(checkoutBody.email, email);
     assert.strictEqual(checkoutBody.plan, process.env.PAYSTACK_PLAN_CODE);
     assert.strictEqual(checkoutBody.metadata.workspace_id, workspace.id);
     assert.strictEqual(checkoutRequest.options.headers.Authorization, `Bearer ${process.env.PAYSTACK_SECRET_KEY}`);
 
-    db.run('UPDATE workspaces SET stripe_subscription_id = ? WHERE id = ?', ['SUB_mock', workspace.id]);
+    db.run('UPDATE workspaces SET paystack_subscription_id = ? WHERE id = ?', ['SUB_mock', workspace.id]);
+    db.run(`INSERT INTO paystack_subscriptions (subscription_code,workspace_id,customer_code,plan_code,mode,status)
+      VALUES (?,?,?,?,'test','active')`, ['SUB_mock', workspace.id, 'CUS_mock', process.env.PAYSTACK_PLAN_CODE]);
     const portal = await originalFetch(`${baseUrl}/api/workspaces/${workspace.id}/billing/portal`, {
       method: 'POST',
       headers: authHeaders
@@ -917,23 +946,8 @@ test('11. Security and Edge Cases (Subscription Denial, Cross-provider State Rej
   const crossBody = await crossProviderRes.text();
   assert.match(crossBody, /Provider state mismatch/);
 
-  // 3. Webhook replay
-  // Prepare a webhook payload
-  const webhookEvent = {
-    event: 'charge.success',
-    data: {
-      id: 789,
-      reference: 'replay_test_123',
-      customer: { customer_code: 'CUS_replay' },
-      status: 'success',
-      plan: { plan_code: process.env.PAYSTACK_PLAN_CODE },
-      metadata: { workspace_id: workspaceId }
-    }
-  };
-
-  // First post -> Should succeed
-  const webhookRes1 = await postPaystackWebhook(webhookEvent);
-  assert.strictEqual(webhookRes1.status, 200);
+  // 3. Replay of a server-verified, workspace-bound payment.
+  const webhookEvent = await verifiedTestPayment(workspaceId);
 
   // Second post with same event ID -> Should ack with duplicate message without re-applying state changes
   const webhookRes2 = await postPaystackWebhook(webhookEvent);
@@ -990,7 +1004,8 @@ test('11. Security and Edge Cases (Subscription Denial, Cross-provider State Rej
   assert.strictEqual(bootstrapBody.workspace.id, workspaceId, 'Bootstrap must return the workspace shape consumed by the streaming dock');
   assert.strictEqual(bootstrapBody.device.id, pairBody.deviceId, 'Bootstrap must return the paired device shape consumed by the streaming dock');
 
-  // 7. A successful charge for an unrelated plan does not activate Pro, but the configured subscription does
+  // 7. Unrelated/unbound events cannot link customers or mutate paid access.
+  const beforeUnboundEvents = queryOne('SELECT paystack_customer_code, paystack_status, paid_until FROM workspaces WHERE id = ?', [workspaceId]);
   const checkoutRes = await postPaystackWebhook({
     event: 'charge.success',
     data: {
@@ -1004,12 +1019,9 @@ test('11. Security and Edge Cases (Subscription Denial, Cross-provider State Rej
   });
   assert.strictEqual(checkoutRes.status, 200);
 
-  // Customer is linked, but an unrelated plan must not upgrade the workspace.
-  const workspaceAfterCheckout = queryOne('SELECT stripe_status, stripe_customer_id FROM workspaces WHERE id = ?', [workspaceId]);
-  assert.strictEqual(workspaceAfterCheckout.stripe_customer_id, 'CUS_checkout_test');
-  assert.notStrictEqual(workspaceAfterCheckout.stripe_status, 'active');
+  assert.deepStrictEqual(queryOne('SELECT paystack_customer_code, paystack_status, paid_until FROM workspaces WHERE id = ?', [workspaceId]), beforeUnboundEvents);
 
-  // The configured Paystack subscription upgrades limits and status.
+  // Even a configured plan and active status are not proof of payment.
   const subCreatedRes = await postPaystackWebhook({
     event: 'subscription.create',
     data: {
@@ -1023,9 +1035,7 @@ test('11. Security and Edge Cases (Subscription Denial, Cross-provider State Rej
   });
   assert.strictEqual(subCreatedRes.status, 200);
 
-  const workspaceAfterSubCreated = queryOne('SELECT stripe_status, max_devices FROM workspaces WHERE id = ?', [workspaceId]);
-  assert.strictEqual(workspaceAfterSubCreated.stripe_status, 'active', 'Subscription should now be active');
-  assert.strictEqual(workspaceAfterSubCreated.max_devices, 3, 'Plan should be upgraded to Pro limits');
+  assert.deepStrictEqual(queryOne('SELECT paystack_customer_code, paystack_status, paid_until FROM workspaces WHERE id = ?', [workspaceId]), beforeUnboundEvents);
 
   // 8. Block provider OAuth when ENCRYPTION_SECRET is default/unset
   // Temporarily set default secret in config and process.env
@@ -1722,7 +1732,8 @@ test('YouTube relay admission accepts configured selected targets and preserves 
   const targetId = 'target_youtube_relay';
   const connectionId = 'connection_youtube_relay';
   const now = new Date().toISOString();
-  db.run("INSERT INTO workspaces (id, name, stripe_status, created_at) VALUES (?, 'YouTube relay test', 'trialing', ?)", [wsId, now]);
+  const future = new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString();
+  db.run("INSERT INTO workspaces (id, name, paystack_status, paid_until, created_at) VALUES (?, 'YouTube relay test', 'active', ?, ?)", [wsId, future, now]);
   const { deviceId, token } = createActiveDeviceToken(wsId, 'youtube_relay');
   const key = crypto.randomBytes(24).toString('base64url');
   db.run('UPDATE devices SET ingest_key_hash = ? WHERE id = ?', [crypto.createHash('sha256').update(key).digest('hex'), deviceId]);
@@ -1771,9 +1782,9 @@ test('YouTube relay admission accepts configured selected targets and preserves 
   configured = true;
   assert.equal((await listedTarget()).ready, true);
   assert.equal((await listedTarget()).status, 'ready');
-  db.run("UPDATE workspaces SET stripe_status = 'none' WHERE id = ?", [wsId]);
+  db.run("UPDATE workspaces SET paystack_status = 'suspended' WHERE id = ?", [wsId]);
   await rejectBoth(402);
-  db.run("UPDATE workspaces SET stripe_status = 'trialing' WHERE id = ?", [wsId]);
+  db.run("UPDATE workspaces SET paystack_status = 'active' WHERE id = ?", [wsId]);
   db.run('UPDATE provider_targets SET selected = 0 WHERE id = ?', [targetId]);
   await rejectBoth(400);
   db.exec('PRAGMA ignore_check_constraints = ON;');
@@ -1822,7 +1833,8 @@ test('14. Emberstage Managed-Streaming MVP & Worker Manager Validation', async (
     const wsId = 'ws_streaming_test';
     const devId = 'dev_streaming_test';
     
-    db.run("INSERT OR IGNORE INTO workspaces (id, name, stripe_status, max_destinations, created_at) VALUES (?, 'Test Streaming Workspace', 'active', 2, ?)", [wsId, new Date().toISOString()]);
+    const future = new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString();
+    db.run("INSERT OR IGNORE INTO workspaces (id, name, paystack_status, paid_until, max_destinations, created_at) VALUES (?, 'Test Streaming Workspace', 'active', ?, 2, ?)", [wsId, future, new Date().toISOString()]);
     const presentedKey = `esk_${crypto.randomBytes(24).toString('base64url')}`;
     const presentedKeyHash = crypto.createHash('sha256').update(presentedKey).digest('hex');
     db.run("INSERT OR IGNORE INTO devices (id, workspace_id, name, status, ingest_key_hash, ingest_key_last4, ingest_key_rotated_at, created_at) VALUES (?, ?, 'Test Device', 'active', ?, ?, ?, ?)", [
@@ -2043,7 +2055,8 @@ test('YouTube Broadcast Flow Contract and Edge Cases', async (t) => {
   const now = new Date().toISOString();
 
   // Insert workspace
-  db.run("INSERT INTO workspaces (id, name, stripe_status, created_at) VALUES (?, 'YT Flow Test', 'trialing', ?)", [wsId, now]);
+  const future = new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString();
+  db.run("INSERT INTO workspaces (id, name, paystack_status, paid_until, created_at) VALUES (?, 'YT Flow Test', 'active', ?, ?)", [wsId, future, now]);
 
   const userId = 'user_yt_flow';
   const sessionId = 'session_yt_flow';
@@ -2356,7 +2369,8 @@ test('YouTube Auto-start and Admission Edge Cases', async (t) => {
   const targetId = 'target_youtube_autostart';
   const connectionId = 'connection_youtube_autostart';
   const now = new Date().toISOString();
-  db.run("INSERT INTO workspaces (id, name, stripe_status, created_at) VALUES (?, 'YouTube autostart test', 'trialing', ?)", [wsId, now]);
+  const future = new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString();
+  db.run("INSERT INTO workspaces (id, name, paystack_status, paid_until, created_at) VALUES (?, 'YouTube autostart test', 'active', ?, ?)", [wsId, future, now]);
   
   const { deviceId, token } = createActiveDeviceToken(wsId, 'youtube_autostart');
   const key = crypto.randomBytes(24).toString('base64url');
@@ -2460,7 +2474,8 @@ test('Facebook streaming integration: discovery, preflight, publish, start, stop
   const now = new Date().toISOString();
 
   // Create workspace, device, connection, target
-  db.run("INSERT INTO workspaces (id, name, stripe_status, created_at) VALUES (?, 'Facebook Test Workspace', 'trialing', ?)", [wsId, now]);
+  const future = new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString();
+  db.run("INSERT INTO workspaces (id, name, paystack_status, paid_until, created_at) VALUES (?, 'Facebook Test Workspace', 'active', ?, ?)", [wsId, future, now]);
   const { deviceId, token: deviceToken } = createActiveDeviceToken(wsId, 'fb_device');
   db.run('UPDATE devices SET ingest_key_hash = ? WHERE id = ?', [crypto.createHash('sha256').update(key).digest('hex'), deviceId]);
 
@@ -2706,7 +2721,8 @@ test('Facebook activation failure and concurrent stop retain exact cleanup bindi
     return originals.start.apply(this, args);
   };
   const fixture = async id => {
-    db.run("INSERT INTO workspaces (id, name, stripe_status, created_at) VALUES (?, ?, 'trialing', ?)", [id, id, now]);
+    const future = new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString();
+    db.run("INSERT INTO workspaces (id, name, paystack_status, paid_until, created_at) VALUES (?, ?, 'active', ?, ?)", [id, id, future, now]);
     const device = createActiveDeviceToken(id, id);
     const key = `key-${id}`;
     db.run('UPDATE devices SET ingest_key_hash = ? WHERE id = ?', [crypto.createHash('sha256').update(key).digest('hex'), device.deviceId]);

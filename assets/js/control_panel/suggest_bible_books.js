@@ -37,8 +37,8 @@ bibleInput.addEventListener("input", function() {
   );
 
   const resolvedName = getResolvedBookNameFromAlias(inputValue);
-  if (resolvedName && !filteredBooks.includes(resolvedName)) {
-    filteredBooks.unshift(resolvedName);
+  if (resolvedName) {
+    filteredBooks = [resolvedName, ...filteredBooks.filter(book => book !== resolvedName)];
   }
 
   suggestionsList.innerHTML = "";

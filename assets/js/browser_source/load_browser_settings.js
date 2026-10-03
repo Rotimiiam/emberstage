@@ -18,6 +18,7 @@ const savedFontColor = localStorage.getItem('fontColor');
 const savedBorderRadius = localStorage.getItem('borderRadius');
 const savedTitleColor = localStorage.getItem('titleColor');
 var savedMessage = localStorage.getItem('savedMessage');
+const savedMessagePayloadRaw = localStorage.getItem('obs-bible-saved-message-payload');
 var savedBoldState = localStorage.getItem('boldState');
 var savedItalicState = localStorage.getItem('italicState');
 var savedUnderlineState = localStorage.getItem('underlineState');
@@ -73,7 +74,16 @@ if (savedAnimationData) {
 
 }
 
-if (savedMessage){
+if (savedMessagePayloadRaw && window.OBSBibleBroadcastBranding) {
+    try {
+        const savedPayload = window.OBSBibleBroadcastBranding.coerceMessagePayload(JSON.parse(savedMessagePayloadRaw));
+        updateMessage('messageDisplay', savedPayload);
+    } catch (_) {
+        if (savedMessage){
+            messageDisplay.innerHTML = savedMessage;
+        }
+    }
+} else if (savedMessage){
     messageDisplay.innerHTML = savedMessage;
 }
 
@@ -128,3 +138,7 @@ if (savedBgMargin){
     messageDisplay.style.padding = savedBgMargin + "px";
 }
 adjustFontSizeBasedOnScroll();
+
+if (window.obsBibleBroadcasting?.restoreSavedBroadcastPayload) {
+    window.obsBibleBroadcasting.restoreSavedBroadcastPayload();
+}

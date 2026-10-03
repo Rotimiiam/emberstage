@@ -20,6 +20,7 @@ function createMockElement(tag, id = '') {
     value: '',
     textContent: '',
     innerHTML: '',
+    dataset: {},
     style: { display: 'none' },
     classList: {
       add: () => {},
@@ -185,6 +186,76 @@ test('frontend: getSelectedBroadcastForTarget prioritization and logout secrets 
   assert.equal(state.user, null);
   assert.equal(state.drafts.customTarget.stream_key, '');
   assert.equal(state.activeWorkspaceId, null);
+});
+
+test('frontend: billing fails closed without server entitlements and never offers a second active checkout', async () => {
+  const dom = createMockDOM();
+  let requests = 0;
+  const context = vm.createContext({ ...dom, console, URL, URLSearchParams,
+    setTimeout: () => {}, clearTimeout: () => {}, setInterval: () => {},
+    fetch: async () => { requests++; return { ok: true, text: async () => '{}' }; }
+  });
+  vm.runInContext(fs.readFileSync(appJsPath, 'utf8'), context);
+  vm.runInContext(`state.activeWorkspace = { id: 'ws', name: 'Studio', stripe_status: 'active', stripe_customer_id: 'legacy', max_devices: 99 };
+    state.activeWorkspaceId = 'ws'; state.activeWorkspaceRole = 'owner';`, context);
+  assert.equal(vm.runInContext('getWorkspaceEntitlement().canStream', context), false);
+  assert.equal(vm.runInContext('getWorkspaceEntitlement().maxDevices', context), 0);
+  assert.equal(vm.runInContext('getWorkspaceSubscription().manageAvailable', context), false);
+  await vm.runInContext('handleBillingCheckout()', context);
+  assert.equal(requests, 0);
+  vm.runInContext(`state.billing.workspace = { checkoutAvailable: true, mode: 'test', plan: { amount: 300000, currency: 'NGN', interval: 'monthly', maxDevices: 3, maxDestinations: 3, maxActiveBroadcasts: 1 },
+    entitlement: { plan: 'pro', canStream: true, maxDevices: 3, maxDestinations: 3, maxActiveBroadcasts: 1 }, subscription: { status: 'active', manageAvailable: true } }; renderSubscriptionPanel();`, context);
+  assert.match(dom.elements['subscription-panel'].innerHTML, /data-action="billing-checkout" disabled>Pro is active/);
+  await vm.runInContext('handleBillingCheckout()', context);
+  assert.equal(requests, 0);
+  vm.runInContext(`state.activeWorkspaceRole = 'operator'; renderSubscriptionPanel();`, context);
+  assert.match(dom.elements['subscription-panel'].innerHTML, /data-action="billing-portal" disabled/);
+  await vm.runInContext('handleBillingPortal()', context);
+  assert.equal(requests, 0);
+});
+
+test('frontend: verified expired payment does not falsely announce active Pro', async () => {
+  const dom = createMockDOM();
+  const context = vm.createContext({ ...dom, console, URL, URLSearchParams,
+    setTimeout: () => {}, clearTimeout: () => {}, setInterval: () => {},
+    fetch: async () => ({ ok: true, text: async () => JSON.stringify({ verified: true, entitlement: { canStream: false } }) })
+  });
+  vm.runInContext(fs.readFileSync(appJsPath, 'utf8'), context);
+  vm.runInContext(`loadWorkspaceData = async () => {}; state.activeWorkspaceId = 'ws';
+    state.billing.returnFlow = { workspaceId: 'ws', reference: 'old-payment', attempts: 0 };`, context);
+  await vm.runInContext('verifyBillingReturn()', context);
+  assert.equal(vm.runInContext('state.ui.statuses.billing.type', context), 'warning');
+  assert.doesNotMatch(vm.runInContext('state.ui.statuses.billing.message', context), /Pro access is active/);
+});
+
+test('frontend: compact auth modes preserve workspace field and hide unavailable OAuth methods', () => {
+  const { document, window, localStorage } = createMockDOM();
+  const context = vm.createContext({ document, window, localStorage, console, URL, URLSearchParams });
+  vm.runInContext(fs.readFileSync(appJsPath, 'utf8'), context);
+  const auth0 = document.getElementById('auth0-auth-button');
+  const google = document.getElementById('google-auth-button');
+  auth0.hidden = true;
+  google.hidden = true;
+
+  vm.runInContext('renderAuthView()', context);
+  assert.equal(document.getElementById('auth-title').textContent, 'Welcome back');
+  assert.equal(document.getElementById('workspace-group').style.display, 'none');
+  assert.equal(document.getElementById('auth-methods').hidden, true);
+  assert.equal(document.getElementById('auth-divider').hidden, true);
+
+  vm.runInContext('state.isRegisterMode = true; renderAuthView()', context);
+  assert.equal(document.getElementById('workspace-group').style.display, 'block');
+  assert.equal(document.getElementById('auth-submit-btn').textContent, 'Create workspace');
+
+  auth0.hidden = false;
+  auth0.style.display = '';
+  vm.runInContext('updateAuthMethodsVisibility()', context);
+  assert.equal(document.getElementById('auth-methods').hidden, false);
+  assert.equal(document.getElementById('auth-divider').hidden, false);
+  auth0.style.display = 'none';
+  vm.runInContext('updateAuthMethodsVisibility()', context);
+  assert.equal(document.getElementById('auth-methods').hidden, true);
+  assert.equal(document.getElementById('auth-divider').hidden, true);
 });
 
 test('frontend: isUserInteracting checks and thumbnail constraints', () => {
@@ -402,8 +473,8 @@ test('frontend branding uses local emberstage svg assets', () => {
   const portalHtml = fs.readFileSync(portalHtmlPath, 'utf8');
   const dockHtml = fs.readFileSync(dockPath, 'utf8');
 
-  assert.ok(siteHtml.includes('../assets/brand/favicon.svg'));
-  assert.ok(siteHtml.includes('../assets/brand/emberstage-wordmark.svg'));
+  assert.ok(siteHtml.includes('brand/favicon.svg'));
+  assert.ok(siteHtml.includes('brand/emberstage-wordmark.svg'));
 
   assert.ok(portalHtml.includes('/assets/brand/favicon.svg'));
   assert.ok(portalHtml.includes('/assets/brand/emberstage-wordmark.svg'));

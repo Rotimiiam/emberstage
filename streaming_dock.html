@@ -6,6 +6,7 @@
   <link rel="icon" type="image/svg+xml" href="assets/brand/favicon.svg">
   <link rel="shortcut icon" href="assets/brand/favicon.svg">
   <link rel="stylesheet" href="assets/css/emberstage_brand.css">
+  <link rel="stylesheet" href="assets/css/dock_ui_scale.css">
   <title>Emberstage – Streaming</title>
   <style>
     :root {
@@ -1127,6 +1128,38 @@
         scroll-behavior: auto !important;
       }
     }
+    /* Density is local to this dock; reflow/scroll instead of document zoom. */
+    body {
+      --ui-font: 13px;
+      --ui-gap: 10px;
+      overflow: auto;
+    }
+    body[data-ui-scale] {
+      --ui-font: clamp(11px, calc(13px * var(--dock-scale)), 15px);
+      --ui-gap: clamp(4px, calc(10px * var(--dock-scale)), 12px);
+      font-size: var(--ui-font);
+      overflow-wrap: anywhere;
+    }
+    .shell { padding:var(--ui-gap); gap:var(--ui-gap); }
+    .topbar-meta,.topbar-links,.summary-top,.section-head,.readiness-head { flex-wrap:wrap; min-width:0; }
+    .topbar-meta { gap:var(--ui-gap); }
+    button,.btn-link { font-size:var(--ui-font); padding:var(--ui-gap) calc(var(--ui-gap) + 4px); min-height:28px; white-space:normal; }
+    .btn-ghost { padding:0; }
+    .pair-card,.pair-step,.summary-card,.destinations-card,.controls-card,.notice,.readiness-block,.identity-cell,.destination-row { padding:var(--ui-gap); gap:var(--ui-gap); min-width:0; }
+    .pair-copy,.step-copy,.readiness-copy,.destination-name { font-size:var(--ui-font); }
+    .stack { overflow:visible; align-content:start; }
+    .main-layout,.pair-shell { height:auto; }
+    .destination-row { grid-template-columns:auto minmax(0,1fr); }
+    .destination-actions { grid-column:1/-1; justify-content:flex-start; }
+    .status-pill,.mini-pill,.target-state { white-space:normal; max-width:100%; }
+    .status-pill::before,.mini-pill::before,.target-state::before { flex-shrink:0; }
+    .modal-card { max-height:calc(100vh - 24px); overflow:auto; padding:var(--ui-gap); gap:var(--ui-gap); }
+    button:focus-visible,a:focus-visible,select:focus-visible { outline:2px solid var(--amber); outline-offset:2px; }
+    @media (max-height:320px) {
+      .topbar .subtitle,.topbar .eyebrow { display:none; }
+      .topbar-meta { flex-direction:row; align-items:center; justify-content:flex-end; }
+      .controls-card,#main-view.stream-active #stream-setup { height:auto; }
+    }
   </style>
 </head>
 <body>
@@ -1143,6 +1176,11 @@
         </div>
       </div>
       <div class="topbar-meta">
+        <label class="dock-ui-scale" aria-label="Streaming dock size">
+          <span class="dock-ui-scale-label">Size</span>
+          <input id="streaming-dock-scale" class="dock-ui-scale-slider" type="range" min="70" max="120" step="1" value="100" aria-label="Streaming dock size slider">
+          <span id="streaming-dock-scale-value" class="dock-ui-scale-readout">100%</span>
+        </label>
         <div id="connection-pill" class="status-pill tone-muted">Unpaired</div>
         <div class="topbar-links">
           <a id="portal-link" class="btn-ghost" href="http://127.0.0.1:3000/app" target="_blank" rel="noopener">Open portal</a>
@@ -2182,6 +2220,22 @@
       }
 
       init();
+    })();
+  </script>
+  <script src="assets/js/dock_ui_scale.js"></script>
+  <script>
+    (function () {
+      if (!window.EmberstageDockScale) return;
+      window.EmberstageDockScale.init({
+        root: document.body,
+        control: 'streaming-dock-scale',
+        output: 'streaming-dock-scale-value',
+        storageKey: 'obs-bible:streaming:ui-scale',
+        defaultValue: 100,
+        min: 70,
+        max: 120,
+        step: 1
+      });
     })();
   </script>
 </body>

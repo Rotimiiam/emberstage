@@ -31,18 +31,7 @@
         return false;
     };
 
-    const insertTextAtSelection = (element, text) => {
-        const start = element.selectionStart ?? 0;
-        const end = element.selectionEnd ?? start;
-        const value = element.value ?? "";
-        element.value = value.slice(0, start) + text + value.slice(end);
-        const nextCaret = start + text.length;
-        element.selectionStart = nextCaret;
-        element.selectionEnd = nextCaret;
-        element.dispatchEvent(new Event("input", { bubbles: true }));
-    };
-
-    const handleClipboardShortcut = async (event) => {
+    const handleClipboardShortcut = (event) => {
         const isModifier = event.ctrlKey || event.metaKey;
         if (!isModifier || event.altKey) {
             return;
@@ -59,72 +48,9 @@
         }
 
         event.stopPropagation();
-
-        if (key === "a") {
-            event.preventDefault();
-            if (typeof activeElement.select === "function") {
-                activeElement.select();
-            } else if (activeElement.isContentEditable) {
-                const range = document.createRange();
-                range.selectNodeContents(activeElement);
-                const selection = window.getSelection();
-                selection.removeAllRanges();
-                selection.addRange(range);
-            }
-            return;
-        }
-
-        if (key === "c") {
-            if (activeElement.isContentEditable) {
-                return;
-            }
-
-            const selectedText = activeElement.value.substring(activeElement.selectionStart ?? 0, activeElement.selectionEnd ?? 0);
-            if (!selectedText) {
-                return;
-            }
-
-            event.preventDefault();
-            try {
-                await navigator.clipboard.writeText(selectedText);
-            } catch (error) {
-            }
-            return;
-        }
-
-        if (key === "x") {
-            if (activeElement.isContentEditable) {
-                return;
-            }
-
-            const start = activeElement.selectionStart ?? 0;
-            const end = activeElement.selectionEnd ?? 0;
-            const selectedText = activeElement.value.substring(start, end);
-            if (!selectedText) {
-                return;
-            }
-
-            event.preventDefault();
-            try {
-                await navigator.clipboard.writeText(selectedText);
-            } catch (error) {
-            }
-            insertTextAtSelection(activeElement, "");
-            return;
-        }
-
-        if (key === "v") {
-            if (activeElement.isContentEditable) {
-                return;
-            }
-
-            event.preventDefault();
-            try {
-                const pastedText = await navigator.clipboard.readText();
-                insertTextAtSelection(activeElement, pastedText);
-            } catch (error) {
-            }
-        }
+        // Keep dock shortcuts out of editing, but allow the browser's native
+        // select/copy/cut/paste (including undo). OBS can deny clipboard API
+        // access; preventing the native action made paste silently do nothing.
     };
 
     let alignContent = function(event) {

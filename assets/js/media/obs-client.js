@@ -26,7 +26,7 @@
       const bytes = await this.crypto.subtle.digest('SHA-256', new TextEncoder().encode(value));
       return btoa(String.fromCharCode(...new Uint8Array(bytes)));
     }
-    connect({ url = 'ws://127.0.0.1:4455', password = '', allowRemote = false } = {}) {
+    connect({ url = 'ws://127.0.0.1:4455', password = '', allowRemote = false, requireAuthentication = false } = {}) {
       let endpoint;
       try {
         endpoint = new URL(url);
@@ -64,6 +64,9 @@
           try {
             if (packet.op === 0) {
               if (settled || this.identifying) return;
+              if (requireAuthentication && (!data.authentication || typeof data.authentication.salt !== 'string' || typeof data.authentication.challenge !== 'string')) {
+                throw new Error('Authenticated OBS connection is required.');
+              }
               this.identifying = true;
               const identify = { rpcVersion: 1, eventSubscriptions: 399 };
               if (data.authentication) {

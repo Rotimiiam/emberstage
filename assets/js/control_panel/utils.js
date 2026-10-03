@@ -225,7 +225,7 @@ const bookAliases = {
   "2 corinthians": 46, "2corinthians": 46, "2 cor": 46, "2cor": 46, "2co": 46, "2c": 46, "ii corinthians": 46, "ii cor": 46, "2nd corinthians": 46, "2nd cor": 46,
   "galatians": 47, "gal": 47, "ga": 47,
   "ephesians": 48, "eph": 48, "ep": 48,
-  "philippians": 49, "phil": 49, "php": 49, "ph": 49,
+  "philippians": 49, "phil": 49, "phi": 49, "php": 49, "ph": 49,
   "colossians": 50, "col": 50, "co": 50,
   "1 thessalonians": 51, "1thessalonians": 51, "1 thess": 51, "1thess": 51, "1 thes": 51, "1thes": 51, "1th": 51, "i thessalonians": 51, "i thess": 51, "1st thessalonians": 51, "1st thess": 51,
   "2 thessalonians": 52, "2thessalonians": 52, "2 thess": 52, "2thess": 52, "2 thes": 52, "2thes": 52, "2th": 52, "ii thessalonians": 52, "ii thess": 52, "2nd thessalonians": 52, "2nd thess": 52,
@@ -244,7 +244,39 @@ const bookAliases = {
   "revelation": 65, "revelations": 65, "rev": 65, "re": 65, "rv": 65
 };
 
-const sortedBookAliases = Object.keys(bookAliases).sort((a, b) => b.length - a.length);
+function normalizeBookAlias(value) {
+  const numbers = { i: '1', ii: '2', iii: '3', first: '1', second: '2', third: '3', '1st': '1', '2nd': '2', '3rd': '3' };
+  return value.toLowerCase().replace(/[.\s]+/g, ' ').trim()
+    .replace(/^(iii|ii|i|first|second|third|1st|2nd|3rd)\s+(?=[a-z])/, (_, prefix) => numbers[prefix])
+    .replace(/\s/g, '');
+}
+
+// Accept unambiguous prefixes of at least three letters, but keep established
+// abbreviations authoritative (Phi/Phil = Philippians, Phm = Philemon).
+const bibleBookAliasIndex = new Map();
+standardBooks.forEach((book, index) => {
+  const key = normalizeBookAlias(book);
+  const minLength = /^[1-3]/.test(key) ? 4 : 3;
+  for (let length = minLength; length <= key.length; length++) {
+    const prefix = key.slice(0, length);
+    bibleBookAliasIndex.set(prefix, bibleBookAliasIndex.has(prefix) ? null : index);
+  }
+});
+Object.entries(bookAliases).forEach(([alias, index]) => {
+  bibleBookAliasIndex.set(normalizeBookAlias(alias), index);
+});
+// Derive every numbered spelling from the same aliases, rather than maintaining
+// inconsistent lists for spaced, joined, ordinal and Roman references.
+const bibleBookNumberPrefixes = { 1: ['1st', 'first', 'i'], 2: ['2nd', 'second', 'ii'], 3: ['3rd', 'third', 'iii'] };
+Array.from(bibleBookAliasIndex).forEach(([alias, index]) => {
+  if (!/^[1-3][a-z]/.test(alias)) return;
+  for (const prefix of bibleBookNumberPrefixes[alias[0]]) {
+    const expanded = prefix + alias.slice(1);
+    // Compact Roman forms must never override real names: Isa = Isaiah,
+    // while the explicitly separated I Sa = 1 Samuel.
+    if (!bibleBookAliasIndex.has(expanded)) bibleBookAliasIndex.set(expanded, index);
+  }
+});
 
 function resolveActiveBookName(index) {
   if (index < 0 || index >= standardBooks.length) return null;
@@ -313,53 +345,24 @@ function resolveActiveBookName(index) {
 }
 
 function getResolvedBookNameFromAlias(queryPart) {
-  const qClean = queryPart.trim().toLowerCase();
-  if (bookAliases.hasOwnProperty(qClean)) {
-    return resolveActiveBookName(bookAliases[qClean]);
-  }
-  return null;
+  const index = bibleBookAliasIndex.get(normalizeBookAlias(queryPart));
+  return Number.isInteger(index) ? resolveActiveBookName(index) : null;
 }
 
 function normalizeBibleReference(query) {
   if (!query) return query;
   try {
     const trimmedQuery = query.trim();
-    const lowercaseQuery = trimmedQuery.toLowerCase();
+    const bookOnly = getResolvedBookNameFromAlias(trimmedQuery);
+    if (bookOnly) return bookOnly;
 
-    // Find the longest alias that matches the start of the lowercase query
-    let matchedAlias = null;
-    for (const alias of sortedBookAliases) {
-      if (lowercaseQuery.startsWith(alias)) {
-        const nextChar = lowercaseQuery.charAt(alias.length);
-        if (!nextChar || /\s|[.,;:/-]/.test(nextChar) || (/\d/.test(alias.slice(-1)) && /\d/.test(nextChar))) {
-          matchedAlias = alias;
-          break;
-        }
-      }
-    }
-
-    if (!matchedAlias) {
-      return query;
-    }
-
-    const rest = lowercaseQuery.substring(matchedAlias.length).trim();
-    if (!rest) {
-      return query;
-    }
-
-    const restMatch = rest.match(/^(\d+)(?:\s*[:.,;/]?\s*(\d+)(?:\s*[-\s:]+\s*(\d+))?)?\s*$/);
-    if (!restMatch) {
-      return query;
-    }
-
-    const chapter = restMatch[1];
-    const startVerse = restMatch[2];
-    const endVerse = restMatch[3];
-
-    const resolvedBook = resolveActiveBookName(bookAliases[matchedAlias]);
-    if (!resolvedBook) {
-      return query;
-    }
+    // Separate the reference numbers before normalizing book punctuation, so
+    // Phil. 4.6 and 1.Thess.5:16 keep their chapter/verse separators intact.
+    const match = trimmedQuery.match(/^(.+?)\s*(\d+)(?:\s*[:.,;/]?\s*(\d+)(?:\s*[-–—\s:]+\s*(\d+))?)?\s*$/);
+    if (!match) return query;
+    const resolvedBook = getResolvedBookNameFromAlias(match[1]);
+    if (!resolvedBook) return query;
+    const [, , chapter, startVerse, endVerse] = match;
 
     if (startVerse && endVerse) {
       return `${resolvedBook} ${chapter}:${startVerse}-${endVerse}`;

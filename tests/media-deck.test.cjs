@@ -65,6 +65,18 @@ test('requestId correlates out-of-order replies and failure rejects', async () =
   await socket.reply(socket.sent.at(-1), {}, false); await rejection; client.disconnect();
 });
 
+test('automatic native connection refuses servers without an authentication challenge', async () => {
+  for (const authentication of [undefined, {}, { salt: 'fixture' }]) {
+    const client = new OBSClient({ WebSocket: FakeWebSocket, crypto: webcrypto });
+    const pending = client.connect({ password: 'private-fixture', requireAuthentication: true });
+    const rejected = assert.rejects(pending, /Authenticated OBS connection is required/);
+    const socket = FakeWebSocket.sockets.at(-1);
+    await socket.receive(0, { authentication }); await rejected;
+    assert.equal(socket.sent.length, 0);
+    assert.equal(client.ready, false); assert.equal(socket.closed, true);
+  }
+});
+
 test('timeouts remove pending requests and ignore late responses', async () => {
   const { client, socket } = await identified({ timeout: 20 });
   await assert.rejects(client.request('GetSceneList'), /timed out/);
@@ -323,7 +335,7 @@ test('entry pages use local media scripts, no protected OBS scripts, and contain
   assert.equal(/SetCurrentProgramScene|SetCurrentPreviewScene|SetStudioModeEnabled/.test(core), false);
 });
 
-test('installed Media, Cameras, and Setup docks use Emberstage-owned outputs without WebSocket setup', () => {
+test('installed docks need no manual WebSocket setup; only native cameras use the local client', () => {
   const pages = {
     'media_dock.html': 'owned-media-app.js',
     'camera_dock.html': 'owned-camera-app.js',
@@ -332,7 +344,7 @@ test('installed Media, Cameras, and Setup docks use Emberstage-owned outputs wit
   for (const [filename, script] of Object.entries(pages)) {
     const html = fs.readFileSync(path.join(root, filename), 'utf8');
     assert.ok(html.includes(script), `${filename}: ${script}`);
-    assert.equal(html.includes('obs-client.js'), false);
+    assert.equal(html.includes('obs-client.js'), filename === 'camera_dock.html');
     assert.equal(/WebSocket address|password/i.test(html), false);
   }
   for (const filename of ['media_output.html', 'camera_output.html']) {
@@ -346,8 +358,10 @@ test('installed Media, Cameras, and Setup docks use Emberstage-owned outputs wit
   const cameraOutput = fs.readFileSync(path.join(root, 'assets/js/outputs/camera-output.js'), 'utf8');
   for (const [filename, source] of Object.entries({ mediaDock, mediaOutput, cameraDock, cameraOutput })) {
     assert.doesNotThrow(() => new vm.Script(source, { filename }));
-    assert.equal(/ws:\/\/|wss:\/\/|OBSClient|server_password/.test(source), false);
+    assert.equal(/ws:\/\/|wss:\/\/|OBSClient|server_password/.test(source), filename === 'cameraDock');
   }
+  assert.equal(/password\.type|button\('Connect/.test(cameraDock), false);
+  assert.ok(cameraDock.includes('requireAuthentication: true'));
   assert.ok(mediaDock.includes("new BroadcastChannel('emberstage-media-v1')"));
   assert.ok(mediaOutput.includes("new BroadcastChannel('emberstage-media-v1')"));
   assert.ok(cameraDock.includes("new BroadcastChannel('emberstage-camera-v1')"));

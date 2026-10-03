@@ -66,7 +66,8 @@ try {
   const ingestKeyHash = crypto.createHash('sha256').update(ingestKey).digest('hex');
   const expiry = new Date(Date.now() + 60 * 60 * 1000).toISOString();
 
-  db.run("INSERT INTO workspaces (id, name, stripe_status, max_devices, max_destinations, created_at) VALUES (?, ?, 'active', 2, 3, ?)", [workspaceId, 'Streaming Smoke', now]);
+  const futureDate = new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString();
+  db.run("INSERT INTO workspaces (id, name, paystack_status, paid_until, created_at) VALUES (?, ?, 'active', ?, ?)", [workspaceId, 'Streaming Smoke', futureDate, now]);
   db.run("INSERT INTO devices (id, workspace_id, name, status, ingest_key_hash, ingest_key_last4, ingest_key_rotated_at, created_at) VALUES (?, ?, ?, 'active', ?, ?, ?, ?)", [deviceId, workspaceId, 'Smoke OBS', ingestKeyHash, ingestKey.slice(-4), now, now]);
   db.run('INSERT INTO device_sessions (id, device_id, refresh_token_hash, expires_at, refresh_token_expires_at, created_at) VALUES (?, ?, ?, ?, ?, ?)', [accessHash, deviceId, 'unused-smoke-refresh', expiry, expiry, now]);
   db.run('INSERT INTO custom_rtmp_targets (id, workspace_id, name, stream_url, encrypted_stream_key, selected, created_at) VALUES (?, ?, ?, ?, ?, 1, ?)', [targetId, workspaceId, 'Local sink', 'rtmp://127.0.0.1:19350/sink', encrypt('smoke-output', encryptionSecret), now]);

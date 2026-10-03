@@ -1,12 +1,14 @@
-# Emberstage for OBS marketing/demo site
+# Emberstage for OBS operator guide
 
-Static marketing and demo site for the Emberstage working brand direction.
+Static post-install usage guide covering Scripture, Songs, Text, Media, Cameras, and streaming, with annotated screenshots, plans, and provider availability.
 
 ## Files
 
 - `index.html`
 - `styles.css`
 - `script.js`
+- `brand/` — self-contained site branding
+- `screenshots/` — annotated local-tool and streaming captures
 
 ## Local serve
 
@@ -26,4 +28,6 @@ http://localhost:4173
 
 - Plain HTML, CSS, and JS only
 - No external fonts, frameworks, or dependencies
-- Interactive dock demo is a preview only and is not connected to OBS, providers, billing, or accounts
+- Screenshots use synthetic example state; camera thumbnails are illustrative, not live hardware
+- The guide is not connected to OBS, providers, billing, or accounts
+- Upload only this directory to the `emberstage` Cloudflare Pages project; do not upload the repository or runtime configuration

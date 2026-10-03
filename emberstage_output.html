@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Emberstage Graphics</title>
+  <link rel="icon" href="assets/brand/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="assets/css/emberstage_output.css">
+  <style>
+    html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: transparent; }
+    iframe { position: absolute; inset: 0; display: block; width: 100%; height: 100%; border: 0; background: transparent; }
+  </style>
+</head>
+<body>
+  <!-- Graphics only. Native camera sources compose below this browser inside
+       the Emberstage Program OBS scene. This page never opens camera hardware. -->
+  <iframe id="media" title="Media layer" src="media_output.html" allow="autoplay"></iframe>
+  <iframe id="text" title="Text layer" src="browser_source.html"></iframe>
+</body>
+</html>

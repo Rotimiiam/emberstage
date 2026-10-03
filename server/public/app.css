@@ -123,16 +123,15 @@ select:disabled {
 
 .auth-layout {
   min-height: 100vh;
-  max-width: 1120px;
+  width: 100%;
+  max-width: none;
   margin: 0 auto;
-  padding: 28px;
-  display: grid;
-  grid-template-columns: minmax(0, 1.12fr) minmax(340px, 0.88fr);
-  gap: 24px;
+  padding: 32px 20px;
+  display: flex;
   align-items: center;
+  justify-content: center;
 }
 
-.auth-intro,
 .auth-card,
 .app-header,
 .card,
@@ -257,22 +256,67 @@ select:disabled {
 
 .auth-card {
   width: 100%;
-  max-width: 470px;
-  margin-left: auto;
+  max-width: 428px;
+  margin: auto;
+  padding: 26px 24px 22px;
+  border-radius: 22px;
+  background:
+    radial-gradient(circle at top, rgba(224, 169, 72, 0.12), transparent 38%),
+    linear-gradient(180deg, rgba(22, 28, 36, 0.98), rgba(15, 20, 28, 0.98));
+  box-shadow: var(--shadow-lg);
+}
+
+.auth-brand {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.auth-brand-mark {
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(224, 169, 72, 0.18);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.05);
+}
+
+.auth-brand-mark .brand-logo {
+  width: 22px;
+  height: 22px;
+}
+
+.auth-brand-wordmark {
+  height: 24px;
+  max-width: 180px;
 }
 
 .auth-card-head {
-  margin-bottom: 22px;
+  margin-bottom: 18px;
+  text-align: center;
 }
 
 .auth-card-head h2 {
-  margin: 10px 0 8px;
+  margin: 8px 0 6px;
+  font-size: clamp(1.55rem, 3vw, 1.9rem);
+  letter-spacing: -0.03em;
+}
+
+.auth-subcopy {
+  max-width: 28ch;
+  margin: 0 auto;
+  font-size: 0.95rem;
+  line-height: 1.5;
 }
 
 .auth-methods {
   display: grid;
-  gap: 14px;
-  margin-bottom: 20px;
+  gap: 12px;
+  margin-bottom: 16px;
 }
 
 .auth-divider {
@@ -294,6 +338,11 @@ select:disabled {
   background: linear-gradient(90deg, transparent, rgba(226, 195, 144, 0.22), transparent);
 }
 
+.auth-form {
+  display: grid;
+  gap: 14px;
+}
+
 .oauth-mark {
   display: inline-grid;
   place-items: center;
@@ -307,14 +356,12 @@ select:disabled {
   font-weight: 800;
 }
 
-.auth-footnote {
-  margin-top: 18px;
-  font-size: 0.84rem;
-  line-height: 1.6;
-}
-
 .form-group {
   margin-bottom: 16px;
+}
+
+.auth-form .form-group {
+  margin-bottom: 0;
 }
 
 .form-group label,
@@ -418,8 +465,14 @@ select:disabled {
 }
 
 .auth-toggle-row {
-  margin-top: 16px;
+  margin-top: 2px;
   text-align: center;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+#auth-toggle-copy {
+  margin-right: 6px;
 }
 
 .auth-toggle-row a {
@@ -767,6 +820,39 @@ select:disabled {
 
 .section-head-tight {
   margin-bottom: 14px;
+}
+
+.subscription-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 24px;
+}
+.subscription-hero h3 { font-size: 1.4rem; margin-bottom: 8px; }
+.billing-pill-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.subscription-price-panel { display: grid; gap: 5px; text-align: right; }
+.subscription-price-kicker, .subscription-price-note { color: var(--text-muted); font-size: 0.86rem; }
+.subscription-price { color: var(--gold); font-size: clamp(1.7rem, 3vw, 2.3rem); line-height: 1.2; letter-spacing: -0.04em; }
+#subscription-panel .metric-strip-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+#subscription-panel .metric-tile { background: none; border: 0; border-radius: 0; padding: 12px 0; }
+.billing-card-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; padding: 22px 0; border-block: 1px solid rgba(255,255,255,0.08); }
+.billing-card { min-width: 0; }
+.billing-card h3 { font-size: 1rem; margin: 5px 0 10px; }
+.billing-card p { font-size: 0.9rem; line-height: 1.55; }
+.billing-mini-note { margin-top: 10px; color: var(--text-muted); }
+.billing-detail-list { display: grid; gap: 12px; }
+.billing-detail-row { display: grid; grid-template-columns: 140px minmax(0, 1fr); gap: 16px; font-size: 0.88rem; line-height: 1.5; }
+.billing-detail-row > span { color: var(--text-muted); }
+.billing-detail-row > strong { font-weight: 500; }
+.billing-return-notice > div:first-child { display: grid; gap: 5px; }
+.billing-return-notice .panel-actions { margin-top: 12px; }
+@media (max-width: 720px) {
+  .subscription-hero { grid-template-columns: minmax(0, 1fr); gap: 18px; }
+  .subscription-price-panel { text-align: left; }
+  .billing-card-grid { grid-template-columns: minmax(0, 1fr); gap: 18px; }
+  .billing-detail-row { grid-template-columns: minmax(0, 1fr); gap: 3px; }
+  #subscription-panel .metric-strip-3 { gap: 16px; grid-template-columns: minmax(0, 1fr); }
+  #subscription-panel .metric-tile { display: flex; flex-direction: row; justify-content: space-between; gap: 16px; align-items: center; padding: 0; }
 }
 
 .command-copy {
@@ -1717,7 +1803,6 @@ select:disabled {
 }
 
 @media (max-width: 880px) {
-  .auth-layout,
   .metric-strip,
   .info-grid-encoder,
   .field-grid-3,
@@ -1833,12 +1918,36 @@ select:disabled {
   .destination-row-actions { align-items: center; }
   .portal-app .panel-actions { gap: 8px; }
 
-  .auth-intro,
   .auth-card,
   .card,
   .command-stage,
   .subordinate-body {
     padding: 20px;
+  }
+
+  .auth-layout {
+    min-height: 100dvh;
+    padding: 16px;
+    align-items: center;
+  }
+
+  .auth-card {
+    max-width: 100%;
+    padding: 22px 18px 18px;
+    border-radius: 20px;
+  }
+
+  .auth-card-head {
+    margin-bottom: 16px;
+  }
+
+  .auth-brand {
+    margin-bottom: 18px;
+  }
+
+  .auth-brand-wordmark {
+    height: 22px;
+    max-width: 156px;
   }
 
   .portal-backdrop {
@@ -1847,7 +1956,6 @@ select:disabled {
     border-radius: 24px;
   }
 
-  .intro-grid,
   .provider-surface-grid {
     grid-template-columns: 1fr;
   }
@@ -1863,15 +1971,6 @@ select:disabled {
 
   .overview-copy-row {
     grid-template-columns: 1fr;
-  }
-
-  .brand-lockup {
-    align-items: flex-start;
-  }
-
-  .brand-logo {
-    width: 46px;
-    height: 46px;
   }
 
   .provider-surface {
@@ -1902,11 +2001,33 @@ select:disabled {
     border-radius: 18px;
   }
 
-  .intro-grid {
-    display: none;
+  .auth-layout {
+    padding: 12px;
   }
 
-  .hero-copy { margin-top: 18px; }
+  .auth-card {
+    padding: 20px 16px 16px;
+  }
+
+  .auth-brand {
+    gap: 10px;
+  }
+
+  .auth-brand-mark {
+    width: 34px;
+    height: 34px;
+    border-radius: 11px;
+  }
+
+  .auth-brand-mark .brand-logo {
+    width: 20px;
+    height: 20px;
+  }
+
+  .auth-brand-wordmark {
+    height: 20px;
+    max-width: 144px;
+  }
 
   h1 { font-size: 1.85rem; }
 
@@ -1934,6 +2055,30 @@ select:disabled {
 
   .bulk-result {
     flex-direction: column;
+  }
+}
+
+@media (max-height: 760px) and (min-width: 641px) {
+  .auth-layout {
+    padding-top: 18px;
+    padding-bottom: 18px;
+  }
+
+  .auth-card {
+    padding-top: 20px;
+    padding-bottom: 18px;
+  }
+
+  .auth-brand {
+    margin-bottom: 14px;
+  }
+
+  .auth-card-head {
+    margin-bottom: 14px;
+  }
+
+  .auth-form {
+    gap: 12px;
   }
 }
 

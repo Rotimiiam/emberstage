@@ -1,0 +1,138 @@
+name: Installers
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: installers-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+jobs:
+  checks:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.12'
+      - name: Dock and output tests
+        run: node --test tests/*.test.cjs
+      - name: Scripture and song regressions
+        run: node tests/scripture-song-regression.cjs
+      - name: Control-plane tests (isolated fixtures)
+        working-directory: server
+        run: npm test
+      - name: Package asset closure
+        run: python3 tests/package-assets-contract.py
+
+  build:
+    needs: checks
+    # Fork PRs only run the read-only Linux checks; never use private runners.
+    if: github.event_name != 'pull_request'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            platform: Linux
+            artifact: Emberstage-Linux.tar.gz
+          - os: macos-14
+            platform: macOS
+            artifact: Emberstage-macOS.dmg
+          - os: windows-2022
+            platform: Windows
+            artifact: Emberstage-Setup.exe
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.12'
+      - name: macOS/Linux installer contracts (temporary OBS fixtures only)
+        if: runner.os != 'Windows'
+        run: python3 tests/install-contract.py
+      - name: Windows installer contracts (temporary OBS fixtures only)
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: ./tests/install-contract.ps1
+      - name: Build Linux archive
+        if: runner.os == 'Linux'
+        run: python3 scripts/linux/build-archive.py
+      - name: Build and verify macOS DMG
+        if: runner.os == 'macOS'
+        run: |
+          python3 scripts/package-macos.py
+          python3 tests/package-macos-contract.py
+      - name: Build Windows setup wizard
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $compiler = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (!(Test-Path $compiler)) { throw 'Inno Setup 6 is missing from the runner image.' }
+          & $compiler scripts/windows/emberstage.iss
+          if ($LASTEXITCODE -ne 0) { throw 'Inno Setup compilation failed.' }
+      - name: Verify real Windows install, repair, and uninstall in a sandbox
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          $hash = (Get-FileHash dist/Emberstage-Setup.exe -Algorithm SHA256).Hash
+          ./tests/run-integration-test.ps1 -SetupExe dist/Emberstage-Setup.exe -ExpectedSha256 $hash -AllowHeadlessTestAccount
+      - name: SHA-256 checksum
+        shell: python
+        env:
+          ARTIFACT: ${{ matrix.artifact }}
+        run: |
+          import hashlib, os
+          from pathlib import Path
+          artifact = Path('dist') / os.environ['ARTIFACT']
+          digest = hashlib.sha256(artifact.read_bytes()).hexdigest()
+          artifact.with_name(artifact.name + '.sha256').write_text(digest + '  ' + artifact.name + '\n')
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: Emberstage-${{ matrix.platform }}
+          path: |
+            dist/${{ matrix.artifact }}
+            dist/${{ matrix.artifact }}.sha256
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
+
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v') && github.event_name == 'push'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: Emberstage-*
+          path: dist
+          merge-multiple: true
+      - name: Create draft unsigned preview release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          gh release create "$RELEASE_TAG" dist/* --verify-tag --draft --prerelease \
+            --title "Emberstage $RELEASE_TAG" \
+            --notes 'Unsigned preview installers for Windows, macOS, and Linux. SHA-256 checksums are included. macOS requires Python 3 and is not notarized. Linux supports native and Flatpak OBS via a host-side installer. Read README.md before installation. CI fixture/package checks do not replace OBS hardware and live-output rehearsal.'

@@ -103,6 +103,81 @@ body{
     }
 }
 
+/* Song looks own only their lyric region, leaving the rest of the canvas transparent. */
+#bg-container:where([data-song-layout]:not([data-song-layout="full-screen"])) {
+    background: transparent !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    padding: 5vh 5vw;
+    align-items: flex-end !important;
+    justify-content: center !important;
+}
+#bg-container:where([data-song-layout]:not([data-song-layout="full-screen"])) #container {
+    width: 90vw;
+    height: 26vh;
+    max-height: 90vh;
+    align-items: center !important;
+    justify-content: center !important;
+    overflow: visible;
+}
+#bg-container:where([data-song-layout]:not([data-song-layout="full-screen"])) #messageDisplay {
+    width: 100%;
+    max-width: 100%;
+    max-height: 100%;
+    padding: 2vh 2vw !important;
+    font-family: "Segoe UI", "Trebuchet MS", sans-serif;
+    line-height: 1.2;
+    text-align: center !important;
+    color: white;
+    text-shadow: 0 2px 4px #000, 0 4px 16px #000b !important;
+    -webkit-text-stroke: 0 !important;
+    border: 0 !important;
+    border-radius: 0;
+    box-shadow: none;
+    background: transparent;
+}
+#bg-container[data-song-layout="gradient-strip"]::before {
+    content: "";
+    position: absolute;
+    inset: auto 0 0;
+    height: 38vh;
+    background: linear-gradient(transparent, rgba(7, 13, 22, .88));
+    pointer-events: none;
+}
+#bg-container[data-song-layout="gradient-strip"] #container { position: relative; }
+#bg-container[data-song-layout="lyric-card"] #container {
+    width: 62vw;
+    height: 27vh;
+    padding: 1vh 1vw;
+    border-radius: 1.4vh;
+    background: rgba(13, 22, 34, .92);
+    box-shadow: 0 1vh 4vh #0004;
+    border-left: .35vw solid #d7b46a;
+}
+#bg-container[data-song-layout="lyric-card"][data-song-position="left"],
+#bg-container[data-song-layout="side-panel"] { justify-content: flex-start !important; }
+#bg-container[data-song-layout="lyric-card"][data-song-position="right"],
+#bg-container[data-song-layout="side-panel"][data-song-position="right"] { justify-content: flex-end !important; }
+#bg-container[data-song-layout="side-panel"] { align-items: center !important; }
+#bg-container[data-song-layout="side-panel"] #container {
+    width: 32vw;
+    height: 90vh;
+    padding: 2vh 1vw;
+    background: rgba(13, 22, 34, .92);
+    border-top: .5vh solid #d7b46a;
+    border-radius: 1vh;
+}
+#bg-container[data-song-layout="side-panel"] #messageDisplay { text-align: left !important; }
+
+/* A whole verse in the lower half; keep the upper half clear for cameras. */
+#bg-container[data-song-layout="half-screen"] { padding: 0; }
+#bg-container[data-song-layout="half-screen"] #container {
+    width: 100%;
+    height: 50vh;
+    padding: 2vh 5vw;
+    background: rgba(13, 22, 34, .92);
+}
+
 .text-with-shadow {
     text-shadow: 5px 5px 4px rgba(0, 0, 0, 0.75);
 }

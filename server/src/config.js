@@ -85,7 +85,7 @@ export const config = {
   // Paystack
   get PAYSTACK_SECRET_KEY() { return process.env.PAYSTACK_SECRET_KEY || null; },
   get PAYSTACK_PLAN_CODE() { return process.env.PAYSTACK_PLAN_CODE || null; },
-  get PAYSTACK_PLAN_AMOUNT() { return process.env.PAYSTACK_PLAN_AMOUNT || null; },
+  get PAYSTACK_PLAN_AMOUNT() { return process.env.PAYSTACK_PLAN_AMOUNT || '300000'; },
   get PAYSTACK_CURRENCY() { return process.env.PAYSTACK_CURRENCY || 'NGN'; },
   get APP_BASE_URL() { return process.env.APP_BASE_URL || null; },
   get IS_PROD() { return process.env.NODE_ENV === 'production'; },

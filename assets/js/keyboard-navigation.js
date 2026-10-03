@@ -8,7 +8,7 @@
   )).filter(visible);
 
   function candidatesFor(active) {
-    const group = active.closest('[role="tablist"], .settings-tabs, .source-list, #bible-verse, #song-library-list, #song-display, .actionbar');
+    const group = active.closest('dialog[open], [role="tablist"], .settings-tabs, .source-list, #bible-verse, #song-library-list, #song-display, .actionbar');
     if (!group) return focusables();
     return focusables().filter(item => item === active || group.contains(item));
   }
@@ -57,7 +57,12 @@
     if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.key)) return;
     const active = document.activeElement && document.activeElement !== document.body ? document.activeElement : focusables()[0];
     if (!active) return;
-    const target = directionalTarget(active, event.key);
+    const firstBibleResult = document.querySelector('#bible-verse p');
+    const returnToBibleInput = event.key === 'ArrowUp' && firstBibleResult &&
+      (active === firstBibleResult || firstBibleResult.contains(active));
+    const bibleInput = returnToBibleInput ? document.getElementById('bible-input') : null;
+    const target = bibleInput && !bibleInput.disabled && visible(bibleInput)
+      ? bibleInput : directionalTarget(active, event.key);
     if (!target) return;
     event.preventDefault();
     event.stopImmediatePropagation();

@@ -4,13 +4,14 @@ set "OBS_EXE=%ProgramFiles%\obs-studio\bin\64bit\obs64.exe"
 
 if not exist "%OBS_EXE%" (
   echo OBS was not found at "%OBS_EXE%".
+  pause
   exit /b 1
 )
 
-tasklist /FI "IMAGENAME eq obs64.exe" 2>NUL | find /I "obs64.exe" >NUL
-if not errorlevel 1 (
-  echo OBS is already running. Fully quit it, then run this launcher again.
+powershell.exe -NoProfile -NonInteractive -Command "$ErrorActionPreference='Stop'; try { if (Get-Process | Where-Object { $_.ProcessName -in @('obs64','obs32','obs') }) { Write-Host 'OBS is already running. Fully quit it, then run Emberstage OBS again.'; exit 2 } } catch { Write-Host 'Could not verify that OBS is closed.'; exit 1 }"
+if errorlevel 1 (
+  pause
   exit /b 2
 )
 
-start "" "%OBS_EXE%" --enable-media-stream
+start "" /D "%ProgramFiles%\obs-studio\bin\64bit" "%OBS_EXE%" --enable-media-stream

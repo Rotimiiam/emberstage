@@ -7,6 +7,115 @@ function saveLibrary(library) {
     localStorage.setItem('obs-bible-song-library-v1', JSON.stringify(library));
 }
 
+function addSampleHymns() {
+    const marker = 'emberstage-sample-hymns-v1';
+    if (localStorage.getItem(marker)) return;
+
+    // Public-domain hymn texts, split into cues using the normal song importer.
+    const samples = [
+        ['amazing-grace.txt', `Title: Amazing Grace
+
+[Verse 1]
+Amazing grace! how sweet the sound,
+That saved a wretch like me!
+I once was lost, but now am found,
+Was blind, but now I see.
+
+[Verse 2]
+'Twas grace that taught my heart to fear,
+And grace my fears relieved;
+How precious did that grace appear
+The hour I first believed!
+
+[Verse 3]
+Through many dangers, toils and snares,
+I have already come;
+'Tis grace hath brought me safe thus far,
+And grace will lead me home.
+
+[Verse 4]
+The Lord has promised good to me,
+His word my hope secures;
+He will my shield and portion be,
+As long as life endures.`],
+        ['holy-holy-holy.txt', `Title: Holy, Holy, Holy
+
+[Verse 1]
+Holy, holy, holy! Lord God Almighty!
+Early in the morning our song shall rise to Thee;
+Holy, holy, holy! Merciful and mighty!
+God in three Persons, blessed Trinity!
+
+[Verse 2]
+Holy, holy, holy! All the saints adore Thee,
+Casting down their golden crowns around the glassy sea;
+Cherubim and seraphim falling down before Thee,
+Which wert, and art, and evermore shalt be.
+
+[Verse 3]
+Holy, holy, holy! Though the darkness hide Thee,
+Though the eye of sinful man Thy glory may not see,
+Only Thou art holy; there is none beside Thee,
+Perfect in power, in love, and purity.
+
+[Verse 4]
+Holy, holy, holy! Lord God Almighty!
+All Thy works shall praise Thy name, in earth, and sky, and sea;
+Holy, holy, holy! Merciful and mighty!
+God in three Persons, blessed Trinity!`],
+        ['blessed-assurance.txt', `Title: Blessed Assurance
+
+[Verse 1]
+Blessed assurance, Jesus is mine!
+Oh, what a foretaste of glory divine!
+Heir of salvation, purchase of God,
+Born of His Spirit, washed in His blood.
+
+[Chorus]
+This is my story, this is my song,
+Praising my Saviour all the day long;
+This is my story, this is my song,
+Praising my Saviour all the day long.
+
+[Verse 2]
+Perfect submission, perfect delight,
+Visions of rapture now burst on my sight;
+Angels descending bring from above
+Echoes of mercy, whispers of love.
+
+[Chorus]
+This is my story, this is my song,
+Praising my Saviour all the day long;
+This is my story, this is my song,
+Praising my Saviour all the day long.
+
+[Verse 3]
+Perfect submission, all is at rest,
+I in my Saviour am happy and blest;
+Watching and waiting, looking above,
+Filled with His goodness, lost in His love.
+
+[Chorus]
+This is my story, this is my song,
+Praising my Saviour all the day long;
+This is my story, this is my song,
+Praising my Saviour all the day long.`]
+    ];
+    const library = getLibrary();
+    let added = false;
+    samples.forEach(([filename, text]) => {
+        const song = parseSongText(text, filename);
+        if (library.some(existing =>
+            existing.title.toLowerCase() === song.title.toLowerCase() ||
+            existing.filename.toLowerCase() === filename.toLowerCase())) return;
+        library.push(song);
+        added = true;
+    });
+    if (added) saveLibrary(library);
+    // Respect later edits and deletions; never restore samples on every reload.
+    localStorage.setItem(marker, '1');
+}
+
 function upsertSongInLibrary(parsedSong) {
     const library = getLibrary();
     const existingIndex = library.findIndex(s => 
@@ -212,7 +321,37 @@ function renderLibraryList(songs, activeSongId) {
     });
 }
 
-function selectSong(songId) {
+function getExpandedSections(sections) {
+    if (!Array.isArray(sections)) return [];
+    const isVerse = section => section.type === 'verse';
+    const isChorus = section => section.type === 'chorus' || /^(chorus|refrain)(\s*\d+)?$/i.test(section.label || '');
+    // Infer repeats only for a simple hymn with one shared refrain. Preserve
+    // deliberate bridges/pre-choruses/endings and distinct chorus arrangements.
+    if (!sections.some(isVerse) || sections.some(section => !isVerse(section) && !isChorus(section))) return sections;
+    const choruses = sections.filter(isChorus);
+    if (!choruses.length || new Set(choruses.map(section => (section.lines || []).join('\n'))).size !== 1) return sections;
+    const chorusToRepeat = choruses[0];
+    
+    const expanded = [];
+    for (let i = 0; i < sections.length; i++) {
+        const current = sections[i];
+        expanded.push(current);
+        
+        if (isVerse(current)) {
+            const next = sections[i + 1];
+            const nextIsChorus = next && isChorus(next);
+            if (!nextIsChorus) {
+                expanded.push({
+                    ...chorusToRepeat,
+                    id: `${chorusToRepeat.id}-repeat-${i}`
+                });
+            }
+        }
+    }
+    return expanded;
+}
+
+function selectSong(songId, take = true) {
     const library = getLibrary();
     const song = library.find(s => s.id === songId);
     
@@ -241,7 +380,8 @@ function selectSong(songId) {
     if (container) {
         container.innerHTML = '';
         
-        song.sections.forEach((sectionData, index) => {
+        const expandedSections = getExpandedSections(song.sections);
+        expandedSections.forEach((sectionData, index) => {
             const sectionDiv = document.createElement('div');
             sectionDiv.id = `section-${index + 1}`;
             sectionDiv.classList.add('song-section');
@@ -270,8 +410,39 @@ function selectSong(songId) {
     updateEmptyStates();
     
     if (typeof displaySong === 'function') {
-        displaySong();
+        displaySong(take);
     }
+}
+
+function openDialog(dialog) {
+    if (typeof dialog.showModal === 'function') {
+        dialog.showModal();
+    } else {
+        dialog.setAttribute('open', '');
+    }
+}
+
+function closeDialog(dialog) {
+    if (typeof dialog.close === 'function') {
+        dialog.close();
+    } else {
+        dialog.removeAttribute('open');
+    }
+}
+
+function serializeSong(song) {
+    let text = `Title: ${song.title}\n\n`;
+    if (song.sections && song.sections.length > 0) {
+        song.sections.forEach(sec => {
+            text += `[${sec.label}]\n`;
+            if (sec.lines && sec.lines.length > 0) {
+                text += sec.lines.join('\n') + '\n\n';
+            } else if (sec.text) {
+                text += sec.text + '\n\n';
+            }
+        });
+    }
+    return text.trim();
 }
 
 function deleteSelectedSong() {
@@ -283,24 +454,130 @@ function deleteSelectedSong() {
     if (index < 0) return;
     
     const song = library[index];
-    if (!confirm(`Are you sure you want to delete "${song.title}"?`)) {
-        return;
+    const dialog = document.getElementById('song-delete-dialog');
+    const titleSpan = document.getElementById('delete-song-title');
+    const confirmBtn = document.getElementById('delete-confirm-btn');
+    const cancelBtn = document.getElementById('delete-cancel-btn');
+    const errorMessage = document.getElementById('song-delete-error');
+    errorMessage.textContent = '';
+    
+    if (dialog && titleSpan && confirmBtn && cancelBtn) {
+        titleSpan.textContent = song.title;
+        
+        const newConfirmBtn = confirmBtn.cloneNode(true);
+        confirmBtn.parentNode.replaceChild(newConfirmBtn, confirmBtn);
+        
+        const newCancelBtn = cancelBtn.cloneNode(true);
+        cancelBtn.parentNode.replaceChild(newCancelBtn, cancelBtn);
+        
+        newConfirmBtn.addEventListener('click', () => {
+            let currentLibrary, currIndex;
+            try {
+                currentLibrary = getLibrary();
+                currIndex = currentLibrary.findIndex(s => s.id === activeSongId);
+                if (currIndex < 0) {
+                    errorMessage.textContent = 'This song is no longer in the library. Cancel and select another song.';
+                    return;
+                }
+                currentLibrary.splice(currIndex, 1);
+                saveLibrary(currentLibrary);
+            } catch (_) {
+                errorMessage.textContent = 'Could not save the library. Nothing was deleted. Try again.';
+                return;
+            }
+            
+            let nextSelectedId = null;
+            if (currentLibrary.length > 0) {
+                if (currIndex < currentLibrary.length) {
+                    nextSelectedId = currentLibrary[currIndex].id;
+                } else {
+                    nextSelectedId = currentLibrary[currentLibrary.length - 1].id;
+                }
+            }
+            
+            closeDialog(dialog);
+            performLibrarySearch();
+            selectSong(nextSelectedId, false);
+        });
+        
+        newCancelBtn.addEventListener('click', () => {
+            closeDialog(dialog);
+        });
+        
+        openDialog(dialog);
     }
+}
+
+function editSelectedSong() {
+    const activeSongId = localStorage.getItem('obs-bible-last-selected-song-id');
+    if (!activeSongId) return;
     
-    library.splice(index, 1);
-    saveLibrary(library);
+    const library = getLibrary();
+    const song = library.find(s => s.id === activeSongId);
+    if (!song) return;
     
-    let nextSelectedId = null;
-    if (library.length > 0) {
-        if (index < library.length) {
-            nextSelectedId = library[index].id;
-        } else {
-            nextSelectedId = library[library.length - 1].id;
-        }
+    const dialog = document.getElementById('song-edit-dialog');
+    const titleInput = document.getElementById('edit-song-title-input');
+    const lyricsInput = document.getElementById('edit-song-lyrics-input');
+    const saveBtn = document.getElementById('edit-save-btn');
+    const cancelBtn = document.getElementById('edit-cancel-btn');
+    const errorMessage = document.getElementById('song-edit-error');
+    errorMessage.textContent = '';
+    
+    if (dialog && titleInput && lyricsInput && saveBtn && cancelBtn) {
+        titleInput.value = song.title;
+        lyricsInput.value = serializeSong(song);
+        
+        const newSaveBtn = saveBtn.cloneNode(true);
+        saveBtn.parentNode.replaceChild(newSaveBtn, saveBtn);
+        
+        const newCancelBtn = cancelBtn.cloneNode(true);
+        cancelBtn.parentNode.replaceChild(newCancelBtn, cancelBtn);
+        
+        newSaveBtn.addEventListener('click', () => {
+            const newTitle = titleInput.value.trim();
+            if (!newTitle) {
+                errorMessage.textContent = 'Title cannot be empty.';
+                return;
+            }
+            
+            const rawText = lyricsInput.value;
+            const parsedSong = parseSongText(rawText, song.filename || (newTitle.toLowerCase().replace(/\s+/g, '-') + '.txt'));
+            if (!parsedSong.sections.length) {
+                errorMessage.textContent = 'Enter at least one section of lyrics.';
+                return;
+            }
+            parsedSong.title = newTitle;
+            parsedSong.id = song.id;
+            if (song.filename) {
+                parsedSong.filename = song.filename;
+            }
+            
+            try {
+                const currentLibrary = getLibrary();
+                const index = currentLibrary.findIndex(s => s.id === song.id);
+                if (index < 0) {
+                    errorMessage.textContent = 'This song is no longer in the library. Cancel and select another song.';
+                    return;
+                }
+                currentLibrary[index] = parsedSong;
+                saveLibrary(currentLibrary);
+            } catch (_) {
+                errorMessage.textContent = 'Could not save the library. Your edits are still here; try again.';
+                return;
+            }
+            
+            closeDialog(dialog);
+            performLibrarySearch();
+            selectSong(song.id, false);
+        });
+        
+        newCancelBtn.addEventListener('click', () => {
+            closeDialog(dialog);
+        });
+        
+        openDialog(dialog);
     }
-    
-    performLibrarySearch();
-    selectSong(nextSelectedId);
 }
 
 function performLibrarySearch() {
@@ -387,6 +664,7 @@ function updateEmptyStates() {
     const songDisplay = document.getElementById('song-display');
     const activeSongTitle = document.getElementById('active-song-title');
     const deleteButton = document.getElementById('song-delete-button');
+    const editButton = document.getElementById('song-edit-button');
     
     if (libraryEmpty) {
         libraryEmpty.style.display = hasSongs ? 'none' : 'flex';
@@ -407,14 +685,21 @@ function updateEmptyStates() {
         if (deleteButton) {
             deleteButton.style.display = 'none';
         }
+        if (editButton) {
+            editButton.style.display = 'none';
+        }
     } else {
         if (deleteButton) {
             deleteButton.style.display = 'inline-block';
+        }
+        if (editButton) {
+            editButton.style.display = 'inline-block';
         }
     }
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+    addSampleHymns();
     const lyricSearch = document.getElementById('lyric-search');
     const activeSongInfo = document.querySelector('.active-song-info');
     if (lyricSearch && activeSongInfo) {
@@ -471,15 +756,20 @@ document.addEventListener('DOMContentLoaded', () => {
         deleteBtn.addEventListener('click', deleteSelectedSong);
     }
 
+    const editBtn = document.getElementById('song-edit-button');
+    if (editBtn) {
+        editBtn.addEventListener('click', editSelectedSong);
+    }
+
     performLibrarySearch();
     
     const savedSongId = localStorage.getItem('obs-bible-last-selected-song-id');
     const library = getLibrary();
     if (savedSongId && library.some(s => s.id === savedSongId)) {
-        selectSong(savedSongId);
+        selectSong(savedSongId, false);
     } else if (library.length > 0) {
         library.sort((a, b) => a.title.localeCompare(b.title));
-        selectSong(library[0].id);
+        selectSong(library[0].id, false);
     } else {
         selectSong(null);
     }
