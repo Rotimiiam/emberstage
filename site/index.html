@@ -18,6 +18,7 @@
         </a>
         <button class="menu-toggle" type="button" aria-expanded="false" aria-controls="site-nav" hidden>Menu</button>
         <nav id="site-nav" class="site-nav" aria-label="Primary">
+          <a href="#installation">Download &amp; install</a>
           <a href="#operator-guide">Usage guide</a>
           <a href="#streaming-guide">Streaming</a>
           <a href="#plans">Plans</a>
@@ -28,7 +29,7 @@
       <main id="main-content">
         <section class="hero">
           <div>
-            <p class="eyebrow">Emberstage for OBS · After installation</p>
+            <p class="eyebrow">Emberstage for OBS · Install and get started</p>
             <h1>Your service.<br />One clear workflow.</h1>
             <p class="hero-lead">From the first verse to the final stream. Learn the controls, prepare each cue, and know exactly what changes on screen.</p>
             <a class="button button-primary" href="#guide-orientation">Start with the basics <span aria-hidden="true">↓</span></a>
@@ -38,6 +39,22 @@
             <p>Text, Scripture, Songs, Media, and Cameras run locally without a product account.</p>
             <p>Managed streaming is a separate, server-configured service. OBS remains your compositor and encoder.</p>
           </div>
+        </section>
+
+        <section id="installation" class="section-frame" aria-labelledby="installation-title">
+          <div class="section-heading">
+            <p class="eyebrow">Start here</p>
+            <h2 id="installation-title">Download from GitHub Releases.</h2>
+            <p>Open the newest published release, including pre-releases during the preview, and expand <strong>Assets</strong>. No GitHub sign-in is required.</p>
+          </div>
+          <ol class="instructions">
+            <li><strong>Choose your installer.</strong> Windows: <code>Emberstage-Setup.exe</code>. macOS: <code>Emberstage-macOS.dmg</code>. Linux: <code>Emberstage-Linux.tar.gz</code>. Download its matching <code>.sha256</code> checksum too. Choose these files, not the automatic <strong>Source code</strong> downloads or temporary Actions artifacts.</li>
+            <li><strong>Prepare OBS.</strong> Install OBS Studio 31+, open it once to choose your scene collection, then fully quit it. macOS and Linux also need Python 3.</li>
+            <li><strong>Install.</strong> Windows: run the setup wizard. macOS: open the DMG and run <code>Install Emberstage.command</code>. Linux: extract the archive and follow the native or Flatpak commands in the <a href="https://github.com/Rotimiiam/emberstage#platform-installation-guides">platform installation guide</a>. Keep the backup path printed by the installer.</li>
+            <li><strong>Rehearse.</strong> Open OBS normally, arrange the new docks, and verify your output on OBS Program before going live. Continue with the usage guide below.</li>
+          </ol>
+          <p class="guide-note"><strong>Unsigned preview:</strong> Windows or macOS may warn about the publisher. Verify the download and approve only that file if you trust it; do not disable operating-system protections globally. macOS builds are not notarized.</p>
+          <a class="button button-primary" href="https://github.com/Rotimiiam/emberstage/releases">Get the installers on GitHub Releases</a>
         </section>
 
         <section id="operator-guide" aria-labelledby="operator-guide-title">

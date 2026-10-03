@@ -61,6 +61,16 @@ Emberstage puts Scripture, songs, text, videos, pictures, and native camera cont
 
 ## Platform Installation Guides
 
+**Start at [GitHub Releases](https://github.com/Rotimiiam/emberstage/releases).** Open the newest published release (including pre-releases during the preview), expand **Assets**, and download the installer for your computer plus its matching `.sha256` checksum:
+
+| Platform | Download from release Assets |
+| --- | --- |
+| Windows | `Emberstage-Setup.exe` |
+| macOS | `Emberstage-macOS.dmg` |
+| Linux | `Emberstage-Linux.tar.gz` |
+
+Choose these named installers, **not** GitHub's automatically generated **Source code (zip/tar.gz)** links. Public release downloads do not require GitHub sign-in. Then follow your platform instructions below with OBS fully closed.
+
 The setup scripts configure an existing OBS installation. They copy all application assets to a stable, isolated user directory. Moving or deleting the repository checkout after installation will **not** break your OBS docks, scripts, or sources.
 
 ### Prerequisites
@@ -81,13 +91,15 @@ The [Installers workflow](.github/workflows/installers.yml) builds:
 - **macOS:** `Emberstage-macOS.dmg` (Packaged via `hdiutil` payload DMG)
 - **Linux:** `Emberstage-Linux.tar.gz` (Host-side installer archive)
 
-It runs checks and builds on pushes to **main**, `v*` tags, or **Actions → Installers → Run workflow**. Pull requests run Linux checks only. Open a successful run and download its platform artifact (GitHub sign-in required), then extract the ZIP to get the installer and `.sha256` checksum. Artifacts expire after 14 days. Tagged builds create a **draft prerelease** for maintainer review; only published releases appear on the public Releases page. Source installation works even when no release has been published.
+**For normal installation, use [GitHub Releases](https://github.com/Rotimiiam/emberstage/releases), not Actions artifacts.** The workflow runs checks and builds on pushes to **main**, `v*` tags, or **Actions → Installers → Run workflow**. Pull requests run Linux checks only. Tagged builds create a **draft prerelease** for maintainer review before publication. Developers testing unreleased builds can download a successful run's artifact (GitHub sign-in required) and extract its ZIP; these temporary artifacts expire after 14 days.
 
 All jobs use standard GitHub-hosted runners, not personal/production self-hosted runners. No cloud deployment secrets or signing credentials are required. CI verifies code, payloads, and isolated installer fixtures; it does not certify camera hardware or OBS GUI rendering.
 
 ### Windows Installation (Standard & PowerShell)
 
 Windows installations resolve to a stable application directory at `%LOCALAPPDATA%\Emberstage\app`.
+
+**Recommended:** go to [GitHub Releases](https://github.com/Rotimiiam/emberstage/releases), download **Emberstage-Setup.exe** from **Assets**, and run it with OBS closed. Follow the wizard and retain the printed backup path. The PowerShell commands below are an alternative for source installations.
 
 #### PowerShell Installer (Dry-run preview):
 ```powershell
@@ -106,7 +118,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\install-media-
 ```
 
 #### Windows Inno Setup Wizard:
-Download and extract the Windows artifact, then run **Emberstage-Setup.exe** with OBS closed. Follow the wizard, retain the printed backup path, and launch OBS normally afterward.
+Download **Emberstage-Setup.exe** directly from [GitHub Releases → Assets](https://github.com/Rotimiiam/emberstage/releases), then run it with OBS closed. Follow the wizard, retain the printed backup path, and launch OBS normally afterward.
 
 To build the standard user-installable wizard (`dist/Emberstage-Setup.exe`) on a machine with Inno Setup installed, run from the repository root:
 ```powershell
@@ -120,7 +132,7 @@ This compiled setup executable installs per-user without requiring local Adminis
 
 macOS installations resolve to a stable application directory at `~/Library/Application Support/Emberstage`.
 
-1. Fully close OBS Studio.
+1. Download **Emberstage-macOS.dmg** from [GitHub Releases → Assets](https://github.com/Rotimiiam/emberstage/releases), ensure Python 3 is installed, and fully close OBS Studio.
 2. Open `Emberstage-macOS.dmg`, then double-click `Install Emberstage.command` beside its `payload` folder. This launches a Terminal session.
 3. Review the printed dry-run modifications.
 4. Type `yes` and press `<Enter>` to write. Any other response cancels safely.
@@ -143,7 +155,7 @@ python3 tests/package-macos-contract.py
 
 ### Linux Installation (Flatpak & Native)
 
-Extract `Emberstage-Linux.tar.gz` and open a terminal in its `Emberstage` folder (or use a complete source checkout). Linux supports both Flatpak and native OBS:
+Download **Emberstage-Linux.tar.gz** from [GitHub Releases → Assets](https://github.com/Rotimiiam/emberstage/releases), extract it, and open a terminal in its `Emberstage` folder (or use a complete source checkout). Linux supports both Flatpak and native OBS:
 - Flatpak assets write directly into the OBS-owned workspace: `~/.var/app/com.obsproject.Studio/data/Emberstage`.
 - Native assets write to `$XDG_DATA_HOME/Emberstage` (default: `~/.local/share/Emberstage`).
 
