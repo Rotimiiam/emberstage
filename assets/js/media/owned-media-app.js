@@ -17,6 +17,7 @@
   let isLoading = true;
   let appliedLayout = null;
   let cameraAbsent = false;
+  let outputError = '';
 
   // LocalStorage helper wrapper
   function safeSetItem(key, val) {
@@ -118,14 +119,19 @@
       transaction.onabort = () => reject(transaction.error || new Error('Transaction aborted'));
       transaction.onerror = () => reject(transaction.error || new Error('Transaction error'));
       
-      store.put({
+      const record = {
         id: item.id,
         name: item.name,
         kind: item.kind,
-        file: item.file,
         layoutPreset: item.layoutPreset || 'full',
         layoutCorner: item.layoutCorner || 'bottom-right'
-      });
+      };
+      if (item.kind === 'youtube') {
+        record.videoId = item.videoId;
+      } else {
+        record.file = item.file;
+      }
+      store.put(record);
     });
   }
 
@@ -186,15 +192,55 @@
   // Disable Add button initially until DB loading finishes
   function setAddDisabled(disabled) {
     fileInput.disabled = disabled;
+    addYoutubeBtn.disabled = disabled;
     if (disabled) {
       add.classList.add('disabled');
       add.style.pointerEvents = 'none';
       add.style.opacity = '0.42';
+      addYoutubeBtn.classList.add('disabled');
     } else {
       add.classList.remove('disabled');
       add.style.pointerEvents = '';
       add.style.opacity = '';
+      addYoutubeBtn.classList.remove('disabled');
     }
+  }
+
+  function cleanDisplayName(value) {
+    return String(value || '').replace(/\s+/g, ' ').trim().slice(0, 80);
+  }
+
+  function parseYouTubeUrl(value) {
+    const raw = String(value || '').trim();
+    const authority = raw.match(/^https:\/\/([^/?#]+)/i)?.[1] || '';
+    if (!authority || authority.includes('@') || /:\d+$/.test(authority)) {
+      throw new Error('Use a plain https YouTube URL without credentials or ports.');
+    }
+    let url;
+    try { url = new URL(raw); } catch (_) { throw new Error('Enter a valid YouTube URL.'); }
+    if (url.protocol !== 'https:' || url.username || url.password || url.port) {
+      throw new Error('Only plain https YouTube links are supported.');
+    }
+    if (url.searchParams.has('list')) {
+      throw new Error('Playlist links are not supported. Add a direct YouTube video or live URL.');
+    }
+    const host = url.hostname.toLowerCase();
+    const youtubeHosts = new Set(['youtube.com', 'www.youtube.com', 'm.youtube.com', 'music.youtube.com']);
+    let id = '';
+    if (youtubeHosts.has(host)) {
+      const parts = url.pathname.split('/').filter(Boolean);
+      if (url.pathname === '/watch') id = url.searchParams.get('v') || '';
+      else if (parts.length === 2 && parts[0] === 'live') id = parts[1];
+    } else if (host === 'youtu.be' || host === 'www.youtu.be') {
+      const parts = url.pathname.split('/').filter(Boolean);
+      if (parts.length === 1) id = parts[0];
+    } else {
+      throw new Error('Only genuine youtube.com and youtu.be links are supported.');
+    }
+    if (!/^[A-Za-z0-9_-]{11}$/.test(id)) {
+      throw new Error('YouTube links must include a valid 11-character video ID.');
+    }
+    return id;
   }
 
   // 1. Header & Brand
@@ -224,6 +270,9 @@
   fileInput.hidden = true;
   add.append(fileInput);
   header.append(add);
+  const addYoutubeBtn = button('YouTube', () => openYoutubeDialog(), 'quiet youtube-add');
+  addYoutubeBtn.setAttribute('aria-label', 'Add YouTube live stream');
+  header.append(addYoutubeBtn);
   const layoutMenuButton = button('Layout', () => toggleLayoutMenu(), 'quiet layout-menu-toggle');
   layoutMenuButton.setAttribute('aria-label', 'Media layout settings');
   layoutMenuButton.setAttribute('aria-haspopup', 'menu');
@@ -261,6 +310,163 @@
   }
 
   setAddDisabled(true); // Default disabled until library is loaded
+
+  const renameDialog = document.createElement('dialog');
+  renameDialog.className = 'media-inline-dialog';
+  renameDialog.setAttribute('aria-label', 'Rename media');
+  const renameHead = el('div', 'dialog-head');
+  renameHead.append(el('strong', '', 'Rename media'));
+  const renameClose = button('×', () => closeDialog(renameDialog), 'quiet dialog-close');
+  renameClose.setAttribute('aria-label', 'Close rename dialog');
+  renameHead.append(renameClose);
+  const renameForm = el('div', 'media-dialog-form');
+  const renameField = el('label', 'field');
+  renameField.append(el('span', '', 'Display name'));
+  const renameInput = el('input');
+  renameInput.type = 'text';
+  renameInput.maxLength = 80;
+  renameInput.setAttribute('aria-label', 'Media display name');
+  renameField.append(renameInput);
+  const renameError = el('div', 'form-error');
+  renameError.setAttribute('role', 'alert');
+  const renameActions = el('div', 'form-actions');
+  const renameSave = button('Save name', () => saveRename(), 'primary');
+  const renameCancel = button('Cancel', () => closeDialog(renameDialog), 'quiet');
+  renameActions.append(renameSave, renameCancel);
+  renameForm.append(renameField, renameError, renameActions);
+  renameDialog.append(renameHead, renameForm);
+  app.append(renameDialog);
+  let renameTargetId = '';
+
+  const youtubeDialog = document.createElement('dialog');
+  youtubeDialog.className = 'media-inline-dialog youtube-dialog';
+  youtubeDialog.setAttribute('aria-label', 'Add YouTube live stream');
+  const youtubeHead = el('div', 'dialog-head');
+  youtubeHead.append(el('strong', '', 'Add YouTube live'));
+  const youtubeClose = button('×', () => closeDialog(youtubeDialog), 'quiet dialog-close');
+  youtubeClose.setAttribute('aria-label', 'Close YouTube dialog');
+  youtubeHead.append(youtubeClose);
+  const youtubeForm = el('div', 'media-dialog-form');
+  const youtubeUrlField = el('label', 'field');
+  youtubeUrlField.append(el('span', '', 'YouTube URL'));
+  const youtubeUrlInput = el('input');
+  youtubeUrlInput.type = 'url';
+  youtubeUrlInput.placeholder = 'https://youtube.com/watch?v=...';
+  youtubeUrlInput.setAttribute('aria-label', 'YouTube live URL');
+  youtubeUrlField.append(youtubeUrlInput);
+  const youtubeNameField = el('label', 'field');
+  youtubeNameField.append(el('span', '', 'Display name'));
+  const youtubeNameInput = el('input');
+  youtubeNameInput.type = 'text';
+  youtubeNameInput.maxLength = 80;
+  youtubeNameInput.placeholder = 'Service livestream';
+  youtubeNameInput.setAttribute('aria-label', 'YouTube display name');
+  youtubeNameField.append(youtubeNameInput);
+  const youtubeNote = el('p', 'form-note', 'Requires internet and embedding permission. YouTube may show ads or restrictions. Only add streams you are authorized to show.');
+  const youtubeError = el('div', 'form-error');
+  youtubeError.setAttribute('role', 'alert');
+  const youtubeActions = el('div', 'form-actions');
+  const youtubeSave = button('Add stream', () => addYouTubeStream(), 'primary');
+  const youtubeCancel = button('Cancel', () => closeDialog(youtubeDialog), 'quiet');
+  youtubeActions.append(youtubeSave, youtubeCancel);
+  youtubeForm.append(youtubeUrlField, youtubeNameField, youtubeNote, youtubeError, youtubeActions);
+  youtubeDialog.append(youtubeHead, youtubeForm);
+  app.append(youtubeDialog);
+  renameInput.addEventListener('keydown', event => {
+    if (event.key === 'Enter' && !renameSave.disabled) { event.preventDefault(); void saveRename(); }
+  });
+  for (const input of [youtubeUrlInput, youtubeNameInput]) input.addEventListener('keydown', event => {
+    if (event.key === 'Enter' && !youtubeSave.disabled) { event.preventDefault(); void addYouTubeStream(); }
+  });
+
+  function openDialog(dialog) {
+    if (typeof dialog.showModal === 'function') dialog.showModal();
+    else dialog.open = true;
+  }
+
+  function closeDialog(dialog) {
+    if (typeof dialog.close === 'function') dialog.close();
+    else dialog.open = false;
+  }
+
+  function openRenameDialog(item) {
+    renameTargetId = item.id;
+    renameInput.value = item.name;
+    renameError.textContent = '';
+    openDialog(renameDialog);
+    requestAnimationFrame(() => renameInput.focus?.());
+  }
+
+  async function saveRename() {
+    const item = items.find(i => i.id === renameTargetId);
+    if (!item) return closeDialog(renameDialog);
+    const nextName = cleanDisplayName(renameInput.value);
+    if (!nextName) {
+      renameError.textContent = 'Name cannot be empty.';
+      return;
+    }
+    if (nextName === item.name) {
+      closeDialog(renameDialog);
+      return;
+    }
+    renameSave.disabled = true;
+    renameError.textContent = '';
+    try {
+      await saveToDB({ ...item, name: nextName });
+      item.name = nextName;
+      storageError = '';
+      closeDialog(renameDialog);
+      render();
+    } catch (_) {
+      renameError.textContent = 'Could not save the new name. Keep this dock open and try again.';
+    } finally {
+      renameSave.disabled = false;
+    }
+  }
+
+  function openYoutubeDialog() {
+    if (addYoutubeBtn.disabled) return;
+    youtubeUrlInput.value = '';
+    youtubeNameInput.value = '';
+    youtubeError.textContent = '';
+    openDialog(youtubeDialog);
+    requestAnimationFrame(() => youtubeUrlInput.focus?.());
+  }
+
+  async function addYouTubeStream() {
+    youtubeSave.disabled = true;
+    youtubeError.textContent = '';
+    try {
+      const videoId = parseYouTubeUrl(youtubeUrlInput.value);
+      const name = cleanDisplayName(youtubeNameInput.value) || `YouTube live ${videoId}`;
+      const item = {
+        id: crypto.randomUUID(),
+        name,
+        kind: 'youtube',
+        videoId,
+        persisted: true,
+        layoutPreset: 'full',
+        layoutCorner: 'bottom-right'
+      };
+      items.unshift(item);
+      try {
+        await saveToDB(item);
+        storageError = '';
+      } catch (err) {
+        item.persisted = false;
+        storageError = 'Storage write failed: ' + err.message;
+      }
+      selectedId = item.id;
+      safeSetItem('obs-bible:media:selectedId', selectedId);
+      saveOrder();
+      closeDialog(youtubeDialog);
+      render();
+    } catch (err) {
+      youtubeError.textContent = err.message;
+    } finally {
+      youtubeSave.disabled = false;
+    }
+  }
 
   // 2. Toolbar (Search, Clear All, Storage Info)
   const toolbar = el('div', 'toolbar');
@@ -412,6 +618,8 @@
     const preset = selectedItem.layoutPreset || 'full';
     const corner = selectedItem.layoutCorner || 'bottom-right';
     for (const [value, choice] of presetButtons) {
+      choice.disabled = selectedItem?.kind === 'youtube' && value === 'camera-inset';
+      choice.title = choice.disabled ? 'YouTube supports full screen or side by side, without covering player controls.' : '';
       const active = value === preset;
       choice.setAttribute('aria-checked', String(active));
       choice.classList.toggle('active', active);
@@ -428,6 +636,7 @@
   function selectLayoutPreset(value) {
     const selectedItem = items.find(i => i.id === selectedId);
     if (!selectedItem) return;
+    if (selectedItem.kind === 'youtube' && value === 'camera-inset') return;
     selectedItem.layoutPreset = value;
     persistSelectedLayout(selectedItem);
   }
@@ -554,19 +763,21 @@
       return;
     }
     appliedLayout = { preset: item.layoutPreset || 'full', corner: item.layoutCorner || 'bottom-right' };
-    channel.postMessage({
+    const message = {
       version: 1,
       type: 'show',
       id: item.id,
       kind: item.kind,
-      blob: item.file,
-      fit: fitSelect.value,
+      fit: item.kind === 'youtube' ? 'contain' : fitSelect.value,
       muted: muteCheckbox.checked,
-      loop: loopCheckbox.checked,
+      loop: item.kind === 'youtube' ? false : loopCheckbox.checked,
       transition: transitionTypeSelect.value,
       duration: parseInt(transitionDurationSelect.value, 10),
       layout: { preset: item.layoutPreset || 'full', corner: item.layoutCorner || 'bottom-right' }
-    });
+    };
+    if (item.kind === 'youtube') message.videoId = item.videoId;
+    else message.blob = item.file;
+    channel.postMessage(message);
   }, 'primary');
   take.setAttribute('aria-label', 'Toggle Live Presentation');
 
@@ -634,12 +845,13 @@
 
   function updateLiveSettings() {
     if (outputState === 'live' && liveId) {
+      const liveItem = items.find(i => i.id === liveId);
       channel.postMessage({
         version: 1,
         type: 'update-settings',
-        fit: fitSelect.value,
+        fit: liveItem?.kind === 'youtube' ? 'contain' : fitSelect.value,
         muted: muteCheckbox.checked,
-        loop: loopCheckbox.checked
+        loop: liveItem?.kind === 'youtube' ? false : loopCheckbox.checked
       });
     }
   }
@@ -672,6 +884,11 @@
     progressTime.textContent = `${formatTime(currentTime)} / ${formatTime(duration)}`;
   }
 
+  function updateYouTubeLiveProgress(paused) {
+    playPauseBtn.dataset.paused = String(paused);
+    playPauseBtn.textContent = paused ? 'Play' : 'Pause';
+  }
+
   function normalizeAppliedLayout(layout) {
     if (!layout) return null;
     if (typeof layout === 'object') {
@@ -690,8 +907,19 @@
     const frame = el('span', `source-preview source-preview-${item.kind}`);
     frame.setAttribute('aria-hidden', 'true');
     const indexChip = el('span', 'source-preview-index', String(index + 1).padStart(2, '0'));
-    const noteText = item.kind === 'image' ? 'Picture' : (item.id === selectedId ? 'Playing' : 'Video');
+    const noteText = item.kind === 'youtube' ? 'YouTube' : item.kind === 'image' ? 'Picture' : (item.id === selectedId ? 'Playing' : 'Video');
     const note = el('span', 'source-preview-note', noteText);
+    if (item.kind === 'youtube') {
+      const image = document.createElement('img');
+      image.alt = '';
+      image.decoding = 'async';
+      image.src = `https://i.ytimg.com/vi/${item.videoId}/hqdefault.jpg`;
+      image.addEventListener('error', () => {
+        frame.replaceChildren(el('span', 'source-preview-placeholder', 'YT'), indexChip, el('span', 'source-preview-note', 'Preview unavailable'));
+      }, { once: true });
+      frame.append(image, indexChip, note);
+      return frame;
+    }
     const url = getObjectUrl(item);
 
     if (item.kind === 'image') {
@@ -775,7 +1003,7 @@
       selectBtn.append(previewFrame(item, overallIndex));
 
       const copy = el('span', 'source-copy');
-      const metaText = item.persisted === false ? 'Session-only' : (item.kind === 'image' ? 'Picture' : 'Video');
+      const metaText = item.persisted === false ? 'Session-only' : (item.kind === 'youtube' ? 'YouTube live' : item.kind === 'image' ? 'Picture' : 'Video');
       copy.append(el('span', 'source-name', item.name), el('span', 'source-meta', metaText));
       selectBtn.append(copy);
 
@@ -830,8 +1058,14 @@
       }, 'card-btn remove');
       removeBtn.title = 'Remove';
       removeBtn.setAttribute('aria-label', `Remove ${item.name}`);
+      const renameBtn = button('✎', (e) => {
+        e.stopPropagation();
+        openRenameDialog(item);
+      }, 'card-btn rename');
+      renameBtn.title = 'Rename';
+      renameBtn.setAttribute('aria-label', `Rename ${item.name}`);
 
-      controls.append(upBtn, downBtn, removeBtn);
+      controls.append(upBtn, downBtn, renameBtn, removeBtn);
       row.append(controls);
 
       // Status Badge
@@ -845,7 +1079,7 @@
     const selectedItem = items.find(i => i.id === selectedId);
     selectionDisplay.textContent = selectedItem?.name || 'Choose media';
 
-    if (selectedItem && (selectedItem.kind === 'image' || selectedItem.kind === 'video')) {
+    if (selectedItem && (selectedItem.kind === 'image' || selectedItem.kind === 'video' || selectedItem.kind === 'youtube')) {
       layoutMenuButton.disabled = false;
       renderLayoutMenu();
       
@@ -860,8 +1094,18 @@
     take.disabled = !selectedItem || outputState === 'waiting';
     take.textContent = outputState === 'live' && selectedItem?.id === liveId ? 'Hide media' : 'Show media';
 
-    const isLiveVideo = outputState === 'live' && liveId && items.find(i => i.id === liveId)?.kind === 'video';
-    videoControls.style.display = isLiveVideo ? 'flex' : 'none';
+    const isSelectedYouTube = selectedItem?.kind === 'youtube';
+    fitSelect.disabled = !!isSelectedYouTube;
+    loopCheckbox.disabled = !!isSelectedYouTube;
+    fitSelect.title = isSelectedYouTube ? 'YouTube embeds use their own player sizing and do not crop.' : 'Fit: show the whole image or video. Fill: cover the area, cropping edges.';
+    loopLabel.title = isSelectedYouTube ? 'YouTube live embeds cannot be looped from this dock.' : '';
+
+    const liveItem = items.find(i => i.id === liveId);
+    const isLiveVideo = outputState === 'live' && liveItem?.kind === 'video';
+    const isLiveYouTube = outputState === 'live' && liveItem?.kind === 'youtube';
+    videoControls.style.display = (isLiveVideo || isLiveYouTube) ? 'flex' : 'none';
+    restartBtn.style.display = isLiveYouTube ? 'none' : '';
+    progressContainer.style.display = isLiveYouTube ? 'none' : '';
 
     stateBadge.textContent = outputState === 'live' ? 'LIVE' : outputState === 'hidden' ? 'HIDDEN' : outputState === 'switching' ? 'LOADING' : outputState === 'error' ? 'MEDIA ERROR' : 'WAITING';
     stateBadge.classList.toggle('on', outputState === 'live');
@@ -982,8 +1226,11 @@
       notice.textContent = 'Show a camera in Cameras to use this layout';
       notice.className = 'notice warning';
       notice.hidden = false;
-    } else if (outputState === 'error') {
-      notice.textContent = "This video codec cannot play in the OBS browser. Convert it to MP4 with H.264 video and AAC audio, then add it again.";
+    } else if (outputState === 'error' || outputError) {
+      const liveItem = items.find(i => i.id === liveId) || items.find(i => i.id === selectedId);
+      notice.textContent = liveItem?.kind === 'youtube' || /youtube|embed/i.test(outputError)
+        ? (outputError.includes(' ') ? outputError : 'YouTube could not play. Check internet access, embed permission, and that you are authorized to show this content.')
+        : "This video codec cannot play in the OBS browser. Convert it to MP4 with H.264 video and AAC audio, then add it again.";
       notice.className = 'notice warning';
       notice.hidden = false;
     } else if (storageError) {
@@ -1102,25 +1349,29 @@
     if (data.type === 'ready') {
       if (outputState !== 'hidden') {
         outputState = 'hidden';
+        outputError = '';
         render();
       }
     } else if (data.type === 'status') {
       const incomingId = data.id || '';
       const incomingCameraAbsent = !!data.cameraAbsent;
+      const incomingError = data.error || data.reason || '';
       const nextAppliedLayout = data.state === 'live' ? normalizeAppliedLayout(data.layout) : null;
       const appliedLayoutChanged =
         (appliedLayout?.preset || '') !== (nextAppliedLayout?.preset || '') ||
         (appliedLayout?.corner || '') !== (nextAppliedLayout?.corner || '');
-      if (outputState !== data.state || liveId !== incomingId || cameraAbsent !== incomingCameraAbsent || appliedLayoutChanged) {
+      if (outputState !== data.state || liveId !== incomingId || cameraAbsent !== incomingCameraAbsent || outputError !== incomingError || appliedLayoutChanged) {
         outputState = data.state;
         liveId = incomingId;
         cameraAbsent = incomingCameraAbsent;
+        outputError = incomingError;
         appliedLayout = nextAppliedLayout;
         render();
       }
     } else if (data.type === 'progress') {
       if (data.id === liveId && outputState === 'live') {
-        updateLiveProgress(data.currentTime, data.duration, data.paused);
+        if (items.find(i => i.id === liveId)?.kind === 'youtube') updateYouTubeLiveProgress(data.paused);
+        else updateLiveProgress(data.currentTime, data.duration, data.paused);
       }
     }
   };
@@ -1147,6 +1398,8 @@
   document.addEventListener('keydown', event => {
     if (event.key === 'Escape') {
       transitionPopover.classList.add('hidden');
+      closeDialog(renameDialog);
+      closeDialog(youtubeDialog);
     }
   });
 

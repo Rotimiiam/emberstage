@@ -14,6 +14,24 @@
   let layoutAnimations = [];
   let lastGeom = { left: 0, top: 0, width: 100, height: 100 };
   let lastClipPath = '';
+  const YOUTUBE_ORIGIN = 'https://emberstage.pages.dev';
+
+  function errorText(reason) {
+    if (!reason.startsWith('youtube-')) return '';
+    const code = reason.slice(8);
+    if (code === '101' || code === '150') return 'This broadcaster does not allow YouTube embedding. Choose an embeddable stream.';
+    if (code === '153') return 'YouTube could not verify the player identity. Check that the Emberstage HTTPS player is reachable.';
+    if (code === '100') return 'This YouTube stream is unavailable, private, or has been removed.';
+    if (code === 'autoplay') return 'YouTube playback was blocked. Allow autoplay in OBS or try another stream.';
+    if (code === 'ended') return 'The YouTube stream has ended.';
+    if (code === 'timeout' || code === 'network') return 'YouTube did not start. Check your internet connection and whether this stream is live and allows embedding.';
+    return 'YouTube could not play this stream. It may be restricted or unavailable for embedding.';
+  }
+
+  function youtubeCommand(item, type, details = {}) {
+    if (item?.kind !== 'youtube' || item.disposed) return;
+    item.element.contentWindow?.postMessage({ version: 1, channel: 'emberstage-youtube', token: item.token, type, ...details }, YOUTUBE_ORIGIN);
+  }
 
   function normalizeLayout(value) {
     return {
@@ -127,20 +145,22 @@
     const cameraAbsent = isComposite && !cameraActive;
     media.postMessage({ version: 1, type: 'status',
       state: isHiding ? 'hidden' : pending ? 'switching' : current ? 'live' : failure ? 'error' : 'hidden',
-      id: current?.id || '', reason: failure,
+      id: current?.id || '', reason: failure, error: errorText(failure),
       cameraAbsent: cameraAbsent, layout: isHiding ? { preset: 'full', corner: 'bottom-right' } : currentLayout });
     sendStageStatus();
   }
 
   function dispose(item) {
     if (!item || item.disposed) return;
+    youtubeCommand(item, 'stop');
+    item.removeListener?.();
     item.disposed = true;
     item.cancelLoad?.();
     if (item.element.tagName === 'VIDEO') item.element.pause();
     item.element.removeAttribute('src');
     if (item.element.tagName === 'VIDEO') item.element.load();
     item.element.remove();
-    URL.revokeObjectURL(item.url);
+    if (item.url) URL.revokeObjectURL(item.url);
   }
 
   function cancelPending() {
@@ -177,6 +197,11 @@
   }
 
   function progress() {
+    if (current?.kind === 'youtube') {
+      media.postMessage({ version: 1, type: 'progress', id: current.id, currentTime: 0, duration: 0,
+        paused: current.playerState !== 1, ended: current.playerState === 0 });
+      return;
+    }
     const video = current?.element;
     if (video?.tagName !== 'VIDEO') return;
     media.postMessage({ version: 1, type: 'progress', id: current.id,
@@ -185,6 +210,7 @@
   }
 
   function prepare(item) {
+    if (item.kind === 'youtube') return prepareYouTube(item);
     return new Promise((resolve, reject) => {
       const element = item.element;
       const event = element.tagName === 'VIDEO' ? 'canplay' : 'load';
@@ -206,8 +232,61 @@
     });
   }
 
+  function prepareYouTube(item) {
+    return new Promise((resolve, reject) => {
+      let settled = false;
+      const timer = setTimeout(() => finish('youtube-timeout'), 25000);
+      function finish(reason) {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        item.cancelLoad = null;
+        if (reason) reject(new Error(reason));
+        else { item.prepared = true; resolve(); }
+      }
+      const listener = event => {
+        const data = event.data;
+        if (item.disposed || event.source !== item.element.contentWindow || event.origin !== YOUTUBE_ORIGIN ||
+            !data || data.version !== 1 || data.channel !== 'emberstage-youtube' || data.token !== item.token) return;
+        if (data.type === 'ready') {
+          youtubeCommand(item, 'mute', { muted: true });
+          youtubeCommand(item, 'play');
+        } else if (data.type === 'state' && Number.isInteger(data.state)) {
+          item.playerState = data.state;
+          if (data.state === 1) finish();
+          if (current === item) progress();
+        }
+        const code = data.type === 'error' ? String(data.code) : data.type === 'state' && data.state === 0 ? 'ended' : '';
+        if (!code) return;
+        const reason = 'youtube-' + (['2', '5', '100', '101', '150', '153', 'autoplay', 'network', 'ended'].includes(code) ? code : 'unavailable');
+        finish(reason);
+        if (current === item) {
+          clear('cut', 0);
+          failure = reason;
+          status();
+        } else if (pending === item && item.prepared) {
+          generation++;
+          cancelPending();
+          currentLayout = current?.layout || normalizeLayout(null);
+          applyLayout(current, 'cut', 0);
+          failure = reason;
+          status();
+        }
+      };
+      window.addEventListener('message', listener);
+      item.removeListener = () => window.removeEventListener('message', listener);
+      item.cancelLoad = () => finish('cancelled');
+      item.element.src = YOUTUBE_ORIGIN + '/youtube-player.html#video=' + item.videoId + '&token=' + item.token;
+      item.element.classList.add('output-layer');
+      item.element.style.opacity = '0';
+      // Iframes must be connected to load. Transition retains this exact node.
+      output.append(item.element);
+    });
+  }
+
   async function show(message) {
-    if (!(message.blob instanceof Blob) || !['image', 'video'].includes(message.kind)) {
+    const isYouTube = message.kind === 'youtube';
+    if (isYouTube ? !/^[A-Za-z0-9_-]{11}$/.test(message.videoId || '') : !(message.blob instanceof Blob) || !['image', 'video'].includes(message.kind)) {
       return;
     }
     const version = ++generation;
@@ -220,10 +299,19 @@
     currentLayout = committedLayout;
     if (restoreLayout) applyLayout(current, 'cut', 0);
     if (current?.element.tagName === 'VIDEO') current.element.muted = current.muted;
+    youtubeCommand(current, 'mute', { muted: current?.muted });
     failure = '';
-    const element = document.createElement(message.kind === 'image' ? 'img' : 'video');
-    const candidate = { id: message.id, element, url: URL.createObjectURL(message.blob),
-      muted: message.muted === true, fit: message.fit === 'cover' ? 'cover' : 'contain' };
+    const element = document.createElement(isYouTube ? 'iframe' : message.kind === 'image' ? 'img' : 'video');
+    const candidate = { id: message.id, kind: message.kind, element, url: isYouTube ? null : URL.createObjectURL(message.blob),
+      muted: message.muted === true, fit: !isYouTube && message.fit === 'cover' ? 'cover' : 'contain' };
+    if (isYouTube) {
+      candidate.videoId = message.videoId;
+      candidate.token = crypto.randomUUID();
+      element.title = 'YouTube stream';
+      element.allow = 'autoplay; encrypted-media; fullscreen';
+      element.referrerPolicy = 'strict-origin-when-cross-origin';
+      element.style.border = '0';
+    }
     pending = candidate;
     if (message.kind === 'video') {
       element.playsInline = true;
@@ -236,6 +324,8 @@
     } else element.alt = '';
 
     const incomingLayout = normalizeLayout(message.layout);
+    // Never crop the embedded player or cover its controls with a camera inset.
+    if (isYouTube && incomingLayout.preset === 'camera-inset') incomingLayout.preset = 'full';
     candidate.layout = incomingLayout;
     const previousLayout = currentLayout;
 
@@ -270,6 +360,7 @@
       pending = null;
       applyLayout(current, currentTransition, currentDuration);
       if (element.tagName === 'VIDEO') element.muted = candidate.muted;
+      youtubeCommand(candidate, 'mute', { muted: candidate.muted });
       status();
       progress();
     } catch (error) {
@@ -278,7 +369,7 @@
       pending = null;
       currentLayout = previousLayout;
       applyLayout(current, currentTransition, currentDuration);
-      failure = error.message === 'load-timeout' ? 'load-timeout' : 'unsupported-format';
+      failure = isYouTube ? (error.message.startsWith('youtube-') ? error.message : 'youtube-unavailable') : error.message === 'load-timeout' ? 'load-timeout' : 'unsupported-format';
       status(); // Preserve the previous live media when a replacement cannot load.
     }
   }
@@ -292,6 +383,7 @@
     const transitionDuration = (transitionType === 'cut') ? 0 : (message.duration !== undefined ? parseInt(message.duration, 10) : 300);
 
     const video = current?.element;
+    youtubeCommand(current, 'mute', { muted: true });
     if (video && video.tagName === 'VIDEO') {
       video.muted = true; // Silence audio immediately!
     }
@@ -346,8 +438,9 @@
     if (data.type === 'show') void show(data);
     else if (data.type === 'hide') { void hide(data); }
     else if (data.type === 'apply-layout') {
-      if (current && !pending && !isHiding && current.id === data.id && (current.element.tagName === 'IMG' || current.element.tagName === 'VIDEO')) {
+      if (current && !pending && !isHiding && current.id === data.id) {
         currentLayout = normalizeLayout(data.layout);
+        if (current.kind === 'youtube' && currentLayout.preset === 'camera-inset') currentLayout.preset = 'full';
         current.layout = currentLayout;
         currentTransition = data.transition || 'fade';
         currentDuration = (currentTransition === 'cut') ? 0 : (data.duration !== undefined ? parseInt(data.duration, 10) : 300);
@@ -363,9 +456,10 @@
     else if (data.type === 'update-settings') {
       for (const item of [current, pending]) {
         if (!item) continue;
-        item.fit = data.fit === 'cover' ? 'cover' : 'contain';
+        item.fit = item.kind !== 'youtube' && data.fit === 'cover' ? 'cover' : 'contain';
         item.element.style.objectFit = item.fit;
         item.muted = data.muted === true;
+        youtubeCommand(item, 'mute', { muted: item === current && !isHiding ? item.muted : true });
         if (item.element.tagName === 'VIDEO') {
           item.element.muted = item === current && !isHiding ? item.muted : true;
           item.element.loop = data.loop !== false;
@@ -377,6 +471,10 @@
         video.currentTime = Math.max(0, Math.min(video.duration, data.time));
       }
     } else if (data.type === 'transport') {
+      if (!isHiding && current?.kind === 'youtube') {
+        if (data.action === 'pause' || data.action === 'play') youtubeCommand(current, data.action);
+        return;
+      }
       const video = current?.element;
       if (isHiding || video?.tagName !== 'VIDEO') return;
       if (data.action === 'pause') video.pause();
@@ -419,6 +517,8 @@
     }
   };
   const heartbeat = setInterval(() => {
+    youtubeCommand(current, 'ping');
+    youtubeCommand(pending, 'ping');
     if (cameraActive && Date.now() - cameraSeenAt > 6000) {
       cameraActive = false;
       applyLayout();

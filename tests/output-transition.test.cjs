@@ -15,9 +15,10 @@ function fixture(reduced = false) {
     return {
       name, style: {}, classList: classes(), children: [],
       setAttribute() {},
-      replaceChildren(...children) { this.children = children; },
-      append(child) { this.children.push(child); },
-      prepend(child) { this.children.unshift(child); },
+      replaceChildren(...children) { for (const child of [...this.children]) child.remove(); for (const child of children) this.append(child); },
+      append(child) { child.remove(); child.parentNode = this; this.children.push(child); },
+      prepend(child) { child.remove(); child.parentNode = this; this.children.unshift(child); },
+      remove() { if (this.parentNode) { this.parentNode.children = this.parentNode.children.filter(child => child !== this); this.parentNode = null; } },
       animate(frames, timing) {
         let finish, reject;
         const finished = new Promise((resolve, fail) => { finish = resolve; reject = fail; });
@@ -139,6 +140,9 @@ function mediaOutputFixture(reduced = false) {
   let mediaOnMessage = null;
   let stageOnMessage = null;
   let pagehideListener = null;
+  const windowListeners = new Set();
+  const timers = new Map();
+  const intervals = [];
 
   const mockMediaChannel = {
     postMessage: (msg) => mediaMessages.push(msg),
@@ -177,6 +181,7 @@ function mediaOutputFixture(reduced = false) {
     getElementById: (id) => id === 'output' ? mockOutput : null,
     createElement: (tag) => {
       const el = {
+        sent: [],
         tagName: tag.toUpperCase(),
         style: {},
         classList: {
@@ -212,6 +217,7 @@ function mediaOutputFixture(reduced = false) {
           return { finished, finish, cancel() {} };
         }
       };
+      if (tag === 'iframe') el.contentWindow = { postMessage: (data, origin) => el.sent.push({ data, origin }) };
       createdElements.push(el);
       return el;
     }
@@ -260,13 +266,16 @@ function mediaOutputFixture(reduced = false) {
       revokeObjectURL: () => {}
     },
     Blob: Blob,
-    setTimeout: () => 1,
-    clearTimeout: () => {},
-    setInterval: () => {},
+    crypto: require('node:crypto').webcrypto,
+    setTimeout: (fn) => { const id = Symbol(); timers.set(id, fn); return id; },
+    clearTimeout: id => timers.delete(id),
+    setInterval: fn => { intervals.push(fn); },
     clearInterval: () => {},
     addEventListener: (event, handler) => {
       if (event === 'pagehide') pagehideListener = handler;
+      if (event === 'message') windowListeners.add(handler);
     },
+    removeEventListener: (event, handler) => { if (event === 'message') windowListeners.delete(handler); },
     matchMedia: () => ({ matches: reduced })
   });
   context.window = context;
@@ -282,6 +291,16 @@ function mediaOutputFixture(reduced = false) {
     mockOutput,
     mockTransition,
     createdElements,
+    windowListeners,
+    expire: () => { for (const fn of [...timers.values()]) fn(); },
+    tick: () => intervals.forEach(fn => fn()),
+    youtube: (frame, details, overrides = {}) => {
+      const token = new URL(frame.src).hash.split('token=')[1];
+      for (const listener of [...windowListeners]) listener({
+        source: frame.contentWindow, origin: 'https://emberstage.pages.dev',
+        data: { version: 1, channel: 'emberstage-youtube', token, ...details }, ...overrides
+      });
+    },
     triggerMedia: (msg) => {
       console.log('triggerMedia called with msg type:', msg.type);
       console.log('mediaOnMessage function is:', mediaOnMessage ? 'DEFINED' : 'UNDEFINED');
@@ -291,6 +310,114 @@ function mediaOutputFixture(reduced = false) {
     triggerPagehide: () => pagehideListener()
   };
 }
+
+test('prepared stream frames stay connected across commit and cancellation', async () => {
+  const f = fixture();
+  const frame = f.element('iframe');
+  f.output.append(frame);
+  let removals = 0;
+  const remove = frame.remove.bind(frame);
+  frame.remove = () => { removals++; remove(); };
+  await f.transition.show(frame, { type: 'cut' });
+  f.transition.cancel();
+  assert.equal(removals, 0, 'a retained iframe must never be reparented/reloaded');
+  const next = f.element('next');
+  const result = f.transition.show(next, { type: 'fade', duration: 150 });
+  assert.equal(removals, 0, 'previous iframe keeps playing through fade');
+  f.running.forEach(animation => animation.finish());
+  await result;
+  assert.equal(removals, 1);
+});
+
+const settle = () => new Promise(resolve => setImmediate(resolve));
+const youtubeShow = { version: 1, type: 'show', kind: 'youtube', id: 'stream', videoId: 'M7lc1UVf-VE', transition: 'cut', muted: false };
+
+test('YouTube output authenticates bridge messages and only commits playing media', async () => {
+  const f = mediaOutputFixture();
+  f.triggerMedia({ ...youtubeShow, videoId: '../bad' });
+  assert.equal(f.createdElements.length, 0);
+  f.triggerMedia(youtubeShow);
+  const frame = f.createdElements[0];
+  assert.equal(frame.tagName, 'IFRAME');
+  assert.equal(frame.style.opacity, '0');
+  f.youtube(frame, { type: 'state', state: 1 }, { origin: 'https://evil.example' });
+  f.youtube(frame, { type: 'state', state: 1 }, { source: {} });
+  f.youtube(frame, { type: 'state', state: 1, token: 'wrong' });
+  await settle();
+  assert.equal(f.mediaMessages.at(-1).state, 'switching');
+  f.youtube(frame, { type: 'ready' });
+  assert.deepEqual(frame.sent.map(x => x.data.type), ['mute', 'play']);
+  assert.equal(frame.sent[0].data.muted, true);
+  assert.ok(frame.sent.every(x => x.origin === 'https://emberstage.pages.dev'));
+  f.youtube(frame, { type: 'state', state: 1 });
+  await settle();
+  assert.equal(f.mediaMessages.findLast(x => x.type === 'status').state, 'live');
+  assert.equal(frame.sent.at(-1).data.muted, false);
+  f.triggerMedia({ version: 1, type: 'update-settings', muted: true, fit: 'cover' });
+  assert.equal(frame.style.objectFit, 'contain');
+  assert.equal(frame.sent.at(-1).data.muted, true);
+  f.triggerMedia({ version: 1, type: 'transport', action: 'pause' });
+  assert.equal(frame.sent.at(-1).data.type, 'pause');
+  f.triggerMedia({ version: 1, type: 'hide', transition: 'cut' });
+  assert.ok(frame.sent.some(x => x.data.type === 'stop'));
+  assert.equal(f.windowListeners.size, 0);
+  assert.equal(f.mediaMessages.at(-1).state, 'hidden');
+});
+
+test('unavailable YouTube replacement preserves previous media and reports the exact error', async () => {
+  const f = mediaOutputFixture();
+  f.triggerMedia({ version: 1, type: 'show', id: 'old', kind: 'image', blob: new Blob([]), transition: 'cut' });
+  f.createdElements[0].readyHandler();
+  await settle();
+  f.triggerMedia(youtubeShow);
+  const frame = f.createdElements.find(x => x.tagName === 'IFRAME');
+  f.youtube(frame, { type: 'error', code: 150 });
+  await settle();
+  const status = f.mediaMessages.at(-1);
+  assert.equal(status.state, 'live');
+  assert.equal(status.id, 'old');
+  assert.match(status.error, /does not allow/);
+  assert.equal(f.windowListeners.size, 0);
+});
+
+test('YouTube timeout, hide while loading, and rapid replacement release players and listeners', async () => {
+  for (const action of ['timeout', 'hide', 'replace']) {
+    const f = mediaOutputFixture();
+    f.triggerMedia(youtubeShow);
+    const frame = f.createdElements[0];
+    if (action === 'timeout') f.expire();
+    if (action === 'hide') f.triggerMedia({ version: 1, type: 'hide', transition: 'cut' });
+    if (action === 'replace') f.triggerMedia({ ...youtubeShow, id: 'new' });
+    f.youtube(frame, { type: 'state', state: 1 });
+    await settle();
+    assert.ok(frame.sent.some(x => x.data.type === 'stop'));
+    assert.equal(f.windowListeners.size, action === 'replace' ? 1 : 0);
+    if (action === 'timeout') assert.equal(f.mediaMessages.at(-1).reason, 'youtube-timeout');
+    if (action === 'replace') {
+      const next = f.createdElements[0];
+      f.youtube(next, { type: 'state', state: 1 });
+      await settle();
+      assert.equal(f.mediaMessages.findLast(x => x.type === 'status').id, 'new');
+    }
+    f.triggerPagehide();
+    assert.equal(f.windowListeners.size, 0);
+  }
+});
+
+test('runtime YouTube restrictions stop output; camera layouts never crop the player', async () => {
+  const f = mediaOutputFixture();
+  f.triggerMedia({ ...youtubeShow, layout: { preset: 'camera-inset' } });
+  const frame = f.createdElements[0];
+  f.youtube(frame, { type: 'state', state: 1 });
+  await settle();
+  assert.equal(f.mediaMessages.findLast(x => x.type === 'status').layout.preset, 'full');
+  f.tick();
+  assert.equal(frame.sent.at(-1).data.type, 'ping');
+  f.youtube(frame, { type: 'error', code: 153 });
+  assert.equal(f.mediaMessages.at(-1).state, 'error');
+  assert.match(f.mediaMessages.at(-1).error, /player identity/);
+  assert.equal(f.windowListeners.size, 0);
+});
 
 test('media Fit and Fill apply to images and videos without replacing live media', async () => {
   for (const kind of ['image', 'video']) {

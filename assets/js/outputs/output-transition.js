@@ -14,26 +14,37 @@
       animations = [];
     }
 
-    function restoreCurrent() {
+    // Do not detach retained nodes: doing so reloads embedded stream players.
+    function retain(...elements) {
+      for (const child of Array.from(output.children)) {
+        if (!elements.includes(child)) child.remove();
+      }
+      for (const element of elements) {
+        if (element && element.parentNode !== output) output.append(element);
+      }
+    }
+
+    function restoreCurrent(candidate = null) {
       cancelAnimations();
-      output.replaceChildren(...(current ? [current] : []));
+      retain(...[current, candidate].filter(Boolean));
       output.classList.toggle('visible', Boolean(current));
     }
 
     async function show(element, options = {}) {
       const version = ++generation;
-      restoreCurrent();
+      restoreCurrent(element);
       const previous = current;
       const type = ['fade', 'dip'].includes(options.type) ? options.type : 'cut';
       const reduced = root.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
       const duration = reduced || type === 'cut' ? 0 : [150, 300, 500].includes(options.duration) ? options.duration : 300;
       element.style.objectFit = options.fit === 'cover' ? 'cover' : 'contain';
       element.classList.add('output-layer');
+      element.style.opacity = '';
       output.classList.add('visible');
 
       if (!duration || typeof element.animate !== 'function') {
         current = element;
-        output.replaceChildren(element);
+        retain(element);
         return true;
       }
 
@@ -43,7 +54,7 @@
         black.setAttribute('aria-hidden', 'true');
         output.prepend(black);
       }
-      output.append(element);
+      if (element.parentNode !== output) output.append(element);
       const timing = { duration, easing: 'linear', fill: 'both' };
       const incoming = type === 'dip'
         ? [{ opacity: 0, offset: 0 }, { opacity: 0, offset: 0.5 }, { opacity: 1, offset: 1 }]
@@ -57,7 +68,7 @@
       await Promise.all(running.map(animation => animation.finished.catch(() => {})));
       if (version !== generation) return false;
       current = element;
-      output.replaceChildren(element);
+      retain(element);
       cancelAnimations();
       return true;
     }

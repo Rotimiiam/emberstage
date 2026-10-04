@@ -368,6 +368,146 @@ test('installed docks need no manual WebSocket setup; only native cameras use th
   assert.ok(cameraOutput.includes("new BroadcastChannel('emberstage-camera-v1')"));
 });
 
+function ownedMediaDock({ savedItems = [], failOpen = false } = {}) {
+  const nodes = [], events = {}, channels = new Map(), stored = new Map(), messages = [];
+  const records = new Map(savedItems.map(item => [item.id, { ...item }]));
+  let failWrites = false;
+  let uuid = 0;
+  class Node {
+    constructor(tag) {
+      this.tag = tag;
+      this.children = [];
+      this.dataset = {};
+      this.style = {};
+      this.listeners = {};
+      this.className = '';
+      this.textContent = '';
+      this.hidden = false;
+      nodes.push(this);
+      this.classList = {
+        add: name => { if (!this.className.includes(name)) this.className = `${this.className} ${name}`.trim(); },
+        remove: name => { this.className = this.className.split(/\s+/).filter(part => part && part !== name).join(' '); },
+        toggle: (name, force) => { const on = force ?? !this.className.split(/\s+/).includes(name); on ? this.classList.add(name) : this.classList.remove(name); }
+      };
+    }
+    append(...children) { children.flat().forEach(child => { if (child) { child.parent = this; this.children.push(child); } }); this.firstChild = this.children[0]; }
+    replaceChildren(...children) { this.children = []; this.append(...children); }
+    addEventListener(name, fn) { this.listeners[name] = fn; }
+    setAttribute(name, value) { this[name] = String(value); }
+    closest(selector) { let node = this; while (node) { if (selector === '.source-row' && node.className?.split(/\s+/).includes('source-row')) return node; node = node.parent; } return null; }
+    querySelectorAll(selector) { const found = []; const walk = node => { for (const child of node.children || []) { if (child.tag === selector) found.push(child); walk(child); } }; walk(this); return found; }
+    querySelector() { return null; }
+    showModal() { this.open = true; }
+    close() { this.open = false; }
+    focus() { document.activeElement = this; }
+    click() { this.listeners.click?.({ stopPropagation() {}, preventDefault() {} }); }
+  }
+  const app = new Node('main');
+  class TestURL extends URL {}
+  TestURL.createObjectURL = () => 'blob:fixture';
+  TestURL.revokeObjectURL = () => {};
+  const document = {
+    body: new Node('body'), activeElement: null,
+    getElementById: () => app,
+    createElement: tag => new Node(tag),
+    createTextNode: text => { const node = new Node('#text'); node.textContent = text; return node; },
+    addEventListener(name, fn) { events[name] = fn; }
+  };
+  const indexedDB = {
+    open() {
+      const request = {};
+      queueMicrotask(() => {
+        if (failOpen) { request.onerror?.({ target: { error: new Error('No IndexedDB') } }); return; }
+        const db = { objectStoreNames: { contains: () => true }, transaction() {
+          const tx = {
+            objectStore: () => ({
+              put(record) { queueMicrotask(() => { if (failWrites) tx.onabort?.(); else { records.set(record.id, { ...record }); tx.oncomplete?.(); } }); },
+              delete(id) { queueMicrotask(() => { records.delete(id); tx.oncomplete?.(); }); },
+              clear() { queueMicrotask(() => { records.clear(); tx.oncomplete?.(); }); },
+              getAll() { const get = { result: [...records.values()].map(item => ({ ...item })) }; queueMicrotask(() => get.onsuccess?.()); return get; }
+            })
+          };
+          return tx;
+        } };
+        request.onsuccess?.({ target: { result: db } });
+      });
+      return request;
+    }
+  };
+  const context = vm.createContext({
+    console, document, window: { addEventListener(name, fn) { events[name] = fn; } }, navigator: { storage: { estimate: async () => ({ usage: 0, quota: 1024 * 1024 }) } },
+    localStorage: { getItem: key => stored.get(key) || null, setItem: (key, value) => stored.set(key, value), removeItem: key => stored.delete(key) },
+    indexedDB, URL: TestURL, Blob: class {},
+    crypto: { randomUUID: () => `uuid-${++uuid}` }, requestAnimationFrame: fn => fn(),
+    setInterval: () => 1, clearInterval() {}, setTimeout: (fn) => { queueMicrotask(fn); return 1; }, clearTimeout() {},
+    BroadcastChannel: class { constructor(name) { this.name = name; channels.set(name, this); } postMessage(message) { messages.push({ channel: this.name, message }); } close() {} },
+    confirm: () => true, alert: () => {}, addEventListener(name, fn) { events[name] = fn; }
+  });
+  vm.runInContext(fs.readFileSync(path.join(root, 'assets/js/media/owned-media-app.js'), 'utf8'), context);
+  return { nodes, events, channels, stored, messages, records, set failWrites(value) { failWrites = value; }, get failWrites() { return failWrites; } };
+}
+
+test('owned media dock adds YouTube streams first, validates strict URLs, and sends videoId without a Blob', async () => {
+  const dock = ownedMediaDock(); await tick(); await tick();
+  const youtubeButton = dock.nodes.find(node => node['aria-label'] === 'Add YouTube live stream');
+  assert.equal(youtubeButton.disabled, false);
+  youtubeButton.listeners.click();
+  const urlInput = dock.nodes.find(node => node['aria-label'] === 'YouTube live URL');
+  const nameInput = dock.nodes.find(node => node['aria-label'] === 'YouTube display name');
+  const addStream = dock.nodes.find(node => node.textContent === 'Add stream');
+  const error = dock.nodes.find(node => node.className === 'form-error' && node.parent?.children.includes(urlInput.parent));
+  for (const bad of ['http://youtube.com/watch?v=ABCDEFGHIJK', 'https://evil-youtube.com/watch?v=ABCDEFGHIJK', 'https://youtube.com/playlist?list=ABCDEFGHIJK', 'https://user:pass@youtube.com/watch?v=ABCDEFGHIJK', 'https://youtube.com:444/watch?v=ABCDEFGHIJK', 'https://youtube.com/watch?v=short']) {
+    urlInput.value = bad; nameInput.value = 'Bad'; await addStream.listeners.click(); await tick();
+    assert.match(error.textContent, /YouTube|https|valid|plain|genuine/);
+  }
+  urlInput.value = 'https://m.youtube.com/live/ABCdef_1234';
+  nameInput.value = '  Sunday   Livestream  ';
+  await addStream.listeners.click(); await tick(); await tick();
+  const saved = [...dock.records.values()][0];
+  assert.deepEqual(saved, { id: 'uuid-1', name: 'Sunday Livestream', kind: 'youtube', layoutPreset: 'full', layoutCorner: 'bottom-right', videoId: 'ABCdef_1234' });
+  assert.equal('file' in saved, false);
+  const list = dock.nodes.find(node => node.className === 'source-list owned-library');
+  const previewImage = list.children[0].children[0].children[0].children[0];
+  assert.equal(previewImage.src, 'https://i.ytimg.com/vi/ABCdef_1234/hqdefault.jpg');
+  assert.equal(dock.messages.some(({ message }) => message.type === 'show'), false, 'adding a stream does not auto-live it');
+  dock.channels.get('emberstage-media-v1').onmessage({ data: { version: 1, type: 'ready' } });
+  const take = dock.nodes.find(node => node.textContent === 'Show media');
+  take.listeners.click();
+  assert.deepEqual(JSON.parse(JSON.stringify(dock.messages.at(-1).message)), { version: 1, type: 'show', id: 'uuid-1', kind: 'youtube', fit: 'contain', muted: false, loop: false, transition: 'fade', duration: 300, layout: { preset: 'full', corner: 'bottom-right' }, videoId: 'ABCdef_1234' });
+  assert.equal('blob' in dock.messages.at(-1).message, false);
+  assert.equal(dock.nodes.find(node => node.className === 'media-fit-select').disabled, true);
+  const loop = dock.nodes.find(node => node.tag === 'label' && node.children.some(child => child.textContent === 'Loop')).children[0];
+  assert.equal(loop.disabled, true);
+});
+
+test('owned media rename uses HTML dialog and commits only after IndexedDB succeeds', async () => {
+  const file = { size: 7 };
+  const dock = ownedMediaDock({ savedItems: [{ id: 'image-1', name: 'Original name.png', kind: 'image', file, layoutPreset: 'full', layoutCorner: 'bottom-right' }] });
+  await tick(); await tick();
+  const channel = dock.channels.get('emberstage-media-v1');
+  const list = dock.nodes.find(node => node.className === 'source-list owned-library');
+  const rename = list.children[0].children[1].children.find(node => node.className.includes('rename'));
+  rename.listeners.click({ stopPropagation() {} });
+  const input = dock.nodes.find(node => node['aria-label'] === 'Media display name');
+  const save = dock.nodes.find(node => node.textContent === 'Save name');
+  input.value = '   ';
+  save.listeners.click(); await tick();
+  assert.match(dock.nodes.find(node => node.textContent === 'Name cannot be empty.').textContent, /empty/);
+  dock.failWrites = true;
+  input.value = 'New name';
+  save.listeners.click(); await tick(); await tick();
+  assert.equal(dock.records.get('image-1').name, 'Original name.png');
+  assert.equal(list.children[0].children[0].children[1].children[0].textContent, 'Original name.png');
+  assert.equal(dock.messages.length, 0);
+  dock.failWrites = false;
+  save.listeners.click(); await tick(); await tick();
+  assert.equal(dock.records.get('image-1').name, 'New name');
+  assert.equal(list.children[0].children[0].children[1].children[0].textContent, 'New name');
+  assert.equal(dock.messages.length, 0, 'rename never broadcasts show/hide');
+  channel.onmessage({ data: { version: 1, type: 'status', state: 'error', id: 'image-1', error: 'unsupported-format' } });
+  assert.match(dock.nodes.find(node => node.className === 'notice warning').textContent, /codec/);
+});
+
 test('failed visibility writes do not produce optimistic enabled state', async () => {
   const { client, deck } = await fixture(); const original = client.request.bind(client);
   client.request = (type, data) => type === 'SetSceneItemEnabled' ? Promise.reject(new Error('Fixture write rejected')) : original(type, data);

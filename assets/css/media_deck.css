@@ -88,6 +88,12 @@ dialog{width:min(450px,calc(100vw - 24px));max-height:calc(100vh - 16px);backgro
 
 /* App-owned outputs: the library fills the dock and actions remain pinned. */
 .media-add{display:inline-flex;align-items:center;justify-content:center;min-height:30px;padding:4px 9px;border:1px solid var(--amber);border-radius:5px;cursor:pointer;white-space:nowrap}
+.youtube-add{color:#ffd8a2;border-color:#51422b;background:#211d17}
+.youtube-add:hover:not(:disabled){border-color:#a98348;background:#2b2418}
+.media-inline-dialog{width:min(360px,calc(100vw - 16px));padding:12px;max-height:calc(100vh - 16px);overflow:auto}
+.media-inline-dialog .dialog-head{margin-bottom:8px}
+.dialog-close{min-width:30px;padding-inline:8px}
+.media-dialog-form{display:grid;gap:8px}.media-dialog-form .field{gap:3px}.media-dialog-form input{width:100%}.media-dialog-form .form-actions{justify-content:flex-start;flex-wrap:wrap}.youtube-dialog .form-note{margin:0;padding:7px 8px;border:1px solid #4d4130;border-radius:6px;background:#211d17;color:#e2c794}
 .owned-library{flex:1;margin:8px;min-height:0}
 .owned-library .empty{display:grid;grid-column:1/-1;place-content:center;gap:6px;height:100%;min-height:96px;padding:20px}
 .owned-library .empty strong,.owned-library .empty small{max-width:38ch;margin-inline:auto}
@@ -134,6 +140,9 @@ dialog{width:min(450px,calc(100vw - 24px));max-height:calc(100vh - 16px);backgro
   background: #1e2024;
 }
 
+.owned-library .source-row-select-btn{grid-column:1/-1;display:grid;grid-template-columns:1fr;gap:6px;width:100%;min-width:0;padding:0;border:0;background:transparent;text-align:left;white-space:normal}
+.owned-library .source-row-select-btn:hover{background:transparent}.owned-library .card-controls{display:grid;grid-template-columns:repeat(4,28px);gap:4px;justify-self:start}.owned-library .card-btn{min-width:0;width:28px;min-height:26px;padding:0;border-radius:6px}.owned-library .card-btn.rename{color:#ffd8a2}.source-preview-youtube{background:radial-gradient(circle at 30% 25%,rgba(244,90,71,.22),transparent 45%),linear-gradient(145deg,#2c2020,#15191e)}.source-preview-youtube::after{content:"";position:absolute;left:50%;top:50%;width:22px;height:16px;transform:translate(-50%,-50%);border-radius:5px;background:rgba(240,40,40,.82);box-shadow:0 4px 16px #0008}.source-preview-youtube::before{content:"";position:absolute;z-index:1;left:50%;top:50%;transform:translate(-36%,-50%);border-left:7px solid #fff;border-top:5px solid transparent;border-bottom:5px solid transparent}.source-preview-youtube img{position:relative;z-index:0}.source-preview-youtube .source-preview-note,.source-preview-youtube .source-preview-index{z-index:2}
+
 .owned-library .source-row[aria-pressed=true] {
   border-color: #8b6d36;
   box-shadow: inset 0 0 0 1px rgba(232,180,92,.16);
@@ -179,6 +188,9 @@ dialog{width:min(450px,calc(100vw - 24px));max-height:calc(100vh - 16px);backgro
     gap: 5px 6px;
     padding: 5px;
   }
+
+  .deckbar .youtube-add,.deckbar .media-add{padding-inline:7px;font-size:12px}
+  .media-inline-dialog{width:calc(100vw - 12px);padding:10px}
 }
 
 @media (max-height: 320px) and (min-width: 481px) {
@@ -192,6 +204,8 @@ dialog{width:min(450px,calc(100vw - 24px));max-height:calc(100vh - 16px);backgro
     gap: 4px 6px;
     padding: 4px;
   }
+
+  .owned-library .card-controls{grid-template-columns:repeat(4,24px);gap:3px}.owned-library .card-btn{width:24px;min-height:23px}.media-inline-dialog{max-height:calc(100vh - 10px);padding:10px}.media-dialog-form{gap:6px}
 
   .owned-library .source-preview {
     aspect-ratio: 16 / 8;
