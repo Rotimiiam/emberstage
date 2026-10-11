@@ -247,6 +247,11 @@
                         <option value="right">Right</option>
                       </select>
                     </label>
+                    <label for="song-half-screen-tint" id="song-half-screen-tint-label" class="song-tint-control" title="Half-screen background tint" hidden>
+                      <span>Tint</span>
+                      <input id="song-half-screen-tint" class="slider song-tint-slider" type="range" min="0" max="100" step="1" value="62" aria-label="Half-screen song background tint">
+                      <output id="song-half-screen-tint-value" for="song-half-screen-tint">62%</output>
+                    </label>
                     <small id="song-layout-hint" hidden>Changes apply live. Full verse / chorus.</small>
                   </div>
                 </div>
@@ -256,6 +261,15 @@
               <div class="song-library-pane">
                 <div class="library-header">
                   <span class="library-title">Library</span>
+                  <label for="song-sort-select" class="song-sort-label" title="Sort songs">
+                    <select id="song-sort-select" class="input song-sort-select" aria-label="Sort song library">
+                      <option value="title-asc">Title (A–Z)</option>
+                      <option value="title-desc">Title (Z–A)</option>
+                      <option value="newest">Recently added</option>
+                      <option value="oldest">Oldest first</option>
+                      <option value="sections-desc">Most verses</option>
+                    </select>
+                  </label>
                 </div>
                 <div id="song-library-empty" class="song-library-empty empty-state">
                   <span class="empty-state-icon" aria-hidden="true">♫</span>

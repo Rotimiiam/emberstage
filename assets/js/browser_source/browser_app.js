@@ -182,6 +182,7 @@ function applySongLook(message) {
   const settings = getOutputSongLayout();
   background.dataset.songLayout = settings.layout;
   background.dataset.songPosition = settings.position;
+  background.style.setProperty('--song-half-screen-tint-opacity', (settings.halfScreenTintOpacity / 100).toFixed(2));
 }
 
 function refreshSongLayout(settings) {

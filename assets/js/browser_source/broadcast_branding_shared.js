@@ -17,8 +17,15 @@
     applied: 'obs-bible-text-broadcast-applied',
   });
   const SONG_LAYOUT_KEY = 'obs-bible-song-layout-v1';
+  const DEFAULT_HALF_SCREEN_TINT_OPACITY = 62;
   function isCompactSongLayout(layout) {
     return ['lower-third', 'gradient-strip', 'lyric-card'].includes(layout);
+  }
+
+  function sanitizeHalfScreenTintOpacity(value, fallback = DEFAULT_HALF_SCREEN_TINT_OPACITY) {
+    const numeric = Number.parseInt(value, 10);
+    const base = Number.isFinite(numeric) ? numeric : fallback;
+    return Math.max(0, Math.min(100, base));
   }
 
   function sanitizeSongLayout(input) {
@@ -26,6 +33,7 @@
     return {
       layout: sanitizeChoice(source.layout, ['full-screen', 'half-screen', 'lower-third', 'gradient-strip', 'lyric-card', 'side-panel'], 'full-screen'),
       position: sanitizeChoice(source.position, ['left', 'center', 'right'], 'left'),
+      halfScreenTintOpacity: sanitizeHalfScreenTintOpacity(source.halfScreenTintOpacity),
     };
   }
 
@@ -43,6 +51,9 @@
     const song = sanitizeSongCue(cue);
     if (!song) return [];
     if (song.singleLine) return song.lines.slice(song.lineIndex, song.lineIndex + 1);
+    if (layout === 'lyric-card') {
+      return song.lines.slice(song.lineIndex, song.lineIndex + 3);
+    }
     if (isCompactSongLayout(layout)) {
       return song.lines.slice(song.lineIndex, song.lineIndex + 2);
     }
@@ -52,7 +63,7 @@
   function songCuePagination(cue, layout) {
     const song = sanitizeSongCue(cue);
     if (!song) return { step: 1, pageIndex: 0, pageCount: 0 };
-    const step = song.singleLine ? 1 : (isCompactSongLayout(layout) ? 2 : Math.max(song.lines.length, 1));
+    const step = song.singleLine ? 1 : (layout === 'lyric-card' ? 3 : (isCompactSongLayout(layout) ? 2 : Math.max(song.lines.length, 1)));
     const pageCount = Math.max(1, Math.ceil(song.lines.length / step));
     const pageIndex = Math.min(pageCount - 1, Math.floor(song.lineIndex / step));
     return { step, pageIndex, pageCount };
@@ -212,7 +223,9 @@
 
   return {
     SONG_LAYOUT_KEY,
+    DEFAULT_HALF_SCREEN_TINT_OPACITY,
     isCompactSongLayout,
+    sanitizeHalfScreenTintOpacity,
     sanitizeSongLayout,
     sanitizeSongCue,
     songCueLines,

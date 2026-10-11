@@ -2643,6 +2643,10 @@ button:hover,
 }
 
 .library-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
   padding-bottom: 6px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.05);
   margin-bottom: 8px;
@@ -2654,6 +2658,53 @@ button:hover,
   text-transform: uppercase;
   color: rgba(255, 255, 255, 0.4);
   letter-spacing: 0.08em;
+}
+
+.song-sort-label {
+  display: inline-flex;
+  align-items: center;
+  margin: 0;
+}
+
+.song-sort-select {
+  height: 23px;
+  min-height: 23px;
+  font-size: 11px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: #20242a;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #f0f0f0;
+  cursor: pointer;
+  max-width: 130px;
+}
+
+.song-tint-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 118px;
+  max-width: 142px;
+  height: 28px;
+  padding: 0 7px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(255,255,255,0.06), rgba(13,22,34,0.72));
+  color: rgba(255, 255, 255, 0.62);
+  font-size: 0.68rem;
+  line-height: 1;
+}
+
+.song-tint-slider {
+  flex: 1 1 auto;
+  min-width: 46px;
+}
+
+.song-tint-control output {
+  min-width: 28px;
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 0.65rem;
+  text-align: right;
 }
 
 .song-library-list {

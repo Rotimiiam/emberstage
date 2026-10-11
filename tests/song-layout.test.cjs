@@ -17,21 +17,27 @@ test('lyric paging scrolls within its pane without jumping to verse one', () => 
 });
 
 test('song look settings allow only supported layouts and positions', () => {
-  assert.deepEqual(api.sanitizeSongLayout(null), { layout: 'full-screen', position: 'left' });
-  assert.deepEqual(api.sanitizeSongLayout({ layout: 'unknown', position: 'top' }), { layout: 'full-screen', position: 'left' });
+  assert.deepEqual(api.sanitizeSongLayout(null), { layout: 'full-screen', position: 'left', halfScreenTintOpacity: 62 });
+  assert.deepEqual(api.sanitizeSongLayout({ layout: 'unknown', position: 'top' }), { layout: 'full-screen', position: 'left', halfScreenTintOpacity: 62 });
   assert.equal(api.isCompactSongLayout('lower-third'), true);
   assert.equal(api.isCompactSongLayout('full-screen'), false);
-  for (const layout of ['full-screen', 'lower-third', 'gradient-strip', 'lyric-card', 'side-panel']) {
-    assert.deepEqual(api.sanitizeSongLayout({ layout, position: 'right' }), { layout, position: 'right' });
+  for (const layout of ['full-screen', 'half-screen', 'lower-third', 'gradient-strip', 'lyric-card', 'side-panel']) {
+    assert.deepEqual(api.sanitizeSongLayout({ layout, position: 'right', halfScreenTintOpacity: 44 }), { layout, position: 'right', halfScreenTintOpacity: 44 });
   }
+  assert.equal(api.sanitizeSongLayout({ halfScreenTintOpacity: -5 }).halfScreenTintOpacity, 0);
+  assert.equal(api.sanitizeSongLayout({ halfScreenTintOpacity: 120 }).halfScreenTintOpacity, 100);
+  assert.equal(api.sanitizeSongLayout({ halfScreenTintOpacity: 'dark' }).halfScreenTintOpacity, 62);
 });
 
 test('song cues preserve the anchor while layouts change and never spill into another section', () => {
   const cue = { lines: ['One', 'Two', 'Three', 'Four', 'Five'], lineIndex: 2 };
-  for (const layout of ['lower-third', 'gradient-strip', 'lyric-card']) {
+  for (const layout of ['lower-third', 'gradient-strip']) {
     assert.deepEqual(api.songCueLines(cue, layout), ['Three', 'Four']);
     assert.deepEqual(api.songCueLines({ ...cue, lineIndex: 4 }, layout), ['Five']);
   }
+  assert.deepEqual(api.songCueLines(cue, 'lyric-card'), ['Three', 'Four', 'Five']);
+  assert.deepEqual(api.songCueLines({ ...cue, lineIndex: 3 }, 'lyric-card'), ['Four', 'Five']);
+  assert.deepEqual(api.songCueLines({ ...cue, lineIndex: 4 }, 'lyric-card'), ['Five']);
   for (const layout of ['side-panel', 'full-screen']) {
     assert.deepEqual(api.songCueLines(cue, layout), cue.lines);
   }
@@ -50,6 +56,8 @@ test('compact song looks expose stable part counts for chunk navigation', () => 
   const cue = { lines: ['One', 'Two', 'Three', 'Four', 'Five', 'Six'], lineIndex: 4, singleLine: false };
   assert.deepEqual(api.songCuePagination(cue, 'lower-third'), { step: 2, pageIndex: 2, pageCount: 3 });
   assert.deepEqual(api.songCuePagination({ ...cue, lineIndex: 5 }, 'gradient-strip'), { step: 2, pageIndex: 2, pageCount: 3 });
+  assert.deepEqual(api.songCuePagination(cue, 'lyric-card'), { step: 3, pageIndex: 1, pageCount: 2 });
+  assert.deepEqual(api.songCuePagination({ ...cue, lineIndex: 0 }, 'lyric-card'), { step: 3, pageIndex: 0, pageCount: 2 });
   assert.deepEqual(api.songCuePagination({ ...cue, singleLine: true }, 'lyric-card'), { step: 1, pageIndex: 4, pageCount: 6 });
   assert.deepEqual(api.songCuePagination(cue, 'full-screen'), { step: 6, pageIndex: 0, pageCount: 1 });
 });
@@ -156,4 +164,65 @@ test('half-screen keeps all verse lines and advances one whole verse', () => {
   assert.deepEqual(api.songCueLines(cue, 'half-screen'), cue.lines);
   assert.equal(api.songCuePagination(cue, 'half-screen').pageCount, 1);
   assert.equal(api.isCompactSongLayout('half-screen'), false);
+});
+
+test('compact lyric card takes up to 3 lines per part in cues and pagination', () => {
+  const cue = { lines: ['Line 1', 'Line 2', 'Line 3', 'Line 4', 'Line 5', 'Line 6', 'Line 7'], lineIndex: 0, singleLine: false };
+  assert.deepEqual(api.songCueLines(cue, 'lyric-card'), ['Line 1', 'Line 2', 'Line 3']);
+  assert.deepEqual(api.songCueLines({ ...cue, lineIndex: 3 }, 'lyric-card'), ['Line 4', 'Line 5', 'Line 6']);
+  assert.deepEqual(api.songCueLines({ ...cue, lineIndex: 6 }, 'lyric-card'), ['Line 7']);
+  assert.deepEqual(api.songCuePagination(cue, 'lyric-card'), { step: 3, pageIndex: 0, pageCount: 3 });
+  assert.deepEqual(api.songCuePagination({ ...cue, lineIndex: 3 }, 'lyric-card'), { step: 3, pageIndex: 1, pageCount: 3 });
+  assert.deepEqual(api.songCuePagination({ ...cue, lineIndex: 6 }, 'lyric-card'), { step: 3, pageIndex: 2, pageCount: 3 });
+});
+
+test('song library sorting supports title-asc, title-desc, newest, oldest, and sections-desc', () => {
+  const loadSongSource = fs.readFileSync(require.resolve('../assets/js/control_panel/load_song.js'), 'utf8');
+  const storage = {};
+  const context = vm.createContext({
+    localStorage: {
+      getItem: key => storage[key] || null,
+      setItem: (key, val) => { storage[key] = String(val); }
+    },
+    document: { getElementById: () => null, querySelector: () => null, querySelectorAll: () => [], addEventListener: () => {} },
+    console,
+    Math,
+    Date
+  });
+  vm.runInContext(loadSongSource, context);
+  const sortSongList = context.sortSongList;
+  const getSongSortOrder = context.getSongSortOrder;
+  const setSongSortOrder = context.setSongSortOrder;
+
+  assert.equal(getSongSortOrder(), 'title-asc', 'default sort is title-asc');
+  setSongSortOrder('newest');
+  assert.equal(getSongSortOrder(), 'newest');
+  setSongSortOrder('invalid-mode');
+  assert.equal(getSongSortOrder(), 'title-asc', 'invalid mode falls back to title-asc');
+
+  const songs = [
+    { id: '1', title: 'Blessed Assurance', updatedAt: 1000, sections: [{ lines: ['a'] }, { lines: ['b'] }] },
+    { id: '2', title: 'Amazing Grace', updatedAt: 3000, sections: [{ lines: ['c'] }] },
+    { id: '3', title: 'Holy, Holy, Holy', updatedAt: 2000, sections: [{ lines: ['d'] }, { lines: ['e'] }, { lines: ['f'] }] }
+  ];
+
+  // title-asc
+  const titleAsc = sortSongList([...songs], 'title-asc');
+  assert.deepEqual(titleAsc.map(s => s.title), ['Amazing Grace', 'Blessed Assurance', 'Holy, Holy, Holy']);
+
+  // title-desc
+  const titleDesc = sortSongList([...songs], 'title-desc');
+  assert.deepEqual(titleDesc.map(s => s.title), ['Holy, Holy, Holy', 'Blessed Assurance', 'Amazing Grace']);
+
+  // newest
+  const newest = sortSongList([...songs], 'newest');
+  assert.deepEqual(newest.map(s => s.title), ['Amazing Grace', 'Holy, Holy, Holy', 'Blessed Assurance']);
+
+  // oldest
+  const oldest = sortSongList([...songs], 'oldest');
+  assert.deepEqual(oldest.map(s => s.title), ['Blessed Assurance', 'Holy, Holy, Holy', 'Amazing Grace']);
+
+  // sections-desc
+  const mostSections = sortSongList([...songs], 'sections-desc');
+  assert.deepEqual(mostSections.map(s => s.title), ['Holy, Holy, Holy', 'Blessed Assurance', 'Amazing Grace']);
 });

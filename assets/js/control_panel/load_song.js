@@ -7,6 +7,48 @@ function saveLibrary(library) {
     localStorage.setItem('obs-bible-song-library-v1', JSON.stringify(library));
 }
 
+const SONG_SORT_STORAGE_KEY = 'obs-bible-song-sort-order';
+const VALID_SONG_SORTS = ['title-asc', 'title-desc', 'newest', 'oldest', 'sections-desc'];
+
+function getSongSortOrder() {
+    const saved = localStorage.getItem(SONG_SORT_STORAGE_KEY);
+    return VALID_SONG_SORTS.includes(saved) ? saved : 'title-asc';
+}
+
+function setSongSortOrder(order) {
+    const valid = VALID_SONG_SORTS.includes(order) ? order : 'title-asc';
+    localStorage.setItem(SONG_SORT_STORAGE_KEY, valid);
+    return valid;
+}
+
+function sortSongList(songs, order = getSongSortOrder()) {
+    return songs.sort((a, b) => {
+        if (order === 'title-desc') {
+            return (b.title || '').localeCompare(a.title || '');
+        }
+        if (order === 'newest') {
+            const timeA = Number(a.updatedAt) || 0;
+            const timeB = Number(b.updatedAt) || 0;
+            if (timeB !== timeA) return timeB - timeA;
+            return (a.title || '').localeCompare(b.title || '');
+        }
+        if (order === 'oldest') {
+            const timeA = Number(a.updatedAt) || 0;
+            const timeB = Number(b.updatedAt) || 0;
+            if (timeA !== timeB) return timeA - timeB;
+            return (a.title || '').localeCompare(b.title || '');
+        }
+        if (order === 'sections-desc') {
+            const countA = Array.isArray(a.sections) ? a.sections.length : 0;
+            const countB = Array.isArray(b.sections) ? b.sections.length : 0;
+            if (countB !== countA) return countB - countA;
+            return (a.title || '').localeCompare(b.title || '');
+        }
+        // Default: title-asc
+        return (a.title || '').localeCompare(b.title || '');
+    });
+}
+
 function addSampleHymns() {
     const marker = 'emberstage-sample-hymns-v1';
     if (localStorage.getItem(marker)) return;
@@ -604,7 +646,7 @@ function performLibrarySearch() {
         }
     }
     
-    filtered.sort((a, b) => a.title.localeCompare(b.title));
+    sortSongList(filtered, getSongSortOrder());
     
     const lastSelectedId = localStorage.getItem('obs-bible-last-selected-song-id');
     renderLibraryList(filtered, lastSelectedId);
@@ -761,6 +803,15 @@ document.addEventListener('DOMContentLoaded', () => {
         editBtn.addEventListener('click', editSelectedSong);
     }
 
+    const sortSelect = document.getElementById('song-sort-select');
+    if (sortSelect) {
+        sortSelect.value = getSongSortOrder();
+        sortSelect.addEventListener('change', (e) => {
+            setSongSortOrder(e.target.value);
+            performLibrarySearch();
+        });
+    }
+
     performLibrarySearch();
     
     const savedSongId = localStorage.getItem('obs-bible-last-selected-song-id');
@@ -768,7 +819,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (savedSongId && library.some(s => s.id === savedSongId)) {
         selectSong(savedSongId, false);
     } else if (library.length > 0) {
-        library.sort((a, b) => a.title.localeCompare(b.title));
+        sortSongList(library, getSongSortOrder());
         selectSong(library[0].id, false);
     } else {
         selectSong(null);

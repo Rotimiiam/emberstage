@@ -40,6 +40,11 @@ function isCompactSongLayout() {
   return window.OBSBibleBroadcastBranding.isCompactSongLayout(getSongLayout().layout);
 }
 
+function getSongChunkStep() {
+  const layout = getSongLayout().layout;
+  return layout === 'lyric-card' ? 3 : 2;
+}
+
 function getSongDisplaySections() {
   return Array.from(document.querySelectorAll('#song-display .song-section'));
 }
@@ -141,12 +146,22 @@ function syncSongLayoutControls() {
   if (select) {
     select.value = settings.layout;
     const position = document.getElementById('song-layout-position');
+    const halfScreenTintLabel = document.getElementById('song-half-screen-tint-label');
+    const halfScreenTint = document.getElementById('song-half-screen-tint');
+    const halfScreenTintValue = document.getElementById('song-half-screen-tint-value');
     position.value = settings.position;
     position.querySelector('[value="center"]').disabled = settings.layout === 'side-panel';
     document.getElementById('song-layout-position-label').hidden = !['lyric-card', 'side-panel'].includes(settings.layout);
+    if (halfScreenTintLabel) halfScreenTintLabel.hidden = settings.layout !== 'half-screen';
+    if (halfScreenTint) halfScreenTint.value = settings.halfScreenTintOpacity;
+    if (halfScreenTintValue) halfScreenTintValue.textContent = `${settings.halfScreenTintOpacity}%`;
     document.getElementById('song-layout-hint').textContent = isCompactSongLayout()
-      ? 'Changes apply live. Two lines per part; Prev / Next moves through the verse.'
-      : 'Changes apply live. Full verse / chorus.';
+      ? (settings.layout === 'lyric-card'
+          ? 'Changes apply live. Three lines per part; Prev / Next moves through the verse.'
+          : 'Changes apply live. Two lines per part; Prev / Next moves through the verse.')
+      : (settings.layout === 'half-screen'
+          ? 'Changes apply live. Full verse / chorus; tint only affects half screen.'
+          : 'Changes apply live. Full verse / chorus.');
   }
   updateSongChunkControls();
 }
@@ -155,8 +170,9 @@ const songSettingsChannel = new BroadcastChannel('settings');
 function changeSongLayout() {
   const layout = document.getElementById('song-layout-select').value;
   let position = document.getElementById('song-layout-position').value;
+  const halfScreenTintOpacity = document.getElementById('song-half-screen-tint')?.value;
   if (layout === 'side-panel' && position === 'center') position = 'left';
-  const settings = window.OBSBibleBroadcastBranding.sanitizeSongLayout({ layout, position });
+  const settings = window.OBSBibleBroadcastBranding.sanitizeSongLayout({ layout, position, halfScreenTintOpacity });
   localStorage.setItem(window.OBSBibleBroadcastBranding.SONG_LAYOUT_KEY, JSON.stringify(settings));
   songSettingsChannel.postMessage({ songLayout: settings });
   // Do not send a new lyric or touch visibility: the output restyles its LIVE payload.
@@ -164,6 +180,7 @@ function changeSongLayout() {
 }
 document.getElementById('song-layout-select')?.addEventListener('change', changeSongLayout);
 document.getElementById('song-layout-position')?.addEventListener('change', changeSongLayout);
+document.getElementById('song-half-screen-tint')?.addEventListener('input', changeSongLayout);
 window.addEventListener('storage', event => {
   if (event.key === window.OBSBibleBroadcastBranding?.SONG_LAYOUT_KEY) syncSongLayoutControls();
 });
@@ -173,17 +190,19 @@ function sendSongCue(section, lineIndex, toggleIfLive) {
   const lines = Array.from(section.querySelectorAll('p'), line => line.innerText);
   const singleLine = isLineByLineSongMode();
   const song = { lines, lineIndex, singleLine };
+  const step = singleLine ? 1 : (isCompactSongLayout() ? getSongChunkStep() : lines.length);
   // Canonical cue content stays independent of its look, so clicking the live cue still toggles.
-  const canonical = lines.slice(lineIndex, lineIndex + (singleLine ? 1 : 2)).join('\n');
+  const canonical = lines.slice(lineIndex, lineIndex + step).join('\n');
   sendMessage(channel, sanitizeAndFormatMessage(canonical), toggleIfLive, { kind: 'song', song });
 }
 
 function songCueStarts() {
+  const step = getSongChunkStep();
   const starts = [];
   let offset = 0;
   getSongDisplaySections().forEach(section => {
     const count = section.querySelectorAll('p').length;
-    for (let i = 0; i < count; i += 2) starts.push(offset + i);
+    for (let i = 0; i < count; i += step) starts.push(offset + i);
     offset += count;
   });
   return starts;
@@ -339,15 +358,16 @@ function selectLine(index, scroll = true, take = true, toggleIfLive = false) {
     if (index >= lines.length) index = lines.length - 1;
 
     const singleLine = isLineByLineSongMode();
+    const step = !singleLine && isCompactSongLayout() ? getSongChunkStep() : 1;
     if (!singleLine && isCompactSongLayout()) {
         const siblings = Array.from(lines[index].closest('.song-section').querySelectorAll('p'));
-        index -= siblings.indexOf(lines[index]) % 2;
+        index -= siblings.indexOf(lines[index]) % step;
     }
     
     currentLineIndex = index;
     
     lines.forEach((l, idx) => {
-        l.classList.toggle('selected', idx === index || (!singleLine && isCompactSongLayout() && idx === index + 1 && l.parentElement === lines[index].parentElement));
+        l.classList.toggle('selected', idx >= index && idx < index + step && l.parentElement === lines[index].parentElement);
     });
     
     const activeLine = lines[index];
@@ -364,7 +384,7 @@ function selectLine(index, scroll = true, take = true, toggleIfLive = false) {
     activeLine.focus({ preventScroll: true });
     if (take) {
         sendSongCue(parentSection, Array.from(parentSection.querySelectorAll('p')).indexOf(activeLine), toggleIfLive);
-        lines.forEach((line, lineIndex) => line.classList.toggle('live', lineIndex === index || (!singleLine && isCompactSongLayout() && lineIndex === index + 1 && line.parentElement === activeLine.parentElement)));
+        lines.forEach((line, lineIndex) => line.classList.toggle('live', lineIndex >= index && lineIndex < index + step && line.parentElement === activeLine.parentElement));
     }
     
     if (scroll) {
