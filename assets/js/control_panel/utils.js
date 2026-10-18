@@ -19,28 +19,97 @@ function getCustomPropertyValue(property) {
 
 // Function to extract book, chapter, and verse from a reference string
 function extractBookChapterVerse(reference) {
-  // Regular expression pattern to capture book name, chapter, and verse
-  // const regex = /^([\d\s\w\u00c0-\u017f]+)\s(\d+):(\d+)$/u;
-  const regex = /^([\d\s\w\u00c0-\u017f]+(?:\s\([\d\s\w\u00c0-\u017f]+\))?)\s(\d+):(\d+)$/iu;
-
-  const match = reference.match(regex);
+  const regex = /^(.+?)\s+(\d+):(\d+)$/u;
+  const match = String(reference || '').trim().match(regex);
 
   if (!match) {
     throw new Error("Invalid reference format");
   }
 
-  if (match) {
-    const book = match[1].trim();
-    const chapter = match[2];
-    const verse = match[3];
-    return { book, chapter, verse };
-  } else {
-    throw new Error("Invalid reference format");
-  }
+  const book = match[1].trim();
+  const chapter = match[2];
+  const verse = match[3];
+  return { book, chapter, verse };
 }
 
 
+var IGBO_CANONICAL_BOOKS = {
+  0: 'Genezisi', 1: 'Eksodu', 2: 'Levitik', 3: 'Numero', 4: 'Duteronomi',
+  5: 'Jozua', 6: 'Akwukwo Ndum', 7: 'Rut', 8: '1 Samweli', 9: '2 Samweli',
+  10: '1 Kings', 11: '2 Kings', 12: '1 Chonike', 13: '2 Chonike', 14: 'Ezra',
+  15: 'Nehemia', 16: 'Ester', 17: 'Job', 18: 'Psalm', 19: 'Ilu',
+  20: 'Ekliziastis', 21: 'Abụ nke Abụ', 22: 'Izaia', 23: 'Jeremiah', 24: 'Abụ Ákwá',
+  25: 'Ezekiel', 26: 'Daniel', 27: 'Hosea', 28: 'Joel', 29: 'Amos',
+  30: 'Obadia', 31: 'Jonah', 32: 'Mika', 33: 'Nahum', 34: 'Habakkuk',
+  35: 'Zefania', 36: 'Haggai', 37: 'Zakaria', 38: 'Malaki', 39: 'Mattew',
+  40: 'Mark', 41: 'Luka', 42: 'Jọn', 43: 'Ọrụ Ndị Ozi', 44: 'Rom Ụlọ Ndịozi',
+  45: '1 Kọrintọ', 46: '2 Kọrintọ', 47: 'Ụlọ Ndịozi na Galatia', 48: 'Efusọ', 49: 'Filipi',
+  50: 'Kolose', 51: '1 Tesalonik', 52: '2 Tesalonik', 53: '1 Timoti', 54: '2 Timoti',
+  55: 'Tito', 56: 'Filemon', 57: 'Hibrị', 58: 'Jakọbu', 59: '1 Pẹtọ',
+  60: '2 Pẹtọ', 61: '1 Jọn', 62: '2 Jọn', 63: '3 Jọn', 64: 'Juda', 65: 'Nkpughe'
+};
+
+function repairBibleDatasetInMemory(data) {
+  if (!Array.isArray(data) || data.length === 0 || data.__emberstageRepaired) return;
+  const isIgbo = data[0] && typeof data[0].name === 'string' && data[0].name.startsWith('Genezisi ');
+  const isCrtb = data[0] && typeof data[0].verse === 'string' && /[\u0400-\u04FF]/.test(data[0].verse);
+
+  let crtbBookIndex = null;
+  let psChapter = 0;
+  let prevPsVerse = 999;
+  if (isCrtb) {
+    const order = [];
+    const seen = new Set();
+    for (let i = 0; i < data.length; i++) {
+      const m = String(data[i].name || '').match(/^(.*?)\s+(\d+):(\d+)$/);
+      if (m && !seen.has(m[1])) {
+        seen.add(m[1]);
+        order.push(m[1]);
+      }
+    }
+    if (order.length === 66) {
+      crtbBookIndex = new Map(order.map((name, idx) => [name, idx]));
+    }
+  }
+
+  for (let i = 0; i < data.length; i++) {
+    const v = data[i];
+    if (!v || !v.ari || !v.name) continue;
+    const ariParts = String(v.ari).split(':');
+    const bNum = Number(ariParts[0]);
+    if (isIgbo && IGBO_CANONICAL_BOOKS[bNum]) {
+      v.name = `${IGBO_CANONICAL_BOOKS[bNum]} ${ariParts[1]}:${ariParts[2]}`;
+      continue;
+    }
+    const m = String(v.name).match(/^(.*?)\s+(\d+):(\d+)$/);
+    if (!m) continue;
+    if (crtbBookIndex) {
+      const bIdx = crtbBookIndex.get(m[1]);
+      let ch = Number(m[2]);
+      const vn = Number(m[3]);
+      if (bIdx === 18) {
+        if (vn <= prevPsVerse && vn <= 3) psChapter++;
+        prevPsVerse = vn;
+        ch = psChapter;
+        v.name = `Psalms ${ch}:${vn}`;
+      }
+      if (Number.isInteger(bIdx)) {
+        v.ari = `${bIdx}:${ch}:${vn}`;
+      }
+    } else if (ariParts[1] !== m[2] || ariParts[2] !== m[3]) {
+      v.ari = `${ariParts[0]}:${m[2]}:${m[3]}`;
+    }
+  }
+  data.__emberstageRepaired = true;
+}
+
 function generateIndexForBibleBooks(){
+  if (typeof bible_data !== 'undefined' && Array.isArray(bible_data)) {
+    repairBibleDatasetInMemory(bible_data);
+  }
+  if (typeof bibleIndex !== 'undefined' && bibleIndex && typeof bibleIndex.clear === 'function') {
+    bibleIndex.clear();
+  }
   bible_data.forEach(verse => {
     try {
       const { book, chapter, verse: verseNum } = extractBookChapterVerse(verse.name);
@@ -163,7 +232,7 @@ function buildVerseMarkup(reference, verseText) {
   return `<span>${escapeHtml(String(reference).toUpperCase())}</span> ${escapeHtml(verseText)}`;
 }
 
-const standardBooks = [
+var standardBooks = [
   "Genesis", "Exodus", "Leviticus", "Numbers", "Deuteronomy", "Joshua", "Judges", "Ruth",
   "1 Samuel", "2 Samuel", "1 Kings", "2 Kings", "1 Chronicles", "2 Chronicles", "Ezra",
   "Nehemiah", "Esther", "Job", "Psalms", "Proverbs", "Ecclesiastes", "Song of Solomon",
@@ -175,7 +244,7 @@ const standardBooks = [
   "1 Peter", "2 Peter", "1 John", "2 John", "3 John", "Jude", "Revelation"
 ];
 
-const bookAliases = {
+var bookAliases = {
   "genesis": 0, "gen": 0, "ge": 0, "gn": 0,
   "exodus": 1, "exo": 1, "ex": 1, "exod": 1,
   "leviticus": 2, "lev": 2, "le": 2, "lv": 2,
@@ -253,7 +322,7 @@ function normalizeBookAlias(value) {
 
 // Accept unambiguous prefixes of at least three letters, but keep established
 // abbreviations authoritative (Phi/Phil = Philippians, Phm = Philemon).
-const bibleBookAliasIndex = new Map();
+var bibleBookAliasIndex = new Map();
 standardBooks.forEach((book, index) => {
   const key = normalizeBookAlias(book);
   const minLength = /^[1-3]/.test(key) ? 4 : 3;
@@ -267,7 +336,7 @@ Object.entries(bookAliases).forEach(([alias, index]) => {
 });
 // Derive every numbered spelling from the same aliases, rather than maintaining
 // inconsistent lists for spaced, joined, ordinal and Roman references.
-const bibleBookNumberPrefixes = { 1: ['1st', 'first', 'i'], 2: ['2nd', 'second', 'ii'], 3: ['3rd', 'third', 'iii'] };
+var bibleBookNumberPrefixes = { 1: ['1st', 'first', 'i'], 2: ['2nd', 'second', 'ii'], 3: ['3rd', 'third', 'iii'] };
 Array.from(bibleBookAliasIndex).forEach(([alias, index]) => {
   if (!/^[1-3][a-z]/.test(alias)) return;
   for (const prefix of bibleBookNumberPrefixes[alias[0]]) {
@@ -344,9 +413,34 @@ function resolveActiveBookName(index) {
   return standardName;
 }
 
+function foldLocalizedBookName(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[.’'()\s]+/g, ' ')
+    .trim()
+    .replace(/\s+/g, '');
+}
+
 function getResolvedBookNameFromAlias(queryPart) {
   const index = bibleBookAliasIndex.get(normalizeBookAlias(queryPart));
-  return Number.isInteger(index) ? resolveActiveBookName(index) : null;
+  if (Number.isInteger(index)) return resolveActiveBookName(index);
+
+  const foldedQuery = foldLocalizedBookName(queryPart);
+  if (!foldedQuery) return null;
+
+  if (typeof bibleIndex !== 'undefined' && bibleIndex && bibleIndex.size > 0) {
+    const activeBooks = Array.from(bibleIndex.keys());
+    const exactLocalized = activeBooks.find(book => foldLocalizedBookName(book) === foldedQuery);
+    if (exactLocalized) return exactLocalized;
+
+    if (foldedQuery.length >= 3) {
+      const prefixMatches = activeBooks.filter(book => foldLocalizedBookName(book).startsWith(foldedQuery));
+      if (prefixMatches.length === 1) return prefixMatches[0];
+    }
+  }
+  return null;
 }
 
 function normalizeBibleReference(query) {
@@ -375,3 +469,8 @@ function normalizeBibleReference(query) {
     return query;
   }
 }
+
+if (typeof bible_data !== 'undefined' && Array.isArray(bible_data) && bible_data.length > 0 && typeof bibleIndex !== 'undefined') {
+  generateIndexForBibleBooks();
+}
+

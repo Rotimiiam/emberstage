@@ -10,19 +10,11 @@ SITE_DIR = ROOT / 'site'
 OTA_DIR = SITE_DIR / 'ota'
 
 OTA_FILES = [
-    'control_panel.html',
-    'browser_source.html',
-    'media_dock.html',
-    'camera_dock.html',
-    'streaming_dock.html',
-    'emberstage_output.html',
-    'media_output.html',
-    'camera_output.html',
+    'assets/js/control_panel/utils.js',
 ]
 
 OTA_ASSET_DIRS = [
     'assets/css',
-    'assets/js',
     'assets/brand',
 ]
 

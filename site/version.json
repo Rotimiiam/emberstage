@@ -1,20 +1,20 @@
 {
-  "version": "0.1.0-beta.5",
+  "version": "0.1.0-beta.6",
   "channel": "stable",
   "releaseDate": "2026-10-18",
-  "releaseUrl": "https://github.com/Rotimiiam/emberstage/releases/tag/v0.1.0-beta.5",
-  "notes": "Bundled The Message (MSG) Bible translation, zero-installer Over-The-Air (OTA) live dock/output updates, and compact toolbar flex layout fix.",
+  "releaseUrl": "https://github.com/Rotimiiam/emberstage/releases/tag/v0.1.0-beta.6",
+  "notes": "Repair Igbo Bible book alignment (Matthew and all 66 books), fix ESV/NIV/CRTB ARI indexing, and enable full Unicode localized book search across all 15 Bible translations.",
   "downloads": {
     "windows": {
-      "installer": "https://github.com/Rotimiiam/emberstage/releases/download/v0.1.0-beta.5/Emberstage-Setup.exe",
+      "installer": "https://github.com/Rotimiiam/emberstage/releases/download/v0.1.0-beta.6/Emberstage-Setup.exe",
       "filename": "Emberstage-Setup.exe"
     },
     "macos": {
-      "installer": "https://github.com/Rotimiiam/emberstage/releases/download/v0.1.0-beta.5/Emberstage-macOS.dmg",
+      "installer": "https://github.com/Rotimiiam/emberstage/releases/download/v0.1.0-beta.6/Emberstage-macOS.dmg",
       "filename": "Emberstage-macOS.dmg"
     },
     "linux": {
-      "installer": "https://github.com/Rotimiiam/emberstage/releases/download/v0.1.0-beta.5/Emberstage-Linux.tar.gz",
+      "installer": "https://github.com/Rotimiiam/emberstage/releases/download/v0.1.0-beta.6/Emberstage-Linux.tar.gz",
       "filename": "Emberstage-Linux.tar.gz"
     }
   }

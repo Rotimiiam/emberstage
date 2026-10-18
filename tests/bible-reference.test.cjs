@@ -126,3 +126,47 @@ test('shorthand preserves active translation and zero/one-based ARI numbering', 
     }
   }
 });
+
+test('all 15 Bible translations index all 66 books and resolve English + localized references accurately', () => {
+  const bibleFiles = [
+    'kjv/kjv.js',
+    'amplified/amplified.js',
+    'crtb/crtb.js',
+    'es_rvr/es_rvr.js',
+    'esv/esv.js',
+    'hausa_bible/hausa_bible.js',
+    'igbo_bible/igbo_bible.js',
+    'italian/italian_bible_diodati.js',
+    'italian/italian_new_diodati.js',
+    'local_msg/local_msg.js',
+    'niv/niv.js',
+    'nkjv/nkjv.js',
+    'segond_1910/segond_1910.js',
+    'swahili_bible/swahili_bible.js',
+    'yoruba_bible/yoruba_bible.js'
+  ];
+
+  for (const rel of bibleFiles) {
+    const raw = fs.readFileSync(path.join(__dirname, '..', 'assets/bibles', rel), 'utf8');
+    const holder = { window: {} };
+    vm.runInNewContext(raw, holder);
+    const data = holder.bible_data || holder.window.emberstageLocalMsg;
+    assert.ok(Array.isArray(data) && data.length > 30000, `${rel} has complete verses`);
+
+    const { ctx, stored } = searchHarness(data);
+    ctx.generateIndexForBibleBooks();
+    assert.equal(ctx.bibleIndex.size, 66, `${rel} indexes all 66 books`);
+
+    const activeBooks = Array.from(ctx.bibleIndex.keys());
+    for (let b = 0; b < 66; b++) {
+      const englishBook = ctx.standardBooks[b];
+      const localizedBook = activeBooks[b];
+      assert.equal(ctx.resolveActiveBookName(b), localizedBook, `${rel} book ${b} (${englishBook}) resolves to ${localizedBook}`);
+      assert.equal(ctx.getResolvedBookNameFromAlias(localizedBook), localizedBook, `${rel} localized alias ${localizedBook}`);
+    }
+
+    ctx.searchBible('Matthew 1:18', data);
+    assert.equal(stored.get('savedBibleVerse'), '39:1:18', `${rel} opens Matthew 1:18 at ARI 39:1:18`);
+  }
+});
+

@@ -1,13 +1,13 @@
 ;(function () {
   'use strict';
 
-  var CURRENT_VERSION = '0.1.0-beta.5';
+  var CURRENT_VERSION = '0.1.0-beta.6';
   var DEFAULT_MANIFEST_URL = 'https://emberstage.pages.dev/version.json';
   var DEFAULT_OTA_MANIFEST_URL = 'https://emberstage.pages.dev/ota-manifest.json';
   var STORAGE_KEY_DISMISSED = 'emberstage.update.dismissedVersion';
   var STORAGE_KEY_LAST_CHECK = 'emberstage.update.lastCheckTime';
   var STORAGE_KEY_OTA_BUNDLE = 'emberstage.ota.bundle.v1';
-  var CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6 hours
+  var CHECK_INTERVAL_MS = 60 * 1000; // 60 seconds
 
   function parseSemver(str) {
     if (!str || typeof str !== 'string') return null;
