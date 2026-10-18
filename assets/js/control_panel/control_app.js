@@ -222,7 +222,7 @@ function openSavedTab() {
 }
 
 // Call the function to open the saved tab when the webpage loads
-window.onload = function() {
+window.onload = async function() {
   observeDockViewport();
   initDockScale();
   openSavedTab();
@@ -233,6 +233,7 @@ window.onload = function() {
   });
 
   // get the bible Translation
+  await localBibleReady;
   const bibleVersionSelect = document.getElementById('bible-version');
   const savedScriptFile = getAllowedBibleScript(localStorage.getItem('selectedScriptFile') || bibleVersionSelect.value);
   bibleVersionSelect.value = savedScriptFile;

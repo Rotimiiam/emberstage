@@ -1,0 +1,21 @@
+{
+  "version": "0.1.0-beta.5",
+  "channel": "stable",
+  "releaseDate": "2026-10-18",
+  "releaseUrl": "https://github.com/Rotimiiam/emberstage/releases/tag/v0.1.0-beta.5",
+  "notes": "Bundled The Message (MSG) Bible translation, zero-installer Over-The-Air (OTA) live dock/output updates, and compact toolbar flex layout fix.",
+  "downloads": {
+    "windows": {
+      "installer": "https://github.com/Rotimiiam/emberstage/releases/download/v0.1.0-beta.5/Emberstage-Setup.exe",
+      "filename": "Emberstage-Setup.exe"
+    },
+    "macos": {
+      "installer": "https://github.com/Rotimiiam/emberstage/releases/download/v0.1.0-beta.5/Emberstage-macOS.dmg",
+      "filename": "Emberstage-macOS.dmg"
+    },
+    "linux": {
+      "installer": "https://github.com/Rotimiiam/emberstage/releases/download/v0.1.0-beta.5/Emberstage-Linux.tar.gz",
+      "filename": "Emberstage-Linux.tar.gz"
+    }
+  }
+}

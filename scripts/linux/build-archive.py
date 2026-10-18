@@ -18,7 +18,8 @@ files = [ROOT / name for name in installer.APP_FILES] + [
     ROOT / 'scripts/linux/install-emberstage.sh',
     ROOT / 'scripts/linux/README.md',
 ]
-files += sorted(p for p in (ROOT / 'assets').rglob('*') if not p.is_dir())
+files += sorted(p for p in (ROOT / 'assets').rglob('*')
+                if not p.is_dir())
 files = [p for p in files if p.name != '.DS_Store' and p.suffix not in ('.tmp', '.pyc')]
 for path in files:
     if not path.is_file() or any(p.is_symlink() for p in (path, *path.parents)):

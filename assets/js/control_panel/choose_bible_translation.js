@@ -15,6 +15,29 @@ const ALLOWED_BIBLE_SCRIPTS = new Set([
     'assets/bibles/yoruba_bible/yoruba_bible.js'
 ]);
 const DEFAULT_BIBLE_SCRIPT = 'assets/bibles/kjv/kjv.js';
+const LOCAL_MSG_SCRIPT = 'assets/bibles/local_msg/local_msg.js';
+
+// Private, user-imported text is optional and excluded from release packages.
+// The file registers window.emberstageLocalMsg without changing the active Bible.
+const localBibleReady = new Promise(resolve => {
+    const script = document.createElement('script');
+    script.src = LOCAL_MSG_SCRIPT;
+    script.onload = () => {
+        const candidate = window.emberstageLocalMsg;
+        if (Array.isArray(candidate) && candidate.length) {
+            window.emberstageLocalMsg = candidate;
+            ALLOWED_BIBLE_SCRIPTS.add(LOCAL_MSG_SCRIPT);
+            const option = document.createElement('option');
+            option.value = LOCAL_MSG_SCRIPT;
+            option.textContent = 'MSG';
+            option.title = 'The Message — local PDF import';
+            document.getElementById('bible-version').appendChild(option);
+        }
+        resolve();
+    };
+    script.onerror = () => { script.remove(); resolve(); };
+    document.body.appendChild(script);
+});
 
 function getAllowedBibleScript(scriptFile) {
     return ALLOWED_BIBLE_SCRIPTS.has(scriptFile) ? scriptFile : DEFAULT_BIBLE_SCRIPT;
@@ -22,6 +45,11 @@ function getAllowedBibleScript(scriptFile) {
 
 function loadScriptFile(scriptFile) {
     const allowedScriptFile = getAllowedBibleScript(scriptFile);
+    if (allowedScriptFile === LOCAL_MSG_SCRIPT) {
+        window.bible_data = window.emberstageLocalMsg;
+        localStorage.setItem('selectedScriptFile', allowedScriptFile);
+        return Promise.resolve();
+    }
     return new Promise((resolve, reject) => {
         // Remove any previously loaded script
         const existingScript = document.getElementById('dynamicScript');

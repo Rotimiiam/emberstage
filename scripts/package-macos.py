@@ -59,6 +59,7 @@ js/control_panel/suggest_bible_books.js
 js/control_panel/utils.js
 js/keyboard-navigation.js
 js/dock_ui_scale.js
+js/dock_auto_updater.js
 js/media/demo.js
 js/media/media-app.js
 js/media/media-core.js
@@ -86,6 +87,7 @@ bibles/esv/esv.js
 bibles/niv/niv.js
 bibles/yoruba_bible/yoruba_bible.js
 bibles/segond_1910/segond_1910.js
+bibles/local_msg/local_msg.js
 '''.split())
 PAYLOAD_FILES = APP_FILES + ASSET_FILES + tuple('scripts/' + name for name in REQUIRED_SCRIPTS)
 TOP_FILES = {

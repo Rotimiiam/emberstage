@@ -7,10 +7,10 @@ body .song-layout-controls { display: flex; align-items: center; flex: 1 1 auto;
 body .song-layout-controls label { display: flex; min-width: 0; margin: 0; }
 body .song-layout-controls label:first-child { flex: 1 1 auto; }
 body .song-layout-controls [hidden] { display: none !important; }
-body .song-layout-controls select { width: 100%; max-width: 132px; min-width: 0; height: var(--control-height); padding: 3px 18px 3px 6px; font-size: 11px; }
+body .song-layout-controls select { width: 100%; max-width: none; min-width: 0; height: var(--control-height); min-height: var(--control-height); padding: 3px 18px 3px 6px; font-size: 11px; }
 body .song-layout-controls #song-layout-position { width: 64px; max-width: 64px; }
 body .song-tint-control { flex: 0 0 122px; min-width: 106px; max-width: 122px; height: var(--control-height); padding: 0 6px; gap: 4px; font-size: 10px; }
-body .song-tint-slider { min-width: 42px; }
+body .song-tint-slider { width: 0; min-width: 42px; padding: 0; margin: 0; cursor: pointer; }
 body .song-tint-control output { min-width: 24px; font-size: 10px; }
 
 :root {
@@ -715,16 +715,19 @@ body #add-song {
   min-width: 0;
 }
 body .song-search-container { display: flex; min-width: 0; height: var(--control-height); border: 1px solid var(--nav-line); border-radius: 6px; background: var(--nav-surface); overflow: hidden; }
+@media (min-width: 481px) and (max-width: 900px) {
+  body #add-song { grid-template-columns: minmax(0, 1fr); }
+}
 body .song-search-container .input { height: 32px; min-height: 32px; border: 0; border-radius: 0; box-shadow: none; }
 body .song-search-select { width: 70px; min-width: 70px; padding-right: 20px; border: 0; border-right: 1px solid var(--nav-line) !important; border-radius: 0; background: var(--nav-surface-raised); font-size: 12px; }
 body #song-library-search,
 body #lyric-search { min-width: 0; width: 100%; padding-right: 28px; }
-body .song-toolbar.compact-action-cluster { display: flex; align-items: center; flex-wrap: wrap; gap: 5px; min-width: 0; }
+body .song-toolbar.compact-action-cluster { display: flex; align-items: center; justify-content: flex-start; flex-wrap: nowrap; gap: 5px; min-width: 0; }
 body .song-toolbar.compact-action-cluster > *,
 body .song-toolbar.compact-action-cluster > *:first-child { width: auto; min-width: 0; flex: 0 0 auto; }
 body .song-toolbar .song-import-look { flex: 1 1 auto; }
-body #song-line-duration { width: 64px; min-width: 64px; height: var(--control-height); padding: 4px 25px 4px 8px; }
-body #start-song-button { width: 94px; height: var(--control-height); min-width: 94px; padding: 4px 8px; font-size: 12px; }
+body #song-line-duration { width: 64px; min-width: 64px; height: var(--control-height); min-height: var(--control-height); padding: 4px 25px 4px 8px; }
+body #start-song-button { width: 94px; height: var(--control-height); min-height: var(--control-height); min-width: 94px; padding: 4px 8px; font-size: 12px; }
 body .song-toolbar .btn-file-upload { display: inline-flex; align-items: center; justify-content: center; width: auto; height: var(--control-height); min-width: 76px; padding: 4px 9px; gap: 6px; flex: 0 0 auto; }
 body .countdown-timer { right: 5px; bottom: 7px; padding: 1px 4px; border-radius: 3px; color: var(--nav-muted); background: transparent; font-size: 10px; }
 
@@ -1098,11 +1101,12 @@ body.dock-tiny .song-library-pane {
   body .bible-search .compact-action-cluster { grid-column: 1 / -1; grid-row: 2; }
   body .bible-search .compact-action-cluster button { flex: 1 1 50%; }
   body #add-song { grid-template-columns: 1fr; }
-  body .song-toolbar { display: flex; width: 100%; flex-wrap: wrap; justify-content: flex-start; }
+  body .song-toolbar.compact-action-cluster { width: 100%; flex-wrap: wrap; }
   body .song-toolbar > * { flex: 0 0 auto; }
   body .song-toolbar .song-import-look { width: 100%; flex: 1 1 100%; min-width: 0; }
   body #start-song-button,
   body .song-toolbar .btn-file-upload { width: auto; min-width: 0; }
+  body .song-toolbar .btn-file-upload span { display: none; }
   body .song-layout-controls select { max-width: none; }
   body .songs-two-pane-layout { flex-direction: column; }
   body .song-library-pane,

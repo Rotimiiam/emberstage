@@ -20,3 +20,4 @@ __pycache__/
 **/.env.*
 !**/.env.example
 **/obs-connection.js
+/site/ota/
