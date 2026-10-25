@@ -1,5 +1,5 @@
 {
-  "version": "0.1.0-beta.7",
+  "version": "0.1.0-beta.8",
   "publishedAt": "",
   "channel": "stable",
   "protectedPaths": [
@@ -42,8 +42,8 @@
       "url": "https://emberstage.pages.dev/ota/assets/css/control_panel/broadcast_look.css"
     },
     "assets/css/control_panel/cp_compact_overrides.css": {
-      "sha256": "7a94f32ad16d124f79d0043ffcb6996b21d0369ced8780538cb8f1f1b18602d6",
-      "size": 39444,
+      "sha256": "4035172f8015c5b2fecec5816ed39d4c2b676c193e3b536c0b9ac70dd89a26c1",
+      "size": 38129,
       "url": "https://emberstage.pages.dev/ota/assets/css/control_panel/cp_compact_overrides.css"
     },
     "assets/css/control_panel/cp_style.css": {

@@ -1,20 +1,20 @@
 {
-  "version": "0.1.0-beta.7",
+  "version": "0.1.0-beta.8",
   "channel": "stable",
   "releaseDate": "2026-10-25",
-  "releaseUrl": "https://github.com/Rotimiiam/emberstage/releases/tag/v0.1.0-beta.7",
-  "notes": "Songs dock gives the lyric pane the space. The library is a rail, and a short dock keeps only a thin song list so the verses stay readable.",
+  "releaseUrl": "https://github.com/Rotimiiam/emberstage/releases/tag/v0.1.0-beta.8",
+  "notes": "Songs search and Play Lyrics stay on one row. The library collapse is reverted.",
   "downloads": {
     "windows": {
-      "installer": "https://github.com/Rotimiiam/emberstage/releases/download/v0.1.0-beta.7/Emberstage-Setup.exe",
+      "installer": "https://github.com/Rotimiiam/emberstage/releases/download/v0.1.0-beta.8/Emberstage-Setup.exe",
       "filename": "Emberstage-Setup.exe"
     },
     "macos": {
-      "installer": "https://github.com/Rotimiiam/emberstage/releases/download/v0.1.0-beta.7/Emberstage-macOS.dmg",
+      "installer": "https://github.com/Rotimiiam/emberstage/releases/download/v0.1.0-beta.8/Emberstage-macOS.dmg",
       "filename": "Emberstage-macOS.dmg"
     },
     "linux": {
-      "installer": "https://github.com/Rotimiiam/emberstage/releases/download/v0.1.0-beta.7/Emberstage-Linux.tar.gz",
+      "installer": "https://github.com/Rotimiiam/emberstage/releases/download/v0.1.0-beta.8/Emberstage-Linux.tar.gz",
       "filename": "Emberstage-Linux.tar.gz"
     }
   }

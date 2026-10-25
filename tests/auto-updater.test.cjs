@@ -118,7 +118,7 @@ test('syncOtaBundle verifies SHA-256 and applies OTA CSS patch live', async () =
   });
 
   const synced = await updater.syncOtaBundle({
-    version: '0.1.0-beta.8',
+    version: '0.1.0-beta.9',
     files: {
       'assets/css/control_panel/cp_compact_overrides.css': {
         sha256: expectedHash,
@@ -128,7 +128,7 @@ test('syncOtaBundle verifies SHA-256 and applies OTA CSS patch live', async () =
   });
 
   assert.equal(synced, true);
-  assert.equal(updater.getActiveVersion(), '0.1.0-beta.8');
+  assert.equal(updater.getActiveVersion(), '0.1.0-beta.9');
   assert.ok(storage['emberstage.ota.bundle.v1']);
   const injectedStyle = headNodes.find((n) => n.attrs && n.attrs['data-ota-asset'] === 'assets/css/control_panel/cp_compact_overrides.css');
   assert.ok(injectedStyle);
@@ -146,7 +146,7 @@ test('syncOtaBundle rejects tampered OTA asset on SHA-256 mismatch', async () =>
 
   await assert.rejects(
     () => updater.syncOtaBundle({
-      version: '0.1.0-beta.8',
+      version: '0.1.0-beta.9',
       files: {
         'assets/css/control_panel/cp_compact_overrides.css': {
           sha256: '0000000000000000000000000000000000000000000000000000000000000000',
