@@ -1151,3 +1151,81 @@ body.dock-tiny .song-library-pane {
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; }
 }
+
+/* Songs dock: the lyric pane is the stage. The library is a rail, not a second screen. */
+body #songs {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+body #songs > .container {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  height: 100%;
+  min-height: 0;
+}
+body #songs .songs-two-pane-layout {
+  display: flex;
+  flex-direction: row;
+  flex: 1 1 auto;
+  align-items: stretch;
+  min-height: 0;
+  height: auto;
+  overflow: hidden;
+}
+body #songs .song-library-pane,
+body.dock-short #songs .song-library-pane,
+body.dock-tiny #songs .song-library-pane {
+  flex: 0 0 156px !important;
+  width: 156px !important;
+  min-width: 140px !important;
+  max-width: 168px !important;
+  height: auto !important;
+  max-height: none !important;
+}
+body #songs .song-sections-pane {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  height: auto;
+  overflow: hidden;
+}
+body #songs .results-shell,
+body #songs .song,
+body #songs .song-verse,
+body #songs .bible-verse {
+  flex: 1 1 auto;
+  min-height: 0 !important;
+  height: auto !important;
+  max-height: none !important;
+  overflow: auto;
+}
+body #songs .song-verse p,
+body #songs .song p {
+  font-size: 16px;
+  line-height: 1.55;
+}
+@media (max-height: 560px), (max-width: 720px) {
+  body #songs .songs-two-pane-layout {
+    flex-direction: column;
+  }
+  body #songs .song-library-pane,
+  body.dock-short #songs .song-library-pane,
+  body.dock-tiny #songs .song-library-pane {
+    flex: 0 0 52px !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    height: 52px !important;
+    max-height: 52px !important;
+  }
+  body #songs .song-sections-pane,
+  body #songs .song-verse {
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+}
