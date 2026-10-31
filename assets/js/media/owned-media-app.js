@@ -128,6 +128,14 @@
       };
       if (item.kind === 'youtube') {
         record.videoId = item.videoId;
+      } else if (item.kind === 'slides') {
+        record.slides = (item.slides || []).map(slide => ({
+          id: slide.id,
+          name: slide.name,
+          file: slideBlob(slide.file)
+        }));
+        record.slideIndex = Number.isInteger(item.slideIndex) ? item.slideIndex : 0;
+        if (item.pdf) record.pdf = slideBlob(item.pdf);
       } else {
         record.file = item.file;
       }
@@ -193,16 +201,19 @@
   function setAddDisabled(disabled) {
     fileInput.disabled = disabled;
     addYoutubeBtn.disabled = disabled;
+    addSlidesBtn.disabled = disabled;
     if (disabled) {
       add.classList.add('disabled');
       add.style.pointerEvents = 'none';
       add.style.opacity = '0.42';
       addYoutubeBtn.classList.add('disabled');
+      addSlidesBtn.classList.add('disabled');
     } else {
       add.classList.remove('disabled');
       add.style.pointerEvents = '';
       add.style.opacity = '';
       addYoutubeBtn.classList.remove('disabled');
+      addSlidesBtn.classList.remove('disabled');
     }
   }
 
@@ -243,6 +254,81 @@
     return id;
   }
 
+  const SLIDE_EXTENSIONS = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'pdf'];
+  const MAX_SLIDES = 80;
+
+  function fileExtension(file) {
+    return file?.name?.split('.').pop()?.toLowerCase() || '';
+  }
+
+  function isSlideFile(file) {
+    return SLIDE_EXTENSIONS.includes(fileExtension(file));
+  }
+
+  function isPdfFile(file) {
+    return fileExtension(file) === 'pdf' || file?.type === 'application/pdf';
+  }
+
+  function slideBlob(file) {
+    if (!file) return null;
+    // IndexedDB drops File objects in the OBS browser. A Blob survives.
+    if (typeof File !== 'undefined' && file instanceof File) {
+      return new Blob([file], { type: file.type || 'application/octet-stream' });
+    }
+    return file;
+  }
+
+  function slideLabel(file, index) {
+    const base = cleanDisplayName(String(file?.name || '').replace(/\.[^.]+$/, '')) || `Slide ${index + 1}`;
+    return base;
+  }
+
+  function normalizeSlideIndex(item) {
+    const count = item?.slides?.length || 0;
+    if (!count) return 0;
+    const index = Number.isInteger(item.slideIndex) ? item.slideIndex : 0;
+    return Math.max(0, Math.min(count - 1, index));
+  }
+
+  function currentSlide(item) {
+    if (item?.kind !== 'slides' || !item.slides?.length) return null;
+    return item.slides[normalizeSlideIndex(item)] || null;
+  }
+
+  function slideFilesFromInput(fileList) {
+    const accepted = [];
+    const skipped = [];
+    for (const file of fileList || []) {
+      if (isSlideFile(file)) accepted.push(file);
+      else skipped.push(file.name);
+    }
+    return { accepted, skipped };
+  }
+
+  async function slidesFromFiles(files) {
+    const slides = [];
+    for (const file of files) {
+      if (isPdfFile(file)) {
+        if (!window.EmberstagePdfSlides) throw new Error('PDF reader is not available in this dock.');
+        const pages = await window.EmberstagePdfSlides.renderPdf(file, { maxPages: MAX_SLIDES });
+        if (!pages.length || pages.some(page => !page.file)) {
+          throw new Error('This PDF did not become pictures. Try a smaller file.');
+        }
+        slides.push(...pages.map(page => ({ name: page.name, file: page.file })));
+      } else {
+        slides.push({ name: slideLabel(file, slides.length), file });
+      }
+      if (slides.length > MAX_SLIDES) {
+        throw new Error(`A deck can hold ${MAX_SLIDES} slides. Split the rest into another deck.`);
+      }
+    }
+    return slides.map((slide, index) => ({
+      id: crypto.randomUUID(),
+      name: slide.name || `Slide ${index + 1}`,
+      file: slideBlob(slide.file)
+    }));
+  }
+
   // 1. Header & Brand
   const header = el('header', 'deckbar');
   const brand = el('div', 'dock-brand-lockup');
@@ -273,6 +359,9 @@
   const addYoutubeBtn = button('YouTube', () => openYoutubeDialog(), 'quiet youtube-add');
   addYoutubeBtn.setAttribute('aria-label', 'Add YouTube live stream');
   header.append(addYoutubeBtn);
+  const addSlidesBtn = button('Slides', () => openSlidesDialog(), 'quiet slides-add');
+  addSlidesBtn.setAttribute('aria-label', 'Add slides');
+  header.append(addSlidesBtn);
   const layoutMenuButton = button('Layout', () => toggleLayoutMenu(), 'quiet layout-menu-toggle');
   layoutMenuButton.setAttribute('aria-label', 'Media layout settings');
   layoutMenuButton.setAttribute('aria-haspopup', 'menu');
@@ -372,11 +461,59 @@
   youtubeForm.append(youtubeUrlField, youtubeNameField, youtubeNote, youtubeError, youtubeActions);
   youtubeDialog.append(youtubeHead, youtubeForm);
   app.append(youtubeDialog);
+
+  const slidesDialog = document.createElement('dialog');
+  slidesDialog.className = 'media-inline-dialog slides-dialog';
+  slidesDialog.setAttribute('aria-label', 'Add slides');
+  const slidesHead = el('div', 'dialog-head');
+  slidesHead.append(el('strong', '', 'Add slides'));
+  const slidesClose = button('×', () => closeDialog(slidesDialog), 'quiet dialog-close');
+  slidesClose.setAttribute('aria-label', 'Close slides dialog');
+  slidesHead.append(slidesClose);
+  const slidesForm = el('div', 'media-dialog-form');
+  const slidesNameField = el('label', 'field');
+  slidesNameField.append(el('span', '', 'Deck name'));
+  const slidesNameInput = el('input');
+  slidesNameInput.type = 'text';
+  slidesNameInput.maxLength = 80;
+  slidesNameInput.placeholder = 'Announcements';
+  slidesNameInput.setAttribute('aria-label', 'Slides deck name');
+  slidesNameField.append(slidesNameInput);
+  const slidesFileField = el('label', 'field');
+  slidesFileField.append(el('span', '', 'Slide pictures'));
+  const slidesFileInput = el('input');
+  slidesFileInput.type = 'file';
+  slidesFileInput.multiple = true;
+  slidesFileInput.accept = '.jpg,.jpeg,.png,.gif,.webp,.pdf,image/jpeg,image/png,image/gif,image/webp,application/pdf';
+  slidesFileInput.setAttribute('aria-label', 'Slide picture or PDF files');
+  slidesFileField.append(slidesFileInput);
+  const slidesCount = el('p', 'form-note', 'No files selected. A PDF is split into pictures, one per page.');
+  const slidesError = el('div', 'form-error');
+  slidesError.setAttribute('role', 'alert');
+  const slidesActions = el('div', 'form-actions');
+  const slidesSave = button('Add slides', () => addSlidesDeck(), 'primary');
+  const slidesCancel = button('Cancel', () => closeDialog(slidesDialog), 'quiet');
+  slidesActions.append(slidesSave, slidesCancel);
+  slidesForm.append(slidesNameField, slidesFileField, slidesCount, slidesError, slidesActions);
+  slidesDialog.append(slidesHead, slidesForm);
+  app.append(slidesDialog);
+  slidesFileInput.addEventListener('change', () => {
+    const { accepted, skipped } = slideFilesFromInput(slidesFileInput.files);
+    const names = accepted.slice(0, 3).map(file => file.name).join(', ');
+    const extra = accepted.length > 3 ? ` +${accepted.length - 3} more` : '';
+    slidesCount.textContent = accepted.length
+      ? `${accepted.length} picture${accepted.length === 1 ? '' : 's'} in show order${names ? `: ${names}${extra}` : ''}.`
+      : 'No pictures selected. Add them in show order.';
+    slidesError.textContent = skipped.length ? `Skipped ${skipped.join(', ')}. Use jpg, png, gif, webp, or pdf.` : '';
+  });
   renameInput.addEventListener('keydown', event => {
     if (event.key === 'Enter' && !renameSave.disabled) { event.preventDefault(); void saveRename(); }
   });
   for (const input of [youtubeUrlInput, youtubeNameInput]) input.addEventListener('keydown', event => {
     if (event.key === 'Enter' && !youtubeSave.disabled) { event.preventDefault(); void addYouTubeStream(); }
+  });
+  slidesNameInput.addEventListener('keydown', event => {
+    if (event.key === 'Enter' && !slidesSave.disabled) { event.preventDefault(); void addSlidesDeck(); }
   });
 
   function openDialog(dialog) {
@@ -468,6 +605,91 @@
     }
   }
 
+  function openSlidesDialog() {
+    if (addSlidesBtn.disabled) return;
+    slidesNameInput.value = '';
+    slidesFileInput.value = '';
+    slidesCount.textContent = 'No files selected. A PDF is split into pictures, one per page.';
+    slidesError.textContent = '';
+    openDialog(slidesDialog);
+    requestAnimationFrame(() => slidesNameInput.focus?.());
+  }
+
+  async function addSlidesDeck() {
+    slidesSave.disabled = true;
+    slidesError.textContent = '';
+    try {
+      const { accepted, skipped } = slideFilesFromInput(slidesFileInput.files);
+      if (!accepted.length) {
+        throw new Error('Choose slide pictures or a PDF (jpg, png, gif, webp, or pdf).');
+      }
+      if (skipped.length) {
+        throw new Error(`Skipped ${skipped.join(', ')}. Use jpg, png, gif, webp, or pdf.`);
+      }
+      const slides = await slidesFromFiles(accepted);
+      const item = {
+        id: crypto.randomUUID(),
+        name: cleanDisplayName(slidesNameInput.value) || slides[0].name || 'Slides',
+        kind: 'slides',
+        slides,
+        slideIndex: 0,
+        pdf: null,
+        persisted: true,
+        layoutPreset: 'full',
+        layoutCorner: 'bottom-right'
+      };
+      items.unshift(item);
+      try {
+        await saveToDB(item);
+        storageError = '';
+      } catch (err) {
+        item.persisted = false;
+        storageError = 'Storage write failed: ' + err.message;
+      }
+      selectedId = item.id;
+      safeSetItem('obs-bible:media:selectedId', selectedId);
+      saveOrder();
+      closeDialog(slidesDialog);
+      render();
+    } catch (err) {
+      slidesError.textContent = err.message;
+    } finally {
+      slidesSave.disabled = false;
+    }
+  }
+
+  function ensureSlideFile(item, index) {
+    const slide = item.slides?.[index];
+    return slide?.file ? slide : null;
+  }
+
+  async function postSlideShow(item, index = item.slideIndex) {
+    const slide = ensureSlideFile(item, index);
+    if (!slide?.file) return false;
+    item.slideIndex = index;
+    appliedLayout = { preset: item.layoutPreset || 'full', corner: item.layoutCorner || 'bottom-right' };
+    const message = {
+      version: 1,
+      type: 'show',
+      id: item.id,
+      kind: 'image',
+      name: slide.name || item.name,
+      slideId: slide?.id || `${item.id}:${index}`,
+      slideIndex: index,
+      slideCount: item.slides.length,
+      fit: fitSelect.value,
+      muted: true,
+      loop: false,
+      transition: transitionTypeSelect.value,
+      duration: parseInt(transitionDurationSelect.value, 10),
+      layout: { preset: item.layoutPreset || 'full', corner: item.layoutCorner || 'bottom-right' }
+    };
+    if (!slide?.file) return false;
+    message.blob = slide.file;
+    channel.postMessage(message);
+    return true;
+  }
+
   // 2. Toolbar (Search, Clear All, Storage Info)
   const toolbar = el('div', 'toolbar');
   const searchInput = el('input');
@@ -538,6 +760,32 @@
   progressBar.max = 100;
   progressBar.value = 0;
   progressBar.setAttribute('aria-label', 'Video playback progress');
+
+  const slideControls = el('div', 'slide-controls');
+  slideControls.style.display = 'none';
+  slideControls.setAttribute('aria-label', 'Slide navigation');
+  const slidePrev = button('Previous', () => stepSlide(-1), 'quiet');
+  slidePrev.setAttribute('aria-label', 'Previous slide');
+  const slideStatus = el('span', 'slide-status', 'Slide 1 of 1');
+  const slideNext = button('Next', () => stepSlide(1), 'quiet');
+  slideNext.setAttribute('aria-label', 'Next slide');
+  slideControls.append(slidePrev, slideStatus, slideNext);
+
+  function stepSlide(delta) {
+    const item = items.find(i => i.id === selectedId);
+    if (!item || item.kind !== 'slides' || !item.slides?.length) return;
+    const nextIndex = Math.max(0, Math.min(item.slides.length - 1, normalizeSlideIndex(item) + delta));
+    if (nextIndex === normalizeSlideIndex(item)) return;
+    item.slideIndex = nextIndex;
+    if ((outputState === 'live' || outputState === 'switching') && liveId === item.id) {
+      postSlideShow(item, nextIndex).catch(err => {
+        storageError = err.message || 'Could not draw this PDF slide.';
+        render();
+      });
+    }
+    saveToDB(item).catch(() => { storageError = 'Slide position could not be saved. Keep this dock open and try again.'; });
+    render();
+  }
 
   const progressTime = el('span', 'progress-time', '0:00 / 0:00');
   progressContainer.append(progressBar, progressTime);
@@ -717,7 +965,7 @@
     }
   });
 
-  app.append(videoControls);
+  app.append(videoControls, slideControls);
 
   // 6. Actionbar / Footer
   const footer = el('footer', 'actionbar');
@@ -759,6 +1007,23 @@
         type: 'hide',
         transition: transitionTypeSelect.value,
         duration: parseInt(transitionDurationSelect.value, 10)
+      });
+      return;
+    }
+    if (item.kind === 'slides') {
+      postSlideShow(item, normalizeSlideIndex(item)).then(shown => {
+        if (!shown) {
+          storageError = 'This slide has no picture. Remove the deck and add the PDF again.';
+          render();
+          return;
+        }
+        storageError = '';
+        liveId = item.id;
+        if (outputState === 'waiting' || outputState === 'hidden') outputState = 'switching';
+        render();
+      }).catch(err => {
+        storageError = err.message || 'Could not draw this PDF slide.';
+        render();
       });
       return;
     }
@@ -849,9 +1114,9 @@
       channel.postMessage({
         version: 1,
         type: 'update-settings',
-        fit: liveItem?.kind === 'youtube' ? 'contain' : fitSelect.value,
-        muted: muteCheckbox.checked,
-        loop: liveItem?.kind === 'youtube' ? false : loopCheckbox.checked
+        fit: liveItem?.kind === 'youtube' || liveItem?.kind === 'slides' ? (liveItem?.kind === 'slides' ? fitSelect.value : 'contain') : fitSelect.value,
+        muted: liveItem?.kind === 'slides' ? true : muteCheckbox.checked,
+        loop: liveItem?.kind === 'youtube' || liveItem?.kind === 'slides' ? false : loopCheckbox.checked
       });
     }
   }
@@ -907,8 +1172,23 @@
     const frame = el('span', `source-preview source-preview-${item.kind}`);
     frame.setAttribute('aria-hidden', 'true');
     const indexChip = el('span', 'source-preview-index', String(index + 1).padStart(2, '0'));
-    const noteText = item.kind === 'youtube' ? 'YouTube' : item.kind === 'image' ? 'Picture' : (item.id === selectedId ? 'Playing' : 'Video');
+    const noteText = item.kind === 'youtube' ? 'YouTube' : item.kind === 'slides' ? 'Slides' : item.kind === 'image' ? 'Picture' : (item.id === selectedId ? 'Playing' : 'Video');
     const note = el('span', 'source-preview-note', noteText);
+    if (item.kind === 'slides') {
+      const slide = currentSlide(item);
+      if (slide?.file) {
+        const image = document.createElement('img');
+        image.alt = '';
+        image.decoding = 'async';
+        image.src = getObjectUrl(slide);
+        frame.append(image);
+      } else {
+        frame.append(el('span', 'source-preview-placeholder', 'SL'));
+      }
+      const count = el('span', 'source-preview-count', String(item.slides?.length || 0));
+      frame.append(count, indexChip, note);
+      return frame;
+    }
     if (item.kind === 'youtube') {
       const image = document.createElement('img');
       image.alt = '';
@@ -982,7 +1262,7 @@
     if (!filteredItems.length) {
       const empty = el('div', 'empty');
       empty.append(
-        el('strong', '', searchQuery ? 'No search results' : 'Add pictures or videos'),
+        el('strong', '', searchQuery ? 'No search results' : 'Add pictures, videos, or slides'),
         el('small', '', searchQuery ? 'Try adjusting your search terms.' : 'Files stay local and play through Emberstage Media Output.')
       );
       list.append(empty);
@@ -1003,7 +1283,11 @@
       selectBtn.append(previewFrame(item, overallIndex));
 
       const copy = el('span', 'source-copy');
-      const metaText = item.persisted === false ? 'Session-only' : (item.kind === 'youtube' ? 'YouTube live' : item.kind === 'image' ? 'Picture' : 'Video');
+      const metaText = item.persisted === false
+        ? 'Session-only'
+        : (item.kind === 'youtube' ? 'YouTube live'
+          : item.kind === 'slides' ? `${item.slides?.length || 0} slides · showing ${normalizeSlideIndex(item) + 1}`
+          : item.kind === 'image' ? 'Picture' : 'Video');
       copy.append(el('span', 'source-name', item.name), el('span', 'source-meta', metaText));
       selectBtn.append(copy);
 
@@ -1079,7 +1363,7 @@
     const selectedItem = items.find(i => i.id === selectedId);
     selectionDisplay.textContent = selectedItem?.name || 'Choose media';
 
-    if (selectedItem && (selectedItem.kind === 'image' || selectedItem.kind === 'video' || selectedItem.kind === 'youtube')) {
+    if (selectedItem && (selectedItem.kind === 'image' || selectedItem.kind === 'video' || selectedItem.kind === 'youtube' || selectedItem.kind === 'slides')) {
       layoutMenuButton.disabled = false;
       renderLayoutMenu();
       
@@ -1095,17 +1379,30 @@
     take.textContent = outputState === 'live' && selectedItem?.id === liveId ? 'Hide media' : 'Show media';
 
     const isSelectedYouTube = selectedItem?.kind === 'youtube';
+    const isSelectedSlides = selectedItem?.kind === 'slides';
     fitSelect.disabled = !!isSelectedYouTube;
-    loopCheckbox.disabled = !!isSelectedYouTube;
+    loopCheckbox.disabled = !!isSelectedYouTube || isSelectedSlides;
+    muteCheckbox.disabled = isSelectedSlides;
     fitSelect.title = isSelectedYouTube ? 'YouTube embeds use their own player sizing and do not crop.' : 'Fit: show the whole image or video. Fill: cover the area, cropping edges.';
-    loopLabel.title = isSelectedYouTube ? 'YouTube live embeds cannot be looped from this dock.' : '';
+    loopLabel.title = isSelectedYouTube ? 'YouTube live embeds cannot be looped from this dock.' : isSelectedSlides ? 'Slide decks advance one picture at a time.' : '';
+    muteLabel.title = isSelectedSlides ? 'Slides have no audio.' : '';
 
     const liveItem = items.find(i => i.id === liveId);
     const isLiveVideo = outputState === 'live' && liveItem?.kind === 'video';
     const isLiveYouTube = outputState === 'live' && liveItem?.kind === 'youtube';
-    videoControls.style.display = (isLiveVideo || isLiveYouTube) ? 'flex' : 'none';
-    restartBtn.style.display = isLiveYouTube ? 'none' : '';
-    progressContainer.style.display = isLiveYouTube ? 'none' : '';
+    const isLiveSlides = outputState === 'live' && liveItem?.kind === 'slides';
+    videoControls.style.display = (isLiveVideo || isLiveYouTube || isLiveSlides) ? 'flex' : 'none';
+    playPauseBtn.style.display = isLiveSlides ? 'none' : '';
+    restartBtn.style.display = isLiveYouTube || isLiveSlides ? 'none' : '';
+    progressContainer.style.display = isLiveYouTube || isLiveSlides ? 'none' : '';
+    slideControls.style.display = isLiveSlides || isSelectedSlides ? 'flex' : 'none';
+    if (isSelectedSlides) {
+      const index = normalizeSlideIndex(selectedItem);
+      const count = selectedItem.slides?.length || 0;
+      slideStatus.textContent = count ? `Slide ${index + 1} of ${count}` : 'No slides';
+      slidePrev.disabled = index <= 0;
+      slideNext.disabled = !count || index >= count - 1;
+    }
 
     stateBadge.textContent = outputState === 'live' ? 'LIVE' : outputState === 'hidden' ? 'HIDDEN' : outputState === 'switching' ? 'LOADING' : outputState === 'error' ? 'MEDIA ERROR' : 'WAITING';
     stateBadge.classList.toggle('on', outputState === 'live');
@@ -1170,6 +1467,12 @@
         URL.revokeObjectURL(objectUrls.get(item.id));
         objectUrls.delete(item.id);
       }
+      for (const slide of item.slides || []) {
+        if (objectUrls.has(slide.id)) {
+          URL.revokeObjectURL(objectUrls.get(slide.id));
+          objectUrls.delete(slide.id);
+        }
+      }
 
       items.splice(index, 1);
       
@@ -1196,6 +1499,11 @@
     items.forEach(item => {
       if (item.file && item.file.size) {
         totalBytes += item.file.size;
+      }
+      if (item.kind === 'slides') {
+        for (const slide of item.slides || []) {
+          if (slide.file?.size) totalBytes += slide.file.size;
+        }
       }
     });
 
@@ -1312,6 +1620,11 @@
           match.persisted = true;
           match.layoutPreset = match.layoutPreset || 'full';
           match.layoutCorner = match.layoutCorner || 'bottom-right';
+          if (match.kind === 'slides') {
+            match.slides = (Array.isArray(match.slides) ? match.slides : []).map(slide => ({ ...slide, file: slideBlob(slide.file) }));
+            match.slideIndex = normalizeSlideIndex(match);
+            match.pdf = slideBlob(match.pdf);
+          }
           sorted.push(match);
         }
       });
@@ -1321,6 +1634,11 @@
           item.persisted = true;
           item.layoutPreset = item.layoutPreset || 'full';
           item.layoutCorner = item.layoutCorner || 'bottom-right';
+          if (item.kind === 'slides') {
+            item.slides = (Array.isArray(item.slides) ? item.slides : []).map(slide => ({ ...slide, file: slideBlob(slide.file) }));
+            item.slideIndex = normalizeSlideIndex(item);
+            item.pdf = slideBlob(item.pdf);
+          }
           sorted.push(item);
         }
       });
@@ -1400,6 +1718,7 @@
       transitionPopover.classList.add('hidden');
       closeDialog(renameDialog);
       closeDialog(youtubeDialog);
+      closeDialog(slidesDialog);
     }
   });
 

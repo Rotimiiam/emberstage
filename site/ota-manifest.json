@@ -1,5 +1,5 @@
 {
-  "version": "0.1.0-beta.8",
+  "version": "0.1.0-beta.9",
   "publishedAt": "",
   "channel": "stable",
   "protectedPaths": [
@@ -67,19 +67,54 @@
       "url": "https://emberstage.pages.dev/ota/assets/css/emberstage_brand.css"
     },
     "assets/css/emberstage_output.css": {
-      "sha256": "6c6cc717150c7a3ee2ca61d3a62a4dca8c3c81f6ba112257fa322c49b35afdca",
-      "size": 735,
+      "sha256": "cbbfdd5c852b7cef656f9afbde4ed3611fb10a40ac83d8e14db58ad863645a09",
+      "size": 859,
       "url": "https://emberstage.pages.dev/ota/assets/css/emberstage_output.css"
     },
     "assets/css/media_deck.css": {
-      "sha256": "5c737b5dcc77e1365fe9569c961e50ac2f008e564b4a50d33228f6f766974d2c",
-      "size": 25173,
+      "sha256": "60684f3f0133d55246369b1e002c10931d05fefb5e37be6e4fe66c68909bc1ff",
+      "size": 25966,
       "url": "https://emberstage.pages.dev/ota/assets/css/media_deck.css"
     },
     "assets/js/control_panel/utils.js": {
       "sha256": "973ec4103d63ea6ebd1a8d0a9e74ce14ef1027aae61a6281746fe8e7548a749d",
       "size": 19464,
       "url": "https://emberstage.pages.dev/ota/assets/js/control_panel/utils.js"
+    },
+    "assets/js/media/owned-media-app.js": {
+      "sha256": "76bae024601fe9cabedb4216d6d55e9e466900d1e5f3af17b944e5c4ca14faa5",
+      "size": 65183,
+      "url": "https://emberstage.pages.dev/ota/assets/js/media/owned-media-app.js"
+    },
+    "assets/js/media/pdf-slides.js": {
+      "sha256": "30925feac35ac57e08cf5698dbee91a1853767f0f7d5c7249c2a693023881dec",
+      "size": 3802,
+      "url": "https://emberstage.pages.dev/ota/assets/js/media/pdf-slides.js"
+    },
+    "assets/js/outputs/layout-helper.js": {
+      "sha256": "0d0b284838e2f3b858f1453318de9dbbf7b6265fdb712b193de9e460ec386ab8",
+      "size": 2669,
+      "url": "https://emberstage.pages.dev/ota/assets/js/outputs/layout-helper.js"
+    },
+    "assets/js/outputs/media-output.js": {
+      "sha256": "ab6fa2a4679b8c2457cbffcd6f9bc844a82da28df0ba7a98f65e7a427b21b953",
+      "size": 23272,
+      "url": "https://emberstage.pages.dev/ota/assets/js/outputs/media-output.js"
+    },
+    "assets/js/outputs/output-transition.js": {
+      "sha256": "40f7d34435b4da112ff04ac4f0c5948629f67a6771baf2169240fb7f0b9be34a",
+      "size": 4699,
+      "url": "https://emberstage.pages.dev/ota/assets/js/outputs/output-transition.js"
+    },
+    "assets/vendor/pdfjs/pdf.min.js": {
+      "sha256": "5b5799e6f8c680663207ac5b42ee14eed2a406fa7af48f50c154f0c0b1566946",
+      "size": 320004,
+      "url": "https://emberstage.pages.dev/ota/assets/vendor/pdfjs/pdf.min.js"
+    },
+    "assets/vendor/pdfjs/pdf.worker.min.js": {
+      "sha256": "feabdf309770ed24bba31a5467836cdc8cf639c705af27d52b585b041bb8527b",
+      "size": 1087212,
+      "url": "https://emberstage.pages.dev/ota/assets/vendor/pdfjs/pdf.worker.min.js"
     }
   }
 }

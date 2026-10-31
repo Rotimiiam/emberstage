@@ -396,7 +396,15 @@ function ownedMediaDock({ savedItems = [], failOpen = false } = {}) {
     setAttribute(name, value) { this[name] = String(value); }
     closest(selector) { let node = this; while (node) { if (selector === '.source-row' && node.className?.split(/\s+/).includes('source-row')) return node; node = node.parent; } return null; }
     querySelectorAll(selector) { const found = []; const walk = node => { for (const child of node.children || []) { if (child.tag === selector) found.push(child); walk(child); } }; walk(this); return found; }
-    querySelector() { return null; }
+    querySelector(selector) {
+      if (typeof selector === 'string' && selector.startsWith('[data-media-id="')) {
+        const id = selector.slice(16, selector.indexOf('"]'));
+        const row = (this.children || []).find(child => child.dataset?.mediaId === id);
+        if (!row) return null;
+        if (selector.includes('.source-row-select-btn')) return row.children?.find(child => child.className?.includes('source-row-select-btn')) || null;
+      }
+      return null;
+    }
     showModal() { this.open = true; }
     close() { this.open = false; }
     focus() { document.activeElement = this; }
@@ -437,7 +445,7 @@ function ownedMediaDock({ savedItems = [], failOpen = false } = {}) {
   const context = vm.createContext({
     console, document, window: { addEventListener(name, fn) { events[name] = fn; } }, navigator: { storage: { estimate: async () => ({ usage: 0, quota: 1024 * 1024 }) } },
     localStorage: { getItem: key => stored.get(key) || null, setItem: (key, value) => stored.set(key, value), removeItem: key => stored.delete(key) },
-    indexedDB, URL: TestURL, Blob: class {},
+    indexedDB, URL: TestURL, Blob: class { constructor(parts) { this.parts = parts; } }, File: class File {},
     crypto: { randomUUID: () => `uuid-${++uuid}` }, requestAnimationFrame: fn => fn(),
     setInterval: () => 1, clearInterval() {}, setTimeout: (fn) => { queueMicrotask(fn); return 1; }, clearTimeout() {},
     BroadcastChannel: class { constructor(name) { this.name = name; channels.set(name, this); } postMessage(message) { messages.push({ channel: this.name, message }); } close() {} },
@@ -478,6 +486,59 @@ test('owned media dock adds YouTube streams first, validates strict URLs, and se
   assert.equal(dock.nodes.find(node => node.className === 'media-fit-select').disabled, true);
   const loop = dock.nodes.find(node => node.tag === 'label' && node.children.some(child => child.textContent === 'Loop')).children[0];
   assert.equal(loop.disabled, true);
+});
+
+test('owned media dock adds a slide deck, keeps pictures local, and shows the selected slide', async () => {
+  const dock = ownedMediaDock(); await tick(); await tick();
+  const slidesButton = dock.nodes.find(node => node['aria-label'] === 'Add slides');
+  assert.equal(slidesButton.disabled, false);
+  slidesButton.listeners.click();
+  const nameInput = dock.nodes.find(node => node['aria-label'] === 'Slides deck name');
+  const fileInput = dock.nodes.find(node => node['aria-label'] === 'Slide picture or PDF files');
+  const addSlides = dock.nodes.find(node => node.textContent === 'Add slides' && node.listeners?.click);
+  const error = dock.nodes.find(node => node.className === 'form-error' && node.parent?.children.includes(fileInput.parent));
+  fileInput.files = [{ name: 'notes.txt', size: 4 }];
+  await addSlides.listeners.click(); await tick();
+  assert.match(error.textContent, /jpg, png, gif, webp, or pdf/);
+  const first = { name: 'Welcome.png', size: 11 };
+  const second = { name: 'Giving.jpg', size: 13 };
+  fileInput.files = [first, second];
+  nameInput.value = '  Sunday   Slides  ';
+  await addSlides.listeners.click(); await tick(); await tick();
+  const saved = [...dock.records.values()][0];
+  assert.equal(saved.name, 'Sunday Slides');
+  assert.equal(saved.kind, 'slides');
+  assert.equal(saved.slideIndex, 0);
+  assert.equal(saved.slides.length, 2);
+  assert.equal(saved.slides[0].file, first);
+  assert.equal(saved.slides[1].name, 'Giving');
+  assert.equal('file' in saved, false);
+  assert.equal(dock.messages.some(({ message }) => message.type === 'show'), false, 'adding slides does not auto-live them');
+  dock.channels.get('emberstage-media-v1').onmessage({ data: { version: 1, type: 'ready' } });
+  const take = dock.nodes.find(node => node.textContent === 'Show media' && node.listeners?.click);
+  take.listeners.click();
+  await tick(); await tick();
+  const shown = dock.messages.at(-1).message;
+  assert.equal(shown.kind, 'image');
+  assert.equal(shown.slideIndex, 0);
+  assert.equal(shown.slideCount, 2);
+  assert.equal(shown.blob, first);
+  assert.equal(shown.loop, false);
+  assert.equal(shown.layout.preset, 'full');
+  assert.equal(shown.layout.corner, 'bottom-right');
+  const layout = dock.nodes.find(node => node['aria-label'] === 'Media layout settings');
+  assert.equal(layout.disabled, false);
+  dock.channels.get('emberstage-media-v1').onmessage({ data: { version: 1, type: 'status', state: 'live', id: saved.id, slideIndex: 0, slideCount: 2, layout: { preset: 'full', corner: 'bottom-right' } } });
+  const next = dock.nodes.find(node => node['aria-label'] === 'Next slide');
+  assert.equal(next.disabled, false);
+  next.listeners.click();
+  await tick();
+  assert.equal(dock.messages.at(-1).message.kind, 'image');
+  assert.equal(dock.messages.at(-1).message.blob, second);
+  assert.equal(dock.messages.at(-1).message.slideIndex, 1);
+  assert.equal(dock.records.get(saved.id).slideIndex, 1);
+  const list = dock.nodes.find(node => node.className === 'source-list owned-library');
+  assert.match(list.children[0].children[0].children[1].children[1].textContent, /2 slides · showing 2/);
 });
 
 test('owned media rename uses HTML dialog and commits only after IndexedDB succeeds', async () => {

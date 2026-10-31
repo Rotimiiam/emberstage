@@ -146,6 +146,9 @@
     media.postMessage({ version: 1, type: 'status',
       state: isHiding ? 'hidden' : pending ? 'switching' : current ? 'live' : failure ? 'error' : 'hidden',
       id: current?.id || '', reason: failure, error: errorText(failure),
+      slideId: current?.kind === 'slides' ? current.slideId || '' : '',
+      slideIndex: current?.kind === 'slides' ? current.slideIndex : null,
+      slideCount: current?.kind === 'slides' ? current.slideCount : 0,
       cameraAbsent: cameraAbsent, layout: isHiding ? { preset: 'full', corner: 'bottom-right' } : currentLayout });
     sendStageStatus();
   }
@@ -286,9 +289,11 @@
 
   async function show(message) {
     const isYouTube = message.kind === 'youtube';
-    if (isYouTube ? !/^[A-Za-z0-9_-]{11}$/.test(message.videoId || '') : !(message.blob instanceof Blob) || !['image', 'video'].includes(message.kind)) {
+    const isSlides = message.kind === 'slides';
+    if (isYouTube ? !/^[A-Za-z0-9_-]{11}$/.test(message.videoId || '') : !(message.blob instanceof Blob) || !['image', 'video', 'slides'].includes(message.kind)) {
       return;
     }
+    if (isSlides && (!Number.isInteger(message.slideIndex) || message.slideIndex < 0)) return;
     const version = ++generation;
     isHiding = false;
     cancelPending();
@@ -301,9 +306,14 @@
     if (current?.element.tagName === 'VIDEO') current.element.muted = current.muted;
     youtubeCommand(current, 'mute', { muted: current?.muted });
     failure = '';
-    const element = document.createElement(isYouTube ? 'iframe' : message.kind === 'image' ? 'img' : 'video');
+    const element = document.createElement(isYouTube ? 'iframe' : message.kind === 'video' ? 'video' : 'img');
     const candidate = { id: message.id, kind: message.kind, element, url: isYouTube ? null : URL.createObjectURL(message.blob),
       muted: message.muted === true, fit: !isYouTube && message.fit === 'cover' ? 'cover' : 'contain' };
+    if (isSlides) {
+      candidate.slideId = String(message.slideId || '');
+      candidate.slideIndex = message.slideIndex;
+      candidate.slideCount = Number.isInteger(message.slideCount) ? message.slideCount : 0;
+    }
     if (isYouTube) {
       candidate.videoId = message.videoId;
       candidate.token = crypto.randomUUID();
@@ -321,6 +331,9 @@
       for (const event of ['timeupdate', 'play', 'pause', 'ended', 'seeked']) {
         element.addEventListener(event, () => { if (current === candidate) progress(); });
       }
+    } else if (isSlides) {
+      element.classList.add('slide-output');
+      element.alt = message.name || 'Slide';
     } else element.alt = '';
 
     const incomingLayout = normalizeLayout(message.layout);

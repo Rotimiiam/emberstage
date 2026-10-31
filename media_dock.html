@@ -167,6 +167,30 @@
       color: var(--muted);
       white-space: nowrap;
     }
+    .slide-controls {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 8px;
+      background: #191a1d;
+      border-top: 1px solid var(--line);
+      flex-shrink: 0;
+      min-height: 32px;
+    }
+    .slide-controls button {
+      min-height: 24px;
+      padding: 2px 8px;
+      font-size: 11px;
+    }
+    .slide-status {
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: 11px;
+      color: var(--muted);
+    }
 
     /* Transition settings popover */
     .settings-popover {
@@ -346,6 +370,7 @@
     <noscript>Enable JavaScript to use Emberstage Media.</noscript>
   </main>
   <script src="assets/js/dock_ui_scale.js"></script>
+  <script src="assets/js/media/pdf-slides.js"></script>
   <script src="assets/js/media/owned-media-app.js"></script>
   <script src="assets/js/keyboard-navigation.js"></script>
   <script src="assets/js/dock_auto_updater.js"></script>

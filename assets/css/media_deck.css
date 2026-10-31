@@ -88,6 +88,13 @@ dialog{width:min(450px,calc(100vw - 24px));max-height:calc(100vh - 16px);backgro
 
 /* App-owned outputs: the library fills the dock and actions remain pinned. */
 .media-add{display:inline-flex;align-items:center;justify-content:center;min-height:30px;padding:4px 9px;border:1px solid var(--amber);border-radius:5px;cursor:pointer;white-space:nowrap}
+.slides-add{color:#d7e4ff;border-color:#3d4a62;background:#171c27}
+.slides-add:hover:not(:disabled){border-color:#6d84ad;background:#1d2433}
+.slide-controls{display:flex;align-items:center;gap:6px;padding:4px 8px;background:#191a1d;border-top:1px solid var(--line);flex-shrink:0;min-height:32px}
+.slide-controls button{min-height:24px;padding:2px 8px;font-size:11px}
+.slide-status{flex:1;min-width:0;font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums}
+.source-preview-slides{background:radial-gradient(circle at 28% 22%,rgba(140,176,230,.22),transparent 46%),linear-gradient(145deg,#22262e,#15181d)}
+.source-preview-count{position:absolute;left:4px;top:4px;z-index:2;border-radius:999px;padding:2px 5px;background:rgba(11,12,15,.78);color:#d7e4ff;font-size:9px;line-height:1}
 .youtube-add{color:#ffd8a2;border-color:#51422b;background:#211d17}
 .youtube-add:hover:not(:disabled){border-color:#a98348;background:#2b2418}
 .media-inline-dialog{width:min(360px,calc(100vw - 16px));padding:12px;max-height:calc(100vh - 16px);overflow:auto}

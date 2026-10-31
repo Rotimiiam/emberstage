@@ -1,7 +1,7 @@
 ;(function () {
   'use strict';
 
-  var CURRENT_VERSION = '0.1.0-beta.8';
+  var CURRENT_VERSION = '0.1.0-beta.9';
   var DEFAULT_MANIFEST_URL = 'https://emberstage.pages.dev/version.json';
   var DEFAULT_OTA_MANIFEST_URL = 'https://emberstage.pages.dev/ota-manifest.json';
   var STORAGE_KEY_DISMISSED = 'emberstage.update.dismissedVersion';

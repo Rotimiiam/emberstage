@@ -11,6 +11,13 @@ OTA_DIR = SITE_DIR / 'ota'
 
 OTA_FILES = [
     'assets/js/control_panel/utils.js',
+    'assets/js/media/owned-media-app.js',
+    'assets/js/media/pdf-slides.js',
+    'assets/vendor/pdfjs/pdf.min.js',
+    'assets/vendor/pdfjs/pdf.worker.min.js',
+    'assets/js/outputs/media-output.js',
+    'assets/js/outputs/layout-helper.js',
+    'assets/js/outputs/output-transition.js',
 ]
 
 OTA_ASSET_DIRS = [
