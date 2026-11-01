@@ -554,6 +554,9 @@
       if (data.action === 'play') video.play().catch(() => {});
       if (data.action === 'restart') { video.currentTime = 0; video.play().catch(() => {}); }
       progress();
+    } else if (data.type === 'dismiss-error') {
+      failure = '';
+      if (!current && !pending) status();
     } else if (data.type === 'ping') { status(); progress(); }
   };
 

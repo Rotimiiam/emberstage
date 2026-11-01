@@ -735,6 +735,7 @@
     outputError = '';
     storageError = '';
     if (outputState === 'error') outputState = 'hidden';
+    channel.postMessage({ version: 1, type: 'dismiss-error' });
     updateNotices();
   }, 'quiet notice-dismiss');
   noticeDismiss.setAttribute('aria-label', 'Dismiss warning');
@@ -1478,8 +1479,11 @@
     try {
       await deleteFromDB(item.id);
       
-      if (isLiveItem) {
+      if (isLiveItem || liveId === item.id || outputState === 'error') {
         channel.postMessage({ version: 1, type: 'hide' });
+        channel.postMessage({ version: 1, type: 'dismiss-error' });
+        outputError = '';
+        if (outputState === 'error' || outputState === 'live' || outputState === 'switching') outputState = 'hidden';
       }
 
       if (objectUrls.has(item.id)) {
@@ -1693,7 +1697,7 @@
     } else if (data.type === 'status') {
       const incomingId = data.id || '';
       const incomingCameraAbsent = !!data.cameraAbsent;
-      const incomingError = data.error || data.reason || '';
+      const incomingError = data.state === 'hidden' || data.state === 'live' ? '' : (data.error || data.reason || '');
       const nextAppliedLayout = data.state === 'live' ? normalizeAppliedLayout(data.layout) : null;
       const appliedLayoutChanged =
         (appliedLayout?.preset || '') !== (nextAppliedLayout?.preset || '') ||
