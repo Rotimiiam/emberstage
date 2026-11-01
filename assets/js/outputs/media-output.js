@@ -24,7 +24,7 @@
     if (code === '100') return 'This YouTube stream is unavailable, private, or has been removed.';
     if (code === 'autoplay') return 'YouTube playback was blocked. Allow autoplay in OBS or try another stream.';
     if (code === 'ended') return 'The YouTube stream has ended.';
-    if (code === 'timeout' || code === 'network') return 'YouTube did not start. Check your internet connection and whether this stream is live and allows embedding.';
+    if (code === 'timeout' || code === 'network') return 'YouTube did not start. Refresh the Media output in OBS, then show it again. If it still fails, check that this stream is live and allows embedding.';
     return 'YouTube could not play this stream. It may be restricted or unavailable for embedding.';
   }
 
@@ -281,8 +281,9 @@
       const listener = event => {
         const data = event.data;
         const playerOrigin = youtubeTarget(item);
+        const opaquePlayer = playerOrigin === 'null' || playerOrigin === 'file:' || playerOrigin.startsWith('file:');
         if (item.disposed || event.source !== item.element.contentWindow ||
-            (playerOrigin !== 'null' && event.origin !== playerOrigin) ||
+            (!opaquePlayer && event.origin !== playerOrigin) ||
             !data || data.version !== 1 || data.channel !== 'emberstage-youtube' || data.token !== item.token) return;
         if (data.type === 'ready') {
           item.bridgeReady = true;
@@ -428,6 +429,7 @@
     const version = ++generation;
     cancelPending();
     failure = '';
+    status();
 
     const transitionType = message.transition || currentTransition || 'fade';
     const transitionDuration = (transitionType === 'cut') ? 0 : (message.duration !== undefined ? parseInt(message.duration, 10) : 300);

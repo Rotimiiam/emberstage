@@ -566,7 +566,15 @@ test('owned media rename uses HTML dialog and commits only after IndexedDB succe
   assert.equal(list.children[0].children[0].children[1].children[0].textContent, 'New name');
   assert.equal(dock.messages.length, 0, 'rename never broadcasts show/hide');
   channel.onmessage({ data: { version: 1, type: 'status', state: 'error', id: 'image-1', error: 'unsupported-format' } });
-  assert.match(dock.nodes.find(node => node.className === 'notice warning').textContent, /codec/);
+  const warning = dock.nodes.find(node => node.className === 'notice warning');
+  assert.match(warning.children.find(node => node.className === 'notice-text').textContent, /codec/);
+  const dismiss = warning.children.find(node => node['aria-label'] === 'Dismiss warning');
+  dismiss.listeners.click();
+  assert.equal(warning.hidden, true);
+  channel.onmessage({ data: { version: 1, type: 'status', state: 'error', id: '', reason: 'youtube-timeout', error: 'YouTube did not start. Refresh the Media output in OBS, then show it again.' } });
+  assert.match(dock.nodes.find(node => node.className === 'notice-text').textContent, /did not start/);
+  channel.onmessage({ data: { version: 1, type: 'status', state: 'hidden', id: '', reason: '', error: '' } });
+  assert.equal(dock.nodes.find(node => node.className === 'notice').hidden, true);
 });
 
 test('failed visibility writes do not produce optimistic enabled state', async () => {

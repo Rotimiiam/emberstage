@@ -730,6 +730,15 @@
   // 3. Notice area
   const notice = el('div', 'notice');
   notice.hidden = true;
+  const noticeText = el('span', 'notice-text');
+  const noticeDismiss = button('Dismiss', () => {
+    outputError = '';
+    storageError = '';
+    if (outputState === 'error') outputState = 'hidden';
+    updateNotices();
+  }, 'quiet notice-dismiss');
+  noticeDismiss.setAttribute('aria-label', 'Dismiss warning');
+  notice.append(noticeText, noticeDismiss);
   app.append(notice);
 
   // 4. Source list
@@ -1536,29 +1545,30 @@
   }
 
   function updateNotices() {
+    let text = '';
+    let className = 'notice';
+    let dismissible = false;
     if (outputState === 'waiting') {
-      notice.textContent = 'Enable Emberstage Output (emberstage_output.html) in OBS at the same installed path. Its media layer is not replying. Avoid opening another output window alongside OBS.';
-      notice.className = 'notice';
-      notice.hidden = false;
+      text = 'Enable Emberstage Output (emberstage_output.html) in OBS at the same installed path. Its media layer is not replying. Avoid opening another output window alongside OBS.';
     } else if (cameraAbsent) {
-      notice.textContent = 'Show a camera in Cameras to use this layout';
-      notice.className = 'notice warning';
-      notice.hidden = false;
+      text = 'Show a camera in Cameras to use this layout';
+      className = 'notice warning';
     } else if (outputState === 'error' || outputError) {
       const liveItem = items.find(i => i.id === liveId) || items.find(i => i.id === selectedId);
-      notice.textContent = liveItem?.kind === 'youtube' || /youtube|embed/i.test(outputError)
+      text = liveItem?.kind === 'youtube' || /youtube|embed/i.test(outputError)
         ? (outputError.includes(' ') ? outputError : 'YouTube could not play. Check internet access, embed permission, and that you are authorized to show this content.')
         : "This video codec cannot play in the OBS browser. Convert it to MP4 with H.264 video and AAC audio, then add it again.";
-      notice.className = 'notice warning';
-      notice.hidden = false;
+      className = 'notice warning';
+      dismissible = true;
     } else if (storageError) {
-      notice.textContent = storageError;
-      notice.className = 'notice warning';
-      notice.hidden = false;
-    } else {
-      notice.textContent = '';
-      notice.hidden = true;
+      text = storageError;
+      className = 'notice warning';
+      dismissible = true;
     }
+    noticeText.textContent = text;
+    notice.className = className;
+    notice.hidden = !text;
+    noticeDismiss.hidden = !dismissible;
   }
 
   fileInput.addEventListener('change', async () => {
