@@ -35,7 +35,7 @@
     } else if (data.type === 'play') {
       player.playVideo();
     } else if (data.type === 'pause') {
-      player.pauseVideo();
+      silence();
     } else if (data.type === 'seek') {
       const time = Number(data.time);
       if (Number.isFinite(time)) player.seekTo(Math.max(0, time), true);

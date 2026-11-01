@@ -42,6 +42,8 @@ test('HTTPS bridge keeps playback muted until authenticated commands; watchdog s
   assert.deepEqual(calls, ['mute', 'playVideo', 'unMute']);
   command({ type: 'pause' }, { origin: 'https://different.example' });
   assert.equal(calls.at(-1), 'unMute');
+  command({ type: 'pause' });
+  assert.deepEqual(calls.slice(-2), ['mute', 'pauseVideo']);
   now = 7000;
   interval();
   assert.deepEqual(calls.slice(-2), ['mute', 'pauseVideo']);

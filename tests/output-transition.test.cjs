@@ -217,7 +217,15 @@ function mediaOutputFixture(reduced = false) {
           return { finished, finish, cancel() {} };
         }
       };
-      if (tag === 'iframe') el.contentWindow = { postMessage: (data, origin) => el.sent.push({ data, origin }) };
+      if (tag === 'iframe') {
+        el.credentialless = false;
+        el.setAttribute = (name) => { if (name === 'credentialless') el.credentialless = true; };
+        el.contentDocument = { querySelectorAll: () => [] };
+        el.contentWindow = { postMessage: (data, origin) => {
+          if (data?.channel === 'emberstage-youtube-audio') return;
+          el.sent.push({ data, origin });
+        } };
+      }
       createdElements.push(el);
       return el;
     }
@@ -261,10 +269,15 @@ function mediaOutputFixture(reduced = false) {
     EmberstageTransition: {
       create: () => mockTransition
     },
-    URL: {
-      createObjectURL: () => 'blob:mock',
-      revokeObjectURL: () => {}
-    },
+    URL: new Proxy(URL, {
+      construct(target, args, newTarget) { return Reflect.construct(target, args, newTarget); },
+      get(target, key) {
+        if (key === 'createObjectURL') return () => 'blob:mock';
+        if (key === 'revokeObjectURL') return () => {};
+        const value = target[key];
+        return typeof value === 'function' ? value.bind(target) : value;
+      }
+    }),
     Blob: Blob,
     crypto: require('node:crypto').webcrypto,
     setTimeout: (fn) => { const id = Symbol(); timers.set(id, fn); return id; },
@@ -276,7 +289,8 @@ function mediaOutputFixture(reduced = false) {
       if (event === 'message') windowListeners.add(handler);
     },
     removeEventListener: (event, handler) => { if (event === 'message') windowListeners.delete(handler); },
-    matchMedia: () => ({ matches: reduced })
+    matchMedia: () => ({ matches: reduced }),
+    location: { href: 'file:///C:/Users/LENOVO/AppData/Local/Emberstage/app/media_output.html' }
   });
   context.window = context;
 
@@ -296,8 +310,9 @@ function mediaOutputFixture(reduced = false) {
     tick: () => intervals.forEach(fn => fn()),
     youtube: (frame, details, overrides = {}) => {
       const token = new URL(frame.src).hash.split('token=')[1];
+      const origin = overrides.origin || new URL(frame.src).origin;
       for (const listener of [...windowListeners]) listener({
-        source: frame.contentWindow, origin: 'https://emberstage.pages.dev',
+        source: frame.contentWindow, origin,
         data: { version: 1, channel: 'emberstage-youtube', token, ...details }, ...overrides
       });
     },
@@ -348,7 +363,8 @@ test('YouTube output authenticates bridge messages and only commits playing medi
   f.youtube(frame, { type: 'ready' });
   assert.deepEqual(frame.sent.map(x => x.data.type), ['mute', 'play']);
   assert.equal(frame.sent[0].data.muted, true);
-  assert.ok(frame.sent.every(x => x.origin === 'https://emberstage.pages.dev'));
+  assert.ok(frame.src.includes('/site/youtube-player.html'));
+  assert.ok(frame.sent.every(x => x.origin === '*'));
   f.youtube(frame, { type: 'state', state: 1 });
   await settle();
   assert.equal(f.mediaMessages.findLast(x => x.type === 'status').state, 'live');
@@ -357,7 +373,11 @@ test('YouTube output authenticates bridge messages and only commits playing medi
   assert.equal(frame.style.objectFit, 'contain');
   assert.equal(frame.sent.at(-1).data.muted, true);
   f.triggerMedia({ version: 1, type: 'transport', action: 'pause' });
-  assert.equal(frame.sent.at(-1).data.type, 'pause');
+  assert.equal(frame.sent.at(-2).data.type, 'pause');
+  assert.equal(frame.sent.at(-1).data.type, 'mute');
+  assert.equal(frame.sent.at(-1).data.muted, true);
+  assert.equal(frame.credentialless, true);
+  assert.equal(f.mediaMessages.at(-1).paused, true);
   f.triggerMedia({ version: 1, type: 'hide', transition: 'cut' });
   assert.ok(frame.sent.some(x => x.data.type === 'stop'));
   assert.equal(f.windowListeners.size, 0);
@@ -385,6 +405,7 @@ test('YouTube timeout, hide while loading, and rapid replacement release players
     const f = mediaOutputFixture();
     f.triggerMedia(youtubeShow);
     const frame = f.createdElements[0];
+    f.youtube(frame, { type: 'ready' });
     if (action === 'timeout') f.expire();
     if (action === 'hide') f.triggerMedia({ version: 1, type: 'hide', transition: 'cut' });
     if (action === 'replace') f.triggerMedia({ ...youtubeShow, id: 'new' });
@@ -395,6 +416,7 @@ test('YouTube timeout, hide while loading, and rapid replacement release players
     if (action === 'timeout') assert.equal(f.mediaMessages.at(-1).reason, 'youtube-timeout');
     if (action === 'replace') {
       const next = f.createdElements[0];
+      f.youtube(next, { type: 'ready' });
       f.youtube(next, { type: 'state', state: 1 });
       await settle();
       assert.equal(f.mediaMessages.findLast(x => x.type === 'status').id, 'new');
@@ -408,6 +430,7 @@ test('runtime YouTube restrictions stop output; camera layouts never crop the pl
   const f = mediaOutputFixture();
   f.triggerMedia({ ...youtubeShow, layout: { preset: 'camera-inset' } });
   const frame = f.createdElements[0];
+  f.youtube(frame, { type: 'ready' });
   f.youtube(frame, { type: 'state', state: 1 });
   await settle();
   assert.equal(f.mediaMessages.findLast(x => x.type === 'status').layout.preset, 'full');

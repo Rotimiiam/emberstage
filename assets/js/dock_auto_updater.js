@@ -95,7 +95,9 @@
     var scripts = document.querySelectorAll('script[src]');
     for (var j = 0; j < scripts.length; j++) {
       var relJs = normalizeAssetPath(scripts[j].getAttribute('src'));
-      if (!relJs || relJs === 'assets/js/dock_auto_updater.js' || relJs === 'assets/js/media/native-install.js') continue;
+      // The installed media output must keep its on-disk YouTube player. A cached
+      // pages.dev copy would load the old remote player and leave live audio running.
+      if (!relJs || relJs === 'assets/js/dock_auto_updater.js' || relJs === 'assets/js/media/native-install.js' || relJs === 'assets/js/outputs/media-output.js') continue;
       if (bundle.assets[relJs] && typeof bundle.assets[relJs].content === 'string') {
         if (!document.querySelector('script[data-ota-asset="' + relJs + '"]')) {
           var patchScript = document.createElement('script');

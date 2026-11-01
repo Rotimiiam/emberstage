@@ -14,7 +14,7 @@
   let layoutAnimations = [];
   let lastGeom = { left: 0, top: 0, width: 100, height: 100 };
   let lastClipPath = '';
-  const YOUTUBE_ORIGIN = 'https://emberstage.pages.dev';
+  const YOUTUBE_PLAYER_URL = new URL('../../../site/youtube-player.html', window.location?.href || 'file:///').href;
 
   function errorText(reason) {
     if (!reason.startsWith('youtube-')) return '';
@@ -28,9 +28,37 @@
     return 'YouTube could not play this stream. It may be restricted or unavailable for embedding.';
   }
 
+  function youtubeTarget(item) {
+    try {
+      return new URL(item?.element?.src || YOUTUBE_PLAYER_URL, YOUTUBE_PLAYER_URL).origin;
+    } catch (_) {
+      return '*';
+    }
+  }
+
+  function silenceYouTube(item) {
+    if (item?.kind !== 'youtube' || item.disposed) return;
+    const frame = item.element;
+    try { frame.setAttribute('credentialless', ''); } catch (_) {}
+    try { frame.contentWindow?.postMessage({ channel: 'emberstage-youtube-audio', muted: true }, '*'); } catch (_) {}
+    let shell = null;
+    try { shell = frame.contentDocument; } catch (_) {}
+    if (!shell) return;
+    for (const nested of shell.querySelectorAll('audio, video, iframe')) {
+      try {
+        nested.muted = true;
+        nested.volume = 0;
+        nested.pause?.();
+      } catch (_) {}
+    }
+  }
+
   function youtubeCommand(item, type, details = {}) {
     if (item?.kind !== 'youtube' || item.disposed) return;
-    item.element.contentWindow?.postMessage({ version: 1, channel: 'emberstage-youtube', token: item.token, type, ...details }, YOUTUBE_ORIGIN);
+    if (type === 'pause' || type === 'stop' || (type === 'mute' && details.muted !== false)) silenceYouTube(item);
+    const target = youtubeTarget(item);
+    // file:// players have an opaque origin. The token and source window still authenticate the command.
+    item.element.contentWindow?.postMessage({ version: 1, channel: 'emberstage-youtube', token: item.token, type, ...details }, target === 'null' || target.startsWith('file:') ? '*' : target);
   }
 
   function normalizeLayout(value) {
@@ -252,12 +280,15 @@
       }
       const listener = event => {
         const data = event.data;
-        if (item.disposed || event.source !== item.element.contentWindow || event.origin !== YOUTUBE_ORIGIN ||
+        const playerOrigin = youtubeTarget(item);
+        if (item.disposed || event.source !== item.element.contentWindow ||
+            (playerOrigin !== 'null' && event.origin !== playerOrigin) ||
             !data || data.version !== 1 || data.channel !== 'emberstage-youtube' || data.token !== item.token) return;
         if (data.type === 'ready') {
+          item.bridgeReady = true;
           youtubeCommand(item, 'mute', { muted: true });
           youtubeCommand(item, 'play');
-        } else if (data.type === 'state' && Number.isInteger(data.state)) {
+        } else if (item.bridgeReady && data.type === 'state' && Number.isInteger(data.state)) {
           item.playerState = data.state;
           if (Number.isFinite(data.currentTime)) item.currentTime = data.currentTime;
           if (Number.isFinite(data.duration)) item.duration = data.duration;
@@ -285,7 +316,7 @@
       window.addEventListener('message', listener);
       item.removeListener = () => window.removeEventListener('message', listener);
       item.cancelLoad = () => finish('cancelled');
-      item.element.src = YOUTUBE_ORIGIN + '/youtube-player.html#video=' + item.videoId + '&token=' + item.token;
+      item.element.src = YOUTUBE_PLAYER_URL + '#video=' + item.videoId + '&token=' + item.token;
       item.element.classList.add('output-layer');
       item.element.style.opacity = '0';
       // Iframes must be connected to load. Transition retains this exact node.
@@ -296,9 +327,9 @@
   async function show(message) {
     const isYouTube = message.kind === 'youtube';
     const isSlides = message.kind === 'slides';
-    if (isYouTube ? !/^[A-Za-z0-9_-]{11}$/.test(message.videoId || '') : !(message.blob instanceof Blob) || !['image', 'video', 'slides'].includes(message.kind)) {
-      return;
-    }
+    const validYouTube = /^[A-Za-z0-9_-]{11}$/.test(message.videoId || '');
+    const validFile = message.blob instanceof Blob && ['image', 'video', 'slides'].includes(message.kind);
+    if (isYouTube ? !validYouTube : !validFile) return;
     if (isSlides && (!Number.isInteger(message.slideIndex) || message.slideIndex < 0)) return;
     const version = ++generation;
     isHiding = false;
@@ -402,8 +433,7 @@
     const transitionDuration = (transitionType === 'cut') ? 0 : (message.duration !== undefined ? parseInt(message.duration, 10) : 300);
 
     const video = current?.element;
-    youtubeCommand(current, 'pause');
-    youtubeCommand(current, 'mute', { muted: true });
+    youtubeCommand(current, 'stop');
     if (video && video.tagName === 'VIDEO') {
       video.pause();
       video.muted = true; // Silence audio immediately!
@@ -501,7 +531,18 @@
       }
     } else if (data.type === 'transport') {
       if (!isHiding && current?.kind === 'youtube') {
-        if (data.action === 'pause' || data.action === 'play') youtubeCommand(current, data.action);
+        if (data.action === 'pause') {
+          current.playerState = 2;
+          youtubeCommand(current, 'pause');
+          youtubeCommand(current, 'mute', { muted: true });
+          progress();
+        }
+        if (data.action === 'play') {
+          current.playerState = 1;
+          youtubeCommand(current, 'play');
+          youtubeCommand(current, 'mute', { muted: current.muted });
+          progress();
+        }
         if (data.action === 'restart') youtubeCommand(current, 'seek', { time: current.live && Number.isFinite(current.duration) ? current.duration : 0 });
         return;
       }

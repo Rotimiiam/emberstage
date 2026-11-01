@@ -9,6 +9,17 @@
 </head>
 <body>
   <div id="player"></div>
+  <script>
+    // OBS keeps iframe audio even when the dock pauses the outer page. Mute every
+    // nested media element as soon as the parent asks, before the API command lands.
+    addEventListener('message', event => {
+      const data = event.data;
+      if (event.source !== parent || !data || data.channel !== 'emberstage-youtube-audio') return;
+      for (const media of document.querySelectorAll('audio, video, iframe')) {
+        try { media.muted = true; media.volume = 0; media.pause?.(); } catch (_) {}
+      }
+    });
+  </script>
   <script src="youtube-player.js"></script>
 </body>
 </html>
