@@ -36,8 +36,12 @@
       player.playVideo();
     } else if (data.type === 'pause') {
       player.pauseVideo();
+    } else if (data.type === 'seek') {
+      const time = Number(data.time);
+      if (Number.isFinite(time)) player.seekTo(Math.max(0, time), true);
     } else if (data.type === 'stop') {
       silence();
+      try { player.stopVideo(); } catch (_) {}
       player.destroy();
       ready = false;
       clearInterval(heartbeat);
@@ -55,10 +59,26 @@
           send('ready');
           heartbeat = setInterval(() => {
             if (Date.now() - lastCommand > 6000) silence();
-            send('state', { state: player.getPlayerState() });
+            const duration = Number(player.getDuration());
+            const currentTime = Number(player.getCurrentTime());
+            send('state', {
+              state: player.getPlayerState(),
+              currentTime: Number.isFinite(currentTime) ? currentTime : 0,
+              duration: Number.isFinite(duration) ? duration : 0,
+              live: player.getVideoData?.().isLive === true || duration === 0 || !Number.isFinite(duration)
+            });
           }, 1000);
         },
-        onStateChange(event) { send('state', { state: event.data }); },
+        onStateChange(event) {
+          const duration = Number(player.getDuration());
+          const currentTime = Number(player.getCurrentTime());
+          send('state', {
+            state: event.data,
+            currentTime: Number.isFinite(currentTime) ? currentTime : 0,
+            duration: Number.isFinite(duration) ? duration : 0,
+            live: player.getVideoData?.().isLive === true || duration === 0 || !Number.isFinite(duration)
+          });
+        },
         onError(event) { silence(); send('error', { code: event.data }); },
         onAutoplayBlocked() { silence(); send('error', { code: 'autoplay' }); }
       }

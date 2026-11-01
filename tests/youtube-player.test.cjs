@@ -8,8 +8,12 @@ test('HTTPS bridge keeps playback muted until authenticated commands; watchdog s
   const listeners = {}, reports = [], calls = [];
   const token = '12345678-1234-1234-1234-123456789abc';
   let now = 0, interval, options;
-  const player = Object.fromEntries(['mute', 'unMute', 'playVideo', 'pauseVideo', 'destroy'].map(name => [name, () => calls.push(name)]));
+  const player = Object.fromEntries(['mute', 'unMute', 'playVideo', 'pauseVideo', 'stopVideo', 'destroy'].map(name => [name, () => calls.push(name)]));
   player.getPlayerState = () => 1;
+  player.getCurrentTime = () => 12;
+  player.getDuration = () => 90;
+  player.getVideoData = () => ({ isLive: false });
+  player.seekTo = (time, allowSeekAhead) => calls.push(['seekTo', time, allowSeekAhead]);
   const parent = { postMessage: (data, origin) => reports.push({ data, origin }) };
   const context = vm.createContext({
     parent, URLSearchParams,
@@ -44,6 +48,13 @@ test('HTTPS bridge keeps playback muted until authenticated commands; watchdog s
   options.events.onError({ data: 150 });
   assert.equal(reports.at(-1).data.code, 150);
   assert.equal(reports.at(-1).origin, '*', 'file:// parent requires wildcard but exact parent WindowProxy');
+  command({ type: 'seek', time: 40 });
+  assert.deepEqual(calls.at(-1), ['seekTo', 40, true]);
+  interval();
+  assert.equal(reports.at(-1).data.currentTime, 12);
+  assert.equal(reports.at(-1).data.duration, 90);
+  assert.equal(reports.at(-1).data.live, false);
   command({ type: 'stop' });
+  assert.equal(calls.at(-2), 'stopVideo');
   assert.equal(calls.at(-1), 'destroy');
 });

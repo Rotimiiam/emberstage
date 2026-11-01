@@ -1149,9 +1149,17 @@
     progressTime.textContent = `${formatTime(currentTime)} / ${formatTime(duration)}`;
   }
 
-  function updateYouTubeLiveProgress(paused) {
+  function updateYouTubeLiveProgress(currentTime, duration, paused, live) {
     playPauseBtn.dataset.paused = String(paused);
     playPauseBtn.textContent = paused ? 'Play' : 'Pause';
+    const knownDuration = Number.isFinite(duration) && duration > 0;
+    if (!isSeeking && knownDuration) {
+      progressBar.max = duration;
+      progressBar.value = Math.min(duration, Number.isFinite(currentTime) ? currentTime : 0);
+    }
+    progressBar.disabled = !knownDuration;
+    if (live) progressTime.textContent = knownDuration ? `${formatTime(currentTime)} / live` : 'Live';
+    else progressTime.textContent = `${formatTime(currentTime)} / ${formatTime(duration)}`;
   }
 
   function normalizeAppliedLayout(layout) {
@@ -1393,8 +1401,10 @@
     const isLiveSlides = outputState === 'live' && liveItem?.kind === 'slides';
     videoControls.style.display = (isLiveVideo || isLiveYouTube || isLiveSlides) ? 'flex' : 'none';
     playPauseBtn.style.display = isLiveSlides ? 'none' : '';
-    restartBtn.style.display = isLiveYouTube || isLiveSlides ? 'none' : '';
-    progressContainer.style.display = isLiveYouTube || isLiveSlides ? 'none' : '';
+    restartBtn.style.display = isLiveSlides ? 'none' : '';
+    restartBtn.textContent = isLiveYouTube ? 'Live edge' : 'Restart';
+    restartBtn.setAttribute('aria-label', isLiveYouTube ? 'Jump to the latest live point' : 'Restart Video');
+    progressContainer.style.display = isLiveSlides ? 'none' : '';
     slideControls.style.display = isLiveSlides || isSelectedSlides ? 'flex' : 'none';
     if (isSelectedSlides) {
       const index = normalizeSlideIndex(selectedItem);
@@ -1688,7 +1698,7 @@
       }
     } else if (data.type === 'progress') {
       if (data.id === liveId && outputState === 'live') {
-        if (items.find(i => i.id === liveId)?.kind === 'youtube') updateYouTubeLiveProgress(data.paused);
+        if (items.find(i => i.id === liveId)?.kind === 'youtube') updateYouTubeLiveProgress(data.currentTime, data.duration, data.paused, data.live === true);
         else updateLiveProgress(data.currentTime, data.duration, data.paused);
       }
     }

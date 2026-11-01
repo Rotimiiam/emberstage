@@ -201,7 +201,10 @@
 
   function progress() {
     if (current?.kind === 'youtube') {
-      media.postMessage({ version: 1, type: 'progress', id: current.id, currentTime: 0, duration: 0,
+      media.postMessage({ version: 1, type: 'progress', id: current.id,
+        currentTime: Number.isFinite(current.currentTime) ? current.currentTime : 0,
+        duration: Number.isFinite(current.duration) ? current.duration : 0,
+        live: current.live === true,
         paused: current.playerState !== 1, ended: current.playerState === 0 });
       return;
     }
@@ -256,6 +259,9 @@
           youtubeCommand(item, 'play');
         } else if (data.type === 'state' && Number.isInteger(data.state)) {
           item.playerState = data.state;
+          if (Number.isFinite(data.currentTime)) item.currentTime = data.currentTime;
+          if (Number.isFinite(data.duration)) item.duration = data.duration;
+          if (typeof data.live === 'boolean') item.live = data.live;
           if (data.state === 1) finish();
           if (current === item) progress();
         }
@@ -396,8 +402,10 @@
     const transitionDuration = (transitionType === 'cut') ? 0 : (message.duration !== undefined ? parseInt(message.duration, 10) : 300);
 
     const video = current?.element;
+    youtubeCommand(current, 'pause');
     youtubeCommand(current, 'mute', { muted: true });
     if (video && video.tagName === 'VIDEO') {
+      video.pause();
       video.muted = true; // Silence audio immediately!
     }
 
@@ -479,6 +487,14 @@
         }
       }
     } else if (data.type === 'seek') {
+      if (!isHiding && current?.kind === 'youtube' && Number.isFinite(data.time)) {
+        const duration = Number.isFinite(current.duration) && current.duration > 0 ? current.duration : data.time;
+        const time = current.live ? current.duration : Math.max(0, Math.min(duration, data.time));
+        youtubeCommand(current, 'seek', { time });
+        current.currentTime = time;
+        progress();
+        return;
+      }
       const video = current?.element;
       if (!isHiding && video?.tagName === 'VIDEO' && Number.isFinite(data.time) && Number.isFinite(video.duration)) {
         video.currentTime = Math.max(0, Math.min(video.duration, data.time));
@@ -486,6 +502,7 @@
     } else if (data.type === 'transport') {
       if (!isHiding && current?.kind === 'youtube') {
         if (data.action === 'pause' || data.action === 'play') youtubeCommand(current, data.action);
+        if (data.action === 'restart') youtubeCommand(current, 'seek', { time: current.live && Number.isFinite(current.duration) ? current.duration : 0 });
         return;
       }
       const video = current?.element;
