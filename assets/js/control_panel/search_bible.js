@@ -24,9 +24,10 @@ function ensureEndsWithColon(str) {
 }
 
 
-function bibleIndex() {
-  if (window.EmberstageBibleIndex && typeof bible_data !== 'undefined') {
-    return window.EmberstageBibleIndex.indexFor(bible_data);
+function emberstageVerseIndex() {
+  const root = typeof window === 'undefined' ? null : window;
+  if (root && root.EmberstageBibleIndex && typeof bible_data !== 'undefined') {
+    return root.EmberstageBibleIndex.indexFor(bible_data);
   }
   return null;
 }
@@ -58,7 +59,7 @@ function searchBible(query, bible_data) {
   const resolvedBook = getResolvedBookNameFromAlias(query);
   query = normalizeBibleReference(query);
   const lowercaseQuery = query.toLowerCase();
-  const index = window.EmberstageBibleIndex ? window.EmberstageBibleIndex.indexFor(bible_data) : null;
+  const index = emberstageVerseIndex();
   if (index && resolvedBook) {
     const rows = index.byBook.get(resolvedBook.toLowerCase()) || [];
     const shown = rows.slice(0, MAX_BIBLE_RESULTS);
@@ -221,7 +222,7 @@ function getBibeAri(query) {
     // for searches like 1:1:1
     savedBibleVerse = [];
     for (let i = 0; i < query.length; i++) {
-      const matchingVerse = (window.EmberstageBibleIndex ? window.EmberstageBibleIndex.indexFor(bible_data).byAri.get(String(query[i])) : null) || bible_data.find(item => item.ari === query[i]);
+      const matchingVerse = (emberstageVerseIndex() ? emberstageVerseIndex().byAri.get(String(query[i])) : null) || bible_data.find(item => item.ari === query[i]);
       if (matchingVerse) {
         savedBibleVerse.push(matchingVerse.ari);
         const pElement = document.createElement('p');

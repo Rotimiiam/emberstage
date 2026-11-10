@@ -157,7 +157,7 @@
         })
         .then(function (content) {
           return computeSha256Hex(content).then(function (hash) {
-            if (hash && hash.toLowerCase() !== meta.sha256.toLowerCase()) {
+            if (!hash || hash.toLowerCase() !== meta.sha256.toLowerCase()) {
               throw new Error('SHA-256 mismatch for ' + relPath);
             }
             nextAssets[relPath] = {
