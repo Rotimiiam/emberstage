@@ -62,9 +62,11 @@ function updateDockLayoutClasses() {
   const isTiny = viewportHeight <= 280 || viewportWidth <= 340;
   const dockScale = Math.max(0.72, Math.min(1, Math.min(viewportWidth / 390, viewportHeight / 720)));
 
-  body.classList.toggle("dock-short", isShort);
-  body.classList.toggle("dock-compact", isCompact);
-  body.classList.toggle("dock-tiny", isTiny);
+  const pinnedSize = body.dataset.dockSize && body.dataset.dockSize !== "auto" ? body.dataset.dockSize : "";
+  body.classList.toggle("dock-short", pinnedSize ? pinnedSize === "short" : isShort);
+  body.classList.toggle("dock-compact", pinnedSize ? pinnedSize === "compact" : isCompact);
+  body.classList.toggle("dock-tiny", pinnedSize ? pinnedSize === "compact" : isTiny);
+  body.classList.toggle("dock-wide", pinnedSize === "wide");
   body.style.setProperty("--dock-w", `${viewportWidth}px`);
   body.style.setProperty("--dock-h", `${viewportHeight}px`);
   if (!body.dataset.uiScale) body.style.setProperty("--dock-scale", `${dockScale}`);

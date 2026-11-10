@@ -7,19 +7,21 @@
     <link rel="shortcut icon" href="assets/brand/favicon.svg">
     <link rel="stylesheet" href="assets/css/emberstage_brand.css">
     <link rel="stylesheet" href="assets/css/dock_ui_scale.css">
+    <link rel="stylesheet" href="assets/css/dock_appearance.css">
     <link rel="stylesheet" href="assets/css/control_panel/cp_style.css">
     <link rel="stylesheet" href="assets/css/control_panel/cp_themes.css">
     <link rel="stylesheet" href="assets/css/control_panel/cp_compact_overrides.css">
     <link rel="stylesheet" href="assets/css/control_panel/broadcast_look.css">
     <title>Text · Emberstage for OBS</title>
   </head>
-  <body data-theme="dark">
+  <body data-theme="obs-bible-default-yami">
     <div class="main">
       <div class="app-topbar">
         <div class="dock-brand dock-brand-lockup" aria-label="Emberstage Text dock">
-          <img class="ember-brand-logo" src="assets/brand/emberstage-logo.svg" alt="">
+          <img class="ember-brand-logo" src="assets/brand/emberstage-logo.svg" data-ember-logo="assets/brand/emberstage-logo.svg" alt="">
           <div class="dock-brand-stack">
             <img class="ember-brand-wordmark" src="assets/brand/emberstage-wordmark.svg" alt="Emberstage for OBS">
+            <strong class="dock-brand-name" hidden></strong>
             <span class="dock-brand-kicker">Text dock</span>
           </div>
         </div>
@@ -62,6 +64,42 @@
           <input id="control-dock-scale" class="dock-ui-scale-slider" type="range" min="70" max="120" step="1" value="100" aria-label="Text dock size slider">
           <span id="control-dock-scale-value" class="dock-ui-scale-readout">100%</span>
         </label>
+        <button id="dock-appearance-open" class="dock-appearance-open" type="button" aria-expanded="false" aria-controls="dock-appearance">Appearance</button>
+        <div id="dock-appearance" class="dock-appearance" hidden>
+          <label>Theme
+            <select id="dock-appearance-theme">
+              <option value="obs-bible-acri">Acri</option>
+              <option value="obs-bible-dark">Dark</option>
+              <option value="obs-bible-grey">Grey</option>
+              <option value="obs-bible-light">Light</option>
+              <option value="obs-bible-rachni">Rachni</option>
+              <option value="obs-bible-system">System</option>
+              <option value="obs-bible-default-yami">Yami</option>
+            </select>
+          </label>
+          <label>Church name
+            <input id="dock-appearance-name" maxlength="40" placeholder="Replaces Emberstage" autocomplete="off">
+          </label>
+          <label>Logo
+            <input id="dock-appearance-logo" type="file" accept="image/png,image/jpeg,image/webp,image/gif">
+          </label>
+          <div class="dock-appearance-row">
+            <button id="dock-appearance-logo-clear" type="button">Use Emberstage logo</button>
+          </div>
+          <label>Emberstage color
+            <input id="dock-appearance-color" type="color" value="#e6b15a">
+          </label>
+          <div class="dock-appearance-row">
+            <button id="dock-appearance-color-clear" type="button">Use theme color</button>
+          </div>
+          <div class="dock-size-choices" aria-label="Dock size">
+            <button type="button" data-dock-size-choice="auto" aria-pressed="true">Auto</button>
+            <button type="button" data-dock-size-choice="compact" aria-pressed="false">Compact</button>
+            <button type="button" data-dock-size-choice="standard" aria-pressed="false">Standard</button>
+            <button type="button" data-dock-size-choice="wide" aria-pressed="false">Wide</button>
+            <button type="button" data-dock-size-choice="short" aria-pressed="false">Short</button>
+          </div>
+        </div>
         <div class="toggle tooltip tooltip-top" data-tooltip="Show or hide shared Scripture and Songs output">
           <button class="toggle-container output-toggle" id="toggle-button-display" type="button" aria-label="Show shared Scripture and Songs output" aria-pressed="false" title="Show shared Scripture and Songs output">
             <input type="checkbox" id="toggle-display" class="toggle-input">
@@ -826,6 +864,7 @@
     <script src="assets/js/control_panel/send_message.js"></script>
     <script src="assets/js/control_panel/settings.js"></script>
     <!-- <script src="assets/js/control_panel/toggle_display.js"></script> -->
+    <script src="assets/js/dock_appearance.js"></script>
     <script src="assets/js/control_panel/panel_settings.js"></script>
     <script src="assets/js/control_panel/load_panel_settings.js"></script>
     <script src="assets/js/control_panel/animate.js"></script>

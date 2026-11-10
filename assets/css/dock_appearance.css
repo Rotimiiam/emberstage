@@ -1,0 +1,127 @@
+.app-topbar {
+  position: relative;
+}
+
+.dock-appearance-open {
+  height: var(--dock-control-height, 34px);
+  padding: 0 10px;
+  border: 1px solid var(--ember-brand-line-strong, rgba(242, 201, 125, 0.34));
+  border-radius: var(--dock-radius, 7px);
+  background: transparent;
+  color: var(--ember-brand-gold-bright, #f2c97d);
+  font-size: var(--dock-font-size-sm, 11px);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.dock-appearance {
+  position: absolute;
+  z-index: 30;
+  top: 58px;
+  right: 12px;
+  display: grid;
+  gap: 10px;
+  width: min(320px, calc(100vw - 24px));
+  padding: 12px;
+  border: 1px solid var(--ember-brand-line-strong, rgba(242, 201, 125, 0.34));
+  border-radius: 12px;
+  background: #14171c;
+  color: var(--ember-brand-text, #f3f4f6);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.38);
+}
+
+.dock-appearance[hidden] {
+  display: none;
+}
+
+.dock-appearance label {
+  display: grid;
+  gap: 4px;
+  color: var(--ember-brand-muted, #b7bfca);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.dock-appearance input,
+.dock-appearance select,
+.dock-appearance button {
+  min-height: 32px;
+  border-radius: 8px;
+}
+
+.dock-appearance-row,
+.dock-size-choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.dock-size-choices button[aria-pressed="true"] {
+  border-color: var(--ember-brand-gold, #e6b15a);
+  color: #1a140c;
+  background: var(--ember-brand-gold, #e6b15a);
+}
+
+.dock-brand-name {
+  color: var(--ember-brand-gold-bright, #f2c97d);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.1;
+}
+
+.dock-brand-name[hidden],
+.dock-brand-wordmark[hidden] {
+  display: none;
+}
+
+body[data-dock-size="compact"] .dock-brand-kicker,
+body[data-dock-size="compact"] .tab-button-copy small,
+body[data-dock-size="short"] .dock-brand-kicker,
+body[data-dock-size="short"] .tab-button-copy small {
+  display: none;
+}
+
+body[data-dock-size="compact"] .app-topbar,
+body[data-dock-size="short"] .app-topbar {
+  gap: 4px;
+}
+
+body[data-dock-size="compact"] .tab-button,
+body[data-dock-size="short"] .tab-button {
+  padding: 4px 2px;
+  font-size: 12px;
+}
+
+body[data-dock-size="compact"] .ember-brand-logo,
+body[data-dock-size="short"] .ember-brand-logo {
+  width: 20px;
+  height: 20px;
+}
+
+body[data-dock-size="wide"] .app-topbar {
+  gap: 12px;
+}
+
+body[data-dock-size="wide"] .dock-brand-name,
+body[data-dock-size="wide"] .dock-brand-wordmark {
+  font-size: 18px;
+}
+
+body[data-dock-size="short"] .app-topbar {
+  display: flex;
+  align-items: center;
+}
+
+body[data-dock-size="short"] .tabs {
+  min-width: 0;
+  overflow: auto;
+}
+
+.selected-tab,
+.primary,
+.dock-brand-kicker {
+  border-color: var(--ember-brand-gold, #e6b15a);
+}
