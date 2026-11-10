@@ -93,3 +93,25 @@ test('branding defaults beside scripture and preserves GIF bytes and saved corne
   assert.equal(branding.isSafeLogoDataUrl('data:image/gif;base64,' + 'A'.repeat(branding.MAX_LOGO_DATA_URL_LENGTH)), false);
   assert.equal(branding.isSafeLogoDataUrl('data:image/gif,<svg onload=alert(1)>'), false);
 });
+
+test('church looks keep a named scripture and text pair and replace the same name', () => {
+  const sunday = branding.sanitizeChurchLook({
+    name: '  Sunday morning  ',
+    scripture: { layout: 'lower-third', churchName: 'Grace Assembly', accentColor: '#112233', safeMarginPercent: 8 },
+    text: { layout: 'full-screen', churchName: 'Grace Assembly', safeMarginPercent: 40 },
+  });
+  assert.equal(sunday.name, 'Sunday morning');
+  assert.equal(sunday.scripture.safeMarginPercent, 8);
+  assert.equal(sunday.text.safeMarginPercent, 15);
+  const youth = branding.sanitizeChurchLook({ name: 'Youth', scripture: { layout: 'legacy' }, text: {} });
+  const replaced = branding.upsertChurchLook([sunday, youth], {
+    name: 'sunday morning',
+    scripture: { layout: 'full-screen', churchName: 'Grace' },
+    text: { layout: 'lower-third' },
+  });
+  assert.equal(replaced.length, 2);
+  assert.equal(replaced[0].name, 'sunday morning');
+  assert.equal(replaced[0].scripture.layout, 'full-screen');
+  assert.equal(branding.removeChurchLook(replaced, 'YOUTH').length, 1);
+  assert.equal(branding.sanitizeChurchLook({ name: '   ', scripture: {}, text: {} }), null);
+});

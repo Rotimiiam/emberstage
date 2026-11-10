@@ -293,3 +293,20 @@
 @media (max-width: 640px) {
   .broadcast-look-grid { grid-template-columns: 1fr; }
 }
+
+.broadcast-look-library {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+.broadcast-look-library-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+.broadcast-look-library-row select,
+.broadcast-look-library-row input {
+  min-width: 140px;
+  flex: 1 1 140px;
+}

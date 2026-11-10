@@ -132,6 +132,59 @@
     return /^data:(image\/png|image\/jpeg|image\/webp|image\/gif);base64,[a-z0-9+/=]+$/i.test(text);
   }
 
+  const LOOKS_KEY = 'obs-bible-church-looks-v1';
+  const MAX_CHURCH_LOOKS = 12;
+
+  function sanitizeLookName(value) {
+    return sanitizeText(value, 40);
+  }
+
+  function sanitizeChurchLook(input) {
+    const source = input && typeof input === 'object' ? input : {};
+    const name = sanitizeLookName(source.name);
+    if (!name) return null;
+    return {
+      name,
+      scripture: sanitizeBroadcastSettings(source.scripture),
+      text: sanitizeBroadcastSettings(source.text),
+    };
+  }
+
+  function sanitizeChurchLooks(input) {
+    const source = Array.isArray(input) ? input : [];
+    const looks = [];
+    const seen = new Set();
+    for (const item of source) {
+      const look = sanitizeChurchLook(item);
+      if (!look) continue;
+      const key = look.name.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      looks.push(look);
+      if (looks.length >= MAX_CHURCH_LOOKS) break;
+    }
+    return looks;
+  }
+
+  function upsertChurchLook(list, look) {
+    const next = sanitizeChurchLook(look);
+    if (!next) return sanitizeChurchLooks(list);
+    const looks = sanitizeChurchLooks(list).filter(item => item.name.toLowerCase() !== next.name.toLowerCase());
+    looks.unshift(next);
+    return looks.slice(0, MAX_CHURCH_LOOKS);
+  }
+
+  function removeChurchLook(list, name) {
+    const key = sanitizeLookName(name).toLowerCase();
+    return sanitizeChurchLooks(list).filter(item => item.name.toLowerCase() !== key);
+  }
+
+  function clampMargin(value, fallback) {
+    const numeric = Number.parseInt(value, 10);
+    if (!Number.isFinite(numeric)) return fallback;
+    return Math.max(0, Math.min(15, numeric));
+  }
+
   function sanitizeBroadcastSettings(input, fallback) {
     const base = Object.assign({}, DEFAULT_BROADCAST_SETTINGS, fallback || {});
     const source = input && typeof input === 'object' ? input : {};
@@ -145,7 +198,7 @@
       entranceDuration: nearestDuration(source.entranceDuration, base.entranceDuration),
       exitStyle: sanitizeChoice(source.exitStyle, MOTIONS, base.exitStyle),
       exitDuration: nearestDuration(source.exitDuration, base.exitDuration),
-      safeMarginPercent: 5,
+      safeMarginPercent: clampMargin(source.safeMarginPercent, base.safeMarginPercent),
     };
   }
 
@@ -232,6 +285,12 @@
     songCuePagination,
     STORAGE_KEYS,
     TEXT_STORAGE_KEYS,
+    LOOKS_KEY,
+    MAX_CHURCH_LOOKS,
+    sanitizeChurchLook,
+    sanitizeChurchLooks,
+    upsertChurchLook,
+    removeChurchLook,
     PROTOCOL,
     ALLOWED_LOGO_MIME_TYPES,
     MAX_LOGO_FILE_BYTES,

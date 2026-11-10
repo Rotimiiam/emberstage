@@ -1,6 +1,7 @@
 (function () {
   const branding = window.OBSBibleBroadcastBranding;
   if (!branding) return;
+  const panelRefreshers = [];
 
   function initializePanel(target) {
   const field = (id) => document.getElementById((target === 'text' ? 'text-' : '') + 'broadcast-look-' + id);
@@ -17,6 +18,7 @@
     entranceDuration: field('entrance-duration'),
     exitStyle: field('exit-style'),
     exitDuration: field('exit-duration'),
+    safeMargin: field('safe-margin'),
     applyButton: field('apply'),
     restoreButton: field('restore-legacy'),
     applyStatus: field('apply-status'),
@@ -122,6 +124,7 @@
     elements.entranceDuration.value = String(draftSettings.entranceDuration);
     elements.exitStyle.value = draftSettings.exitStyle;
     elements.exitDuration.value = String(draftSettings.exitDuration);
+    if (elements.safeMargin) elements.safeMargin.value = String(draftSettings.safeMarginPercent);
     updateLogoStatus(draftSettings.logoDataUrl ? 'Logo ready' : 'PNG, JPG, WebP, or GIF · up to 1 MB.', draftSettings.logoDataUrl ? 'ok' : 'muted');
     updateApplyStatus();
     renderPreview();
@@ -138,6 +141,7 @@
       entranceDuration: Number(elements.entranceDuration.value),
       exitStyle: elements.exitStyle.value,
       exitDuration: Number(elements.exitDuration.value),
+      safeMarginPercent: elements.safeMargin ? Number(elements.safeMargin.value) : draftSettings.safeMarginPercent,
     }, draftSettings);
     writeStoredSettings(storageKeys.draft, draftSettings);
     updateApplyStatus();
@@ -218,6 +222,7 @@
       elements.entranceDuration,
       elements.exitStyle,
       elements.exitDuration,
+      elements.safeMargin,
     ].forEach((field) => field?.addEventListener(eventName, syncDraftFromForm));
   });
 
@@ -260,6 +265,16 @@
     if (target === 'text') renderPreview();
   });
 
+  function reloadFromStorage(nextDraft, nextApplied) {
+    draftSettings = branding.sanitizeBroadcastSettings(nextDraft);
+    appliedSettings = branding.sanitizeBroadcastSettings(nextApplied);
+    writeStoredSettings(storageKeys.draft, draftSettings);
+    writeStoredSettings(storageKeys.applied, appliedSettings);
+    syncFormFromDraft();
+    broadcastAppliedSettings();
+  }
+  panelRefreshers.push({ target, readDraft: () => draftSettings, reloadFromStorage });
+
   syncFormFromDraft();
   elements.panel.dataset.ready = 'true';
   }
@@ -274,12 +289,102 @@
   textPanel.querySelectorAll('[for]').forEach((label) => {
     label.htmlFor = 'text-' + label.htmlFor;
   });
+  textPanel.querySelector('#text-broadcast-look-library')?.remove();
   textPanel.querySelector('.broadcast-look-title').textContent = 'Text broadcast look';
   textPanel.querySelector('.broadcast-look-copy').textContent = 'Preview Text changes, then Apply. Scripture styling stays unchanged.';
   textPanel.querySelector('option[value="in-card"]').textContent = 'Left of text';
   document.getElementById('text-style-content').appendChild(textPanel);
   initializePanel('scripture');
   initializePanel('text');
+
+  function readLooks() {
+    try {
+      return branding.sanitizeChurchLooks(JSON.parse(localStorage.getItem(branding.LOOKS_KEY) || '[]'));
+    } catch (error) {
+      return [];
+    }
+  }
+
+  function writeLooks(looks) {
+    localStorage.setItem(branding.LOOKS_KEY, JSON.stringify(branding.sanitizeChurchLooks(looks)));
+  }
+
+  function setLookStatus(message) {
+    const status = document.getElementById('broadcast-look-library-status');
+    if (status) status.textContent = message;
+  }
+
+  function renderLooks(selectedName) {
+    const select = document.getElementById('broadcast-look-library-select');
+    if (!select) return;
+    const looks = readLooks();
+    const current = selectedName || select.value;
+    select.replaceChildren();
+    const empty = document.createElement('option');
+    empty.value = '';
+    empty.textContent = looks.length ? 'Saved looks' : 'No saved looks';
+    select.appendChild(empty);
+    for (const look of looks) {
+      const option = document.createElement('option');
+      option.value = look.name;
+      option.textContent = look.name;
+      select.appendChild(option);
+    }
+    select.value = looks.some(look => look.name === current) ? current : '';
+  }
+
+  function currentDraft(target) {
+    return panelRefreshers.find(panel => panel.target === target)?.readDraft() || branding.sanitizeBroadcastSettings();
+  }
+
+  document.getElementById('broadcast-look-library-save')?.addEventListener('click', () => {
+    const name = document.getElementById('broadcast-look-library-name').value;
+    const look = branding.sanitizeChurchLook({
+      name,
+      scripture: currentDraft('scripture'),
+      text: currentDraft('text'),
+    });
+    if (!look) {
+      setLookStatus('Name the look first.');
+      return;
+    }
+    writeLooks(branding.upsertChurchLook(readLooks(), look));
+    document.getElementById('broadcast-look-library-name').value = look.name;
+    renderLooks(look.name);
+    setLookStatus('Saved ' + look.name + '.');
+  });
+
+  document.getElementById('broadcast-look-library-use')?.addEventListener('click', () => {
+    const name = document.getElementById('broadcast-look-library-select').value;
+    const look = readLooks().find(item => item.name === name);
+    if (!look) {
+      setLookStatus('Choose a saved look.');
+      return;
+    }
+    for (const panel of panelRefreshers) {
+      const settings = panel.target === 'text' ? look.text : look.scripture;
+      panel.reloadFromStorage(settings, settings);
+    }
+    document.getElementById('broadcast-look-library-name').value = look.name;
+    setLookStatus('Using ' + look.name + '.');
+  });
+
+  document.getElementById('broadcast-look-library-delete')?.addEventListener('click', () => {
+    const name = document.getElementById('broadcast-look-library-select').value;
+    if (!name) {
+      setLookStatus('Choose a look to delete.');
+      return;
+    }
+    writeLooks(branding.removeChurchLook(readLooks(), name));
+    renderLooks('');
+    setLookStatus('Deleted ' + name + '.');
+  });
+
+  document.getElementById('broadcast-look-library-select')?.addEventListener('change', (event) => {
+    document.getElementById('broadcast-look-library-name').value = event.target.value;
+  });
+  renderLooks('');
+
 
   const textDialog = document.getElementById('text-style-dialog');
   document.getElementById('text-style-open').addEventListener('click', () => textDialog.showModal());

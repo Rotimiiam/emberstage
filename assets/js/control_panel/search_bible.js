@@ -23,12 +23,84 @@ function ensureEndsWithColon(str) {
     return str;
 }
 
+
+function bibleIndex() {
+  if (window.EmberstageBibleIndex && typeof bible_data !== 'undefined') {
+    return window.EmberstageBibleIndex.indexFor(bible_data);
+  }
+  return null;
+}
+
+function appendVerseResult(verse, savedBibleVerse) {
+  savedBibleVerse.push(verse.ari);
+  const pElement = document.createElement('p');
+  pElement.classList.add('verse');
+  pElement.id = verse.name.replace(/:/g, '-').replace(/\s/g, '').toLowerCase();
+  pElement.innerHTML = buildVerseMarkup(verse.name, verse.verse);
+  bblVerseDiv.appendChild(pElement);
+}
+
+const MAX_BIBLE_RESULTS = 120;
+
+function finishBibleResults(savedBibleVerse, total) {
+  if (total > savedBibleVerse.length) {
+    const note = document.createElement('p');
+    note.classList.add('verse-result-note');
+    note.textContent = 'Showing ' + savedBibleVerse.length + ' of ' + total + '. Add another word to narrow it.';
+    bblVerseDiv.appendChild(note);
+  }
+  localStorage.setItem('savedBibleVerse', savedBibleVerse);
+}
+
 function searchBible(query, bible_data) {
   bblVerseDiv.innerHTML = "";
   let savedBibleVerse = [];
   const resolvedBook = getResolvedBookNameFromAlias(query);
   query = normalizeBibleReference(query);
   const lowercaseQuery = query.toLowerCase();
+  const index = window.EmberstageBibleIndex ? window.EmberstageBibleIndex.indexFor(bible_data) : null;
+  if (index && resolvedBook) {
+    const rows = index.byBook.get(resolvedBook.toLowerCase()) || [];
+    const shown = rows.slice(0, MAX_BIBLE_RESULTS);
+    for (const verse of shown) appendVerseResult(verse, savedBibleVerse);
+    finishBibleResults(savedBibleVerse, rows.length);
+    return;
+  }
+  if (index && /^.+\s+\d+\s*:\s*\d+\s*-\s*\d+$/.test(lowercaseQuery)) {
+    const [bookAndChapter, verseRange] = lowercaseQuery.split(':');
+    const [startVerse, endVerse] = verseRange.split('-').map(Number);
+    let total = 0;
+    for (let i = startVerse; i <= endVerse; i++) {
+      const verse = index.byName.get(bookAndChapter + ':' + i);
+      if (!verse) continue;
+      total += 1;
+      if (savedBibleVerse.length < MAX_BIBLE_RESULTS) appendVerseResult(verse, savedBibleVerse);
+    }
+    finishBibleResults(savedBibleVerse, total);
+    return;
+  }
+  if (index && lowercaseQuery.includes(':')) {
+    const exact = index.byName.get(lowercaseQuery);
+    if (exact) appendVerseResult(exact, savedBibleVerse);
+    finishBibleResults(savedBibleVerse, exact ? 1 : 0);
+    return;
+  }
+  if (index && !/\d/.test(lowercaseQuery)) {
+    const words = lowercaseQuery.replace(/\s{2,}/g, ' ').trim().split(' ').filter(Boolean);
+    const matches = [];
+    for (const row of index.textRows) {
+      if (words.every(word => row.text.includes(word))) matches.push(row.verse);
+    }
+    for (const verse of matches.slice(0, MAX_BIBLE_RESULTS)) appendVerseResult(verse, savedBibleVerse);
+    finishBibleResults(savedBibleVerse, matches.length);
+    return;
+  }
+  if (index) {
+    const chapter = index.byChapter.get(ensureEndsWithColon(lowercaseQuery)) || [];
+    for (const verse of chapter.slice(0, MAX_BIBLE_RESULTS)) appendVerseResult(verse, savedBibleVerse);
+    finishBibleResults(savedBibleVerse, chapter.length);
+    return;
+  }
 
   if (resolvedBook) {
     // A book-only query is navigation, not fuzzy verse-text search. In
@@ -149,7 +221,7 @@ function getBibeAri(query) {
     // for searches like 1:1:1
     savedBibleVerse = [];
     for (let i = 0; i < query.length; i++) {
-      const matchingVerse = bible_data.find(bible_data => bible_data.ari === query[i]);
+      const matchingVerse = (window.EmberstageBibleIndex ? window.EmberstageBibleIndex.indexFor(bible_data).byAri.get(String(query[i])) : null) || bible_data.find(item => item.ari === query[i]);
       if (matchingVerse) {
         savedBibleVerse.push(matchingVerse.ari);
         const pElement = document.createElement('p');

@@ -457,6 +457,16 @@
                      </select>
                    </div>
                  </div>
+                  <div class="broadcast-look-field">
+                    <label for="broadcast-look-safe-margin">Safe margin</label>
+                    <select id="broadcast-look-safe-margin">
+                      <option value="0">Edge</option>
+                      <option value="3">Tight</option>
+                      <option value="5" selected>Normal</option>
+                      <option value="8">Wide</option>
+                      <option value="12">Extra wide</option>
+                    </select>
+                  </div>
                  <div class="broadcast-look-actions">
                    <button type="button" id="broadcast-look-apply">Apply broadcast look</button>
                    <button type="button" id="broadcast-look-restore-legacy">Restore legacy</button>
@@ -478,6 +488,18 @@
                      <div class="broadcast-look-preview-verse" id="broadcast-look-preview-verse"></div>
                    </div>
                  </div>
+               </div>
+               <div class="broadcast-look-library" id="broadcast-look-library">
+                 <div class="broadcast-look-title">Church looks</div>
+                 <div class="broadcast-look-copy">Save the current Scripture and Text look. Switch Sunday, youth, or a special service without re-entering the logo or colors.</div>
+                 <div class="broadcast-look-library-row">
+                   <select id="broadcast-look-library-select" aria-label="Saved church looks"><option value="">Saved looks</option></select>
+                   <input id="broadcast-look-library-name" type="text" maxlength="40" placeholder="Sunday morning" aria-label="Church look name">
+                   <button type="button" id="broadcast-look-library-save">Save look</button>
+                   <button type="button" id="broadcast-look-library-use">Use look</button>
+                   <button type="button" id="broadcast-look-library-delete">Delete</button>
+                 </div>
+                 <div class="broadcast-look-status" id="broadcast-look-library-status" data-tone="muted"></div>
                </div>
                <!-- Retain legacy inputs for saved-setting bindings, not as visible controls. -->
                <div class="column" id="shadow-editor" hidden style="display: none;">
@@ -809,6 +831,7 @@
     <script src="assets/js/control_panel/animate.js"></script>
 
     <script src="assets/js/control_panel/load_song.js"></script>
+    <script src="assets/js/control_panel/bible_index.js"></script>
     <script src="assets/js/control_panel/search_bible.js"></script>
     <script src="assets/js/control_panel/search_lyrics.js"></script>
     <script src="assets/js/control_panel/suggest_bible_books.js"></script>
