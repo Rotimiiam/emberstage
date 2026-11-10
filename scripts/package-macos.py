@@ -31,6 +31,7 @@ css/browser/browser_style.css
 css/browser/broadcast_branding.css
 css/camera_dock.css
 css/dock_ui_scale.css
+css/dock_appearance.css
 css/control_panel/cp_compact_overrides.css
 css/control_panel/cp_style.css
 css/control_panel/cp_themes.css
@@ -51,6 +52,7 @@ js/control_panel/load_panel_settings.js
 js/control_panel/load_song.js
 js/control_panel/panel_settings.js
 js/control_panel/search_bible.js
+js/control_panel/bible_index.js
 js/control_panel/search_lyrics.js
 js/control_panel/send_message.js
 js/control_panel/settings.js
@@ -59,11 +61,13 @@ js/control_panel/suggest_bible_books.js
 js/control_panel/utils.js
 js/keyboard-navigation.js
 js/dock_ui_scale.js
+js/dock_appearance.js
 js/dock_auto_updater.js
 js/media/demo.js
 js/media/media-app.js
 js/media/media-core.js
 js/media/obs-client.js
+js/media/pdf-slides.js
 js/media/native-camera-core.js
 js/media/native-install.js
 js/media/owned-camera-app.js
