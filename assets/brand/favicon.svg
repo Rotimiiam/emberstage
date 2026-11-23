@@ -1,6 +1,37 @@
-<svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <rect x="4.25" y="4.25" width="55.5" height="55.5" rx="17.75" fill="#12161D" stroke="#E3B15B" stroke-opacity="0.78" stroke-width="1.5"/>
-  <rect x="27" y="12" width="10" height="40" rx="5" fill="#F1C879"/>
-  <rect x="12" y="27" width="40" height="10" rx="5" fill="#F1C879"/>
-  <circle cx="48.5" cy="15.5" r="4.5" fill="#F17D85"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200" fill="none">
+  <defs>
+    <linearGradient id="favE1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FF8C00"/>
+      <stop offset="100%" stop-color="#FF3300"/>
+    </linearGradient>
+    <linearGradient id="favE2" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFAE00"/>
+      <stop offset="100%" stop-color="#FF5500"/>
+    </linearGradient>
+    <linearGradient id="favE3" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFD000"/>
+      <stop offset="100%" stop-color="#FF7700"/>
+    </linearGradient>
+    <radialGradient id="favBack" cx="50%" cy="50%" r="60%">
+      <stop offset="0%" stop-color="#141922"/>
+      <stop offset="100%" stop-color="#090c10"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Clean Obsidian Container -->
+  <rect width="200" height="200" rx="46" fill="url(#favBack)"/>
+  <rect x="2" y="2" width="196" height="196" rx="44" stroke="#1f2733" stroke-width="1.5"/>
+
+  <!-- Bold Modern Tech "E" Monogram + Stage Flame (Pure Minimal Geometry) -->
+  <!-- Top bar of E / Flame peak -->
+  <path d="M 64 60 C 64 54 69 50 75 50 L 132 50 C 137 50 141 55 139 60 L 126 90 C 124 94 120 97 115 97 L 64 97 Z" fill="url(#favE3)"/>
+  
+  <!-- Middle bar of E / Core Stage Light beam -->
+  <path d="M 64 88 L 105 88 C 110 88 114 92 113 97 L 104 116 C 102 120 98 123 93 123 L 64 123 Z" fill="url(#favE2)"/>
+  
+  <!-- Bottom bar of E / Stage Foundation -->
+  <path d="M 64 114 L 128 114 C 133 114 137 118 136 123 L 122 144 C 120 148 115 150 110 150 L 75 150 C 69 150 64 146 64 140 Z" fill="url(#favE1)"/>
+
+  <!-- Dynamic Negative Notch slicing through vertical spine for motion -->
+  <polygon points="64,50 78,50 64,150 50,150" fill="#FF4400" fill-opacity="0.3"/>
 </svg>

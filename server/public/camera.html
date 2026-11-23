@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Emberstage Phone Camera</title><script src="/camera/camera.js" defer></script></head>
+<body>
+  <main>
+    <h1>Phone camera</h1>
+    <p>This phone sends video directly to your paired desk, not through this service. Compare the code with the desk before approving. Approval does not put this camera on Program.</p>
+    <label>Camera <select id="facing"><option value="environment">Rear</option><option value="user">Front</option></select></label>
+    <button id="start" type="button">Start</button><button id="stop" type="button" disabled>Stop</button>
+    <p id="status" role="status">Ready. Camera access starts only when you press Start.</p>
+    <p>Approval code: <strong id="code">—</strong></p>
+    <video id="preview" autoplay muted playsinline aria-label="Camera preview"></video>
+  </main>
+</body>
+</html>

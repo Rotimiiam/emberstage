@@ -292,6 +292,20 @@ export function initDatabase() {
   try {
     db.exec(`ALTER TABLE stream_sessions ADD COLUMN publisher_identity TEXT;`);
   } catch (e) {}
+  if (!db.queryAll('PRAGMA table_info(stream_sessions)').some(column => column.name === 'publish_capability_expires_at')) {
+    db.exec('ALTER TABLE stream_sessions ADD COLUMN publish_capability_expires_at TEXT;');
+  }
+  // Legacy stopped sessions legitimately share a persistent device key hash.
+  db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_open_publish_capability_hash
+    ON stream_sessions(stream_key_hash)
+    WHERE publish_capability_expires_at IS NOT NULL AND stream_key_hash IS NOT NULL
+      AND status IN ('reserved', 'streaming');
+    CREATE TRIGGER IF NOT EXISTS clear_stopped_publish_capability
+    AFTER UPDATE OF status ON stream_sessions
+    WHEN NEW.status = 'stopped' AND NEW.publish_capability_expires_at IS NOT NULL
+    BEGIN UPDATE stream_sessions SET stream_key_hash = NULL WHERE id = NEW.id; END;
+    UPDATE stream_sessions SET stream_key_hash = NULL
+      WHERE status = 'stopped' AND publish_capability_expires_at IS NOT NULL;`);
 
   for (const column of [
     'paystack_subscription_id TEXT',

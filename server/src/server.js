@@ -8,6 +8,8 @@ import * as db from './db.js';
 import * as cryptoUtils from './crypto-utils.js';
 import { workerManager, createFacebookSnapshot, readFacebookSnapshot } from './worker-manager.js';
 import { nangoClient } from './nango-client.js';
+import { installCameraRoutes, cameraPath, cameraSecurity, cameraError } from './camera-rooms.js';
+import { installDeviceSummary } from './device-summary.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.resolve(__dirname, '../public');
@@ -271,6 +273,16 @@ function setSecurityHeaders(res, extraHeaders = {}) {
 }
 
 function json(res, data, statusCode = 200, headers = {}) {
+  if (res.publishRoute) {
+    headers = { ...headers, 'Cache-Control': 'no-store' };
+    if (data.error && !/^[A-Z][A-Z_]+$/.test(data.error)) {
+      data = { error: statusCode === 401 ? 'PUBLISH_UNAUTHORIZED' : 'PUBLISH_REQUEST_DENIED' };
+    }
+  }
+  if (res.cameraRoute) {
+    headers = { ...headers, 'Cache-Control': 'no-store' };
+    if (data.error && !/^CAMERA_[A-Z_]+$/.test(data.error)) data = { error: statusCode === 401 ? 'CAMERA_UNAUTHORIZED' : 'CAMERA_REQUEST_DENIED' };
+  }
   setSecurityHeaders(res, headers);
   res.writeHead(statusCode, {
     'Content-Type': 'application/json'
@@ -342,7 +354,7 @@ function authAndAuthorize(req, res, route) {
       return null;
     }
 
-    req.authContext = { type: 'device', device, workspaceId: device.workspace_id };
+    req.authContext = { type: 'device', device, workspaceId: device.workspace_id, accessSessionId: ds.id };
     return req.authContext;
   } else {
     // Web Session Auth (Session Cookie)
@@ -390,6 +402,9 @@ function authAndAuthorize(req, res, route) {
 }
 
 // --- DEFINE ROUTES ---
+
+installCameraRoutes({ addRoute, authAndAuthorize, json, config,
+  deviceActive: (id, workspaceId) => !!db.queryOne("SELECT id FROM devices WHERE id = ? AND workspace_id = ? AND status = 'active'", [id, workspaceId]) });
 
 // 1. Auth: Register
 addRoute('POST', '/api/auth/register', async (req, res) => {
@@ -1289,6 +1304,9 @@ export function getStrictWorkspaceEntitlement(workspaceId) {
   return getWorkspaceEntitlement(workspaceId);
 }
 
+// Device scope is the exact route's authKind (there is no global bearer allowlist).
+installDeviceSummary({ addRoute, json, db, getStrictWorkspaceEntitlement });
+
 // 10. Workspace Devices: Link-Code Generator
 addRoute('POST', '/api/workspaces/:workspaceId/devices/link-code', async (req, res) => {
   try {
@@ -1404,14 +1422,16 @@ addRoute('POST', '/api/workspaces/:workspaceId/devices/:deviceId/revoke', async 
     "SELECT id FROM stream_sessions WHERE device_id = ? AND status IN ('reserved', 'streaming')",
     [device.id]
   );
+  // Close authorization before asynchronous relay cleanup, preventing a new
+  // admission or activation from racing revocation.
+  db.transaction(() => {
+    db.run("UPDATE devices SET status = 'revoked', link_code = NULL, link_code_expires_at = NULL, ingest_key_hash = NULL, ingest_key_last4 = NULL WHERE id = ?", [device.id]);
+    db.run('DELETE FROM device_sessions WHERE device_id = ?', [device.id]);
+    db.run('UPDATE stream_sessions SET stream_key_hash = NULL WHERE device_id = ? AND publish_capability_expires_at IS NOT NULL', [device.id]);
+  });
   for (const stream of activeStreams) {
     await stopStreamSession(stream.id, req.workspaceId);
   }
-
-  db.run("UPDATE devices SET status = 'revoked', link_code = NULL, link_code_expires_at = NULL, ingest_key_hash = NULL, ingest_key_last4 = NULL WHERE id = ?", [
-    device.id
-  ]);
-  db.run('DELETE FROM device_sessions WHERE device_id = ?', [device.id]);
 
   db.logAudit({
     workspaceId: req.workspaceId,
@@ -2525,20 +2545,23 @@ addRoute('POST', '/api/workspaces/:workspaceId/providers/targets/:targetId/desel
 }, ['owner', 'operator'], true, 'web');
 
 async function enrichDestinations(workspaceId, streamId, destinations) {
+  const safeDestinations = [];
+  const state = (value, allowed) => allowed.includes(value) ? value : 'unknown';
+  const publicId = value => typeof value === 'string' && /^[A-Za-z0-9_:-]{1,256}$/.test(value) ? value : null;
+  const youtubeStates = ['created', 'ready', 'testStarting', 'testing', 'liveStarting', 'live', 'complete', 'completed', 'revoked'];
+  const facebookStates = ['UNPUBLISHED', 'SCHEDULED_UNPUBLISHED', 'SCHEDULED_LIVE', 'LIVE', 'LIVE_STOPPED', 'PROCESSING', 'VOD'];
   for (const d of destinations) {
     let name = '';
     let provider = '';
     if (d.target_type === 'custom') {
-      const tgt = db.queryOne('SELECT name FROM custom_rtmp_targets WHERE id = ?', [d.target_id]);
+      const tgt = db.queryOne('SELECT name FROM custom_rtmp_targets WHERE id = ? AND workspace_id = ?', [d.target_id, workspaceId]);
       name = tgt?.name || '';
       provider = 'Custom RTMP';
     } else {
       const tgt = db.queryOne('SELECT name, provider FROM provider_targets WHERE id = ? AND workspace_id = ?', [d.target_id, workspaceId]);
       name = tgt?.name || '';
-      provider = tgt?.provider || '';
+      provider = state(tgt?.provider, ['youtube', 'facebook', 'twitch']);
     }
-    d.name = name;
-    d.provider = provider;
 
     let broadcast = null;
     if (d.broadcast_snapshot) {
@@ -2546,13 +2569,28 @@ async function enrichDestinations(workspaceId, streamId, destinations) {
         broadcast = JSON.parse(d.broadcast_snapshot);
       } catch (e) {}
     }
-    d.broadcast = broadcast;
-    if (broadcast?.provider === 'facebook') {
+    if (d.target_type === 'provider' && broadcast?.provider === 'facebook') {
       provider = 'facebook';
-      d.provider = provider;
-      // Only public, non-secret fields are returned; never echo an arbitrary snapshot.
-      d.broadcast = { id: broadcast.id, provider, pageId: broadcast.pageId, status: 'unknown' };
-      delete d.broadcast_snapshot;
+    }
+    // Snapshots remain internal. Construct new response objects, never copy raw fields.
+    const safe = {
+      target_id: publicId(d.target_id),
+      target_type: state(d.target_type, ['provider', 'custom']),
+      status: state(d.status, ['pending', 'active', 'failed', 'stopped']),
+      error_message: d.error_message ? 'DESTINATION_FAILED' : null,
+      name: typeof name === 'string' && !/[a-z][a-z0-9+.-]*:\/\//i.test(name)
+        ? name.replace(/[\x00-\x1f\x7f]/g, '').slice(0, 256) : '',
+      provider,
+      broadcast: null
+    };
+    if (d.target_type === 'provider' && publicId(broadcast?.id)) {
+      safe.broadcast = { id: publicId(broadcast.id), provider };
+      if (provider === 'facebook') {
+        safe.broadcast.pageId = publicId(broadcast.pageId);
+        safe.broadcast.status = 'unknown';
+      } else if (provider === 'youtube') {
+        safe.broadcast.lifeCycleStatus = state(broadcast.lifeCycleStatus, youtubeStates);
+      }
     }
 
     let relayState = 'unknown';
@@ -2561,9 +2599,10 @@ async function enrichDestinations(workspaceId, streamId, destinations) {
     try {
       const status = workerManager.getDeliveryStatus(streamId, d.target_id);
       if (status) {
-        relayState = status.relayState || 'unknown';
-        lastProgressAt = status.lastProgressAt || null;
-        bytesWritten = status.bytesWritten || 0;
+        relayState = state(status.relayState, ['starting', 'relaying', 'stalled', 'failed', 'stopped']);
+        lastProgressAt = typeof status.lastProgressAt === 'string' && Number.isFinite(Date.parse(status.lastProgressAt))
+          ? new Date(status.lastProgressAt).toISOString() : null;
+        bytesWritten = Number.isSafeInteger(status.bytesWritten) && status.bytesWritten >= 0 ? status.bytesWritten : 0;
       }
     } catch (e) {}
 
@@ -2572,7 +2611,7 @@ async function enrichDestinations(workspaceId, streamId, destinations) {
     let healthStatus = 'unknown';
     let checkedAt = new Date().toISOString();
 
-    if (provider === 'youtube' && broadcast?.id) {
+    if (provider === 'youtube' && safe.broadcast?.id) {
       try {
         const bRes = await nangoClient.youtubeApiRequest(
           workspaceId,
@@ -2580,8 +2619,8 @@ async function enrichDestinations(workspaceId, streamId, destinations) {
         );
         const ytBroadcast = bRes.items?.[0];
         if (ytBroadcast) {
-          broadcastStatus = ytBroadcast.status?.lifeCycleStatus || 'unknown';
-          const boundStreamId = ytBroadcast.contentDetails?.boundStreamId;
+          broadcastStatus = state(ytBroadcast.status?.lifeCycleStatus, youtubeStates);
+          const boundStreamId = publicId(ytBroadcast.contentDetails?.boundStreamId);
           if (boundStreamId) {
             const sRes = await nangoClient.youtubeApiRequest(
               workspaceId,
@@ -2589,8 +2628,8 @@ async function enrichDestinations(workspaceId, streamId, destinations) {
             );
             const ytStream = sRes.items?.[0];
             if (ytStream) {
-              streamStatus = ytStream.status?.streamStatus || 'unknown';
-              healthStatus = ytStream.status?.healthStatus?.status || 'unknown';
+              streamStatus = state(ytStream.status?.streamStatus, ['active', 'inactive', 'created', 'ready', 'error']);
+              healthStatus = state(ytStream.status?.healthStatus?.status, ['good', 'ok', 'bad', 'noData']);
             }
           }
         }
@@ -2599,25 +2638,21 @@ async function enrichDestinations(workspaceId, streamId, destinations) {
       }
     }
 
-    if (provider === 'facebook' && broadcast?.id) {
+    if (provider === 'facebook' && safe.broadcast?.id) {
       try {
         const stored = db.queryOne('SELECT * FROM stream_session_destinations WHERE stream_session_id = ? AND target_id = ?', [streamId, d.target_id]);
         const snapshot = readFacebookSnapshot({ id: streamId, workspace_id: workspaceId }, stored);
         if (snapshot) {
           const fbStatus = await nangoClient.getFacebookLiveVideoStatus(workspaceId, snapshot.pageId, snapshot.id, snapshot.connectionId);
-          broadcastStatus = fbStatus.status || 'unknown';
-          d.broadcast = {
-            ...d.broadcast,
-            permalink_url: fbStatus.permalink_url,
-            status: broadcastStatus
-          };
+          broadcastStatus = state(fbStatus.status, facebookStates);
+          safe.broadcast.status = broadcastStatus;
         }
       } catch (e) {
         // Safe fallback
       }
     }
 
-    d.delivery = {
+    safe.delivery = {
       relayState,
       lastProgressAt,
       bytesWritten,
@@ -2627,13 +2662,13 @@ async function enrichDestinations(workspaceId, streamId, destinations) {
       checkedAt
     };
     if (provider === 'facebook') {
-      d.delivery.broadcastState = broadcastStatus;
-      d.delivery.receiving = 'unknown';
-      d.cleanupPending = broadcast?.cleanupState !== 'ended' && d.status === 'failed';
+      safe.delivery.broadcastState = broadcastStatus;
+      safe.delivery.receiving = 'unknown';
+      safe.cleanupPending = broadcast?.cleanupState !== 'ended' && d.status === 'failed';
     }
 
     // Override stored status based on active delivery
-    let computedStatus = d.status;
+    let computedStatus = safe.status;
     if (computedStatus === 'pending' || computedStatus === 'active') {
       if (relayState === 'relaying') {
         computedStatus = 'active';
@@ -2645,8 +2680,10 @@ async function enrichDestinations(workspaceId, streamId, destinations) {
         computedStatus = 'pending';
       }
     }
-    d.status = computedStatus;
+    safe.status = computedStatus;
+    safeDestinations.push(safe);
   }
+  return safeDestinations;
 }
 
 function facebookCleanupPending(workspaceId, pageId) {
@@ -3250,10 +3287,10 @@ addRoute('GET', '/api/workspaces/:workspaceId/streams/setup', async (req, res) =
           WHERE s.workspace_id = ? AND d.target_id = ? AND d.status = 'failed' AND d.broadcast_snapshot IS NOT NULL
           ORDER BY s.created_at DESC LIMIT 1`, [workspaceId, target.id]);
       if (stored) {
-        await enrichDestinations(workspaceId, stored.stream_session_id, [stored]);
-        delivery = stored.delivery;
-        broadcast = stored.broadcast;
-        cleanupPending = Boolean(stored.cleanupPending);
+        const [safe] = await enrichDestinations(workspaceId, stored.stream_session_id, [stored]);
+        delivery = safe.delivery;
+        broadcast = safe.broadcast;
+        cleanupPending = Boolean(safe.cleanupPending);
         if (cleanupPending) { ready = false; status = 'cleanup-pending'; detail = 'Retry stop to end the previous Facebook live video.'; }
       }
     }
@@ -3286,8 +3323,8 @@ function reapExpiredStreamReservations(workspaceId) {
   const now = new Date().toISOString();
   const canStream = getWorkspaceEntitlement(workspaceId).canStream;
   const expired = db.queryAll(
-    "SELECT id FROM stream_sessions WHERE workspace_id = ? AND status = 'reserved' AND (expires_at IS NULL OR expires_at <= ? OR (? = 0 AND started_at IS NULL))",
-    [workspaceId, now, Number(canStream)]
+    "SELECT id FROM stream_sessions WHERE workspace_id = ? AND status = 'reserved' AND (expires_at IS NULL OR expires_at <= ? OR publish_capability_expires_at <= ? OR (? = 0 AND started_at IS NULL))",
+    [workspaceId, now, now, Number(canStream)]
   );
   if (expired.length === 0) return;
   db.transaction(() => {
@@ -3415,7 +3452,7 @@ addRoute('POST', '/api/workspaces/:workspaceId/streams/start', (req, res) => {
   return json(res, {
     error: 'Manual stream preparation is no longer required. Configure OBS once with this device stream key, then use Start Streaming in OBS.'
   }, 410);
-}, ['operator'], true, 'device');
+}, ['owner', 'operator'], true, 'web');
 
 const streamOperationQueues = new Map();
 const streamActivationTimers = new Set();
@@ -3715,11 +3752,18 @@ async function activatePublishedStream(session, streamKey) {
 
   const entitlement = getStrictWorkspaceEntitlement(session.workspace_id);
   const now = new Date();
-  const isExpired = latest.expires_at && new Date(latest.expires_at) <= now;
+  const isExpired = (latest.expires_at && new Date(latest.expires_at) <= now) ||
+    (latest.publish_capability_expires_at && new Date(latest.publish_capability_expires_at) <= now);
+  const capabilityValid = !latest.publish_capability_expires_at ||
+    (Number.isFinite(Date.parse(latest.publish_capability_expires_at)) &&
+      Number.isFinite(Date.parse(latest.expires_at)) &&
+      latest.stream_key_hash === crypto.createHash('sha256').update(streamKey).digest('hex') &&
+      Boolean(latest.publisher_identity));
   const device = db.queryOne("SELECT status FROM devices WHERE id = ?", [session.device_id]);
   // A reservation is not an already-live broadcast. Expiry grace must not be
   // usable to start a new relay after the paid period has ended.
-  const allowed = device?.status === 'active' && entitlement.canStream && !isExpired;
+  const allowed = device?.status === 'active' && entitlement.canStream && !isExpired && capabilityValid &&
+    (!latest.publish_capability_expires_at || hasPublishPayment(session.workspace_id, entitlement.paidUntil));
   if (!allowed) {
     const nowStr = now.toISOString();
     db.run("UPDATE stream_sessions SET status = 'stopped', stopped_at = ? WHERE id = ?", [nowStr, session.id]);
@@ -3729,10 +3773,14 @@ async function activatePublishedStream(session, streamKey) {
 
   // Claim activation synchronously so duplicate NGINX callbacks cannot spawn duplicate relays.
   const startedAt = new Date().toISOString();
-  db.run("UPDATE stream_sessions SET status = 'streaming', started_at = ? WHERE id = ? AND status = 'reserved'", [startedAt, session.id]);
-  const claimed = db.queryOne('SELECT status FROM stream_sessions WHERE id = ?', [session.id]);
-  if (!claimed || claimed.status !== 'streaming') return;
-  db.run("UPDATE streaming_sessions SET status = 'streaming', started_at = ? WHERE id = ?", [startedAt, session.id]);
+  const claimed = db.transaction(() => {
+    const result = db.run("UPDATE stream_sessions SET status = 'streaming', started_at = ? WHERE id = ? AND status = 'reserved'", [startedAt, session.id]);
+    if (!Number(result.changes)) return false;
+    db.run("UPDATE streaming_sessions SET status = 'streaming', started_at = ? WHERE id = ?", [startedAt, session.id]);
+    if (latest.publish_capability_expires_at) countPublishedSession(session.workspace_id, startedAt);
+    return true;
+  });
+  if (!claimed) return;
 
   const destinations = db.queryAll('SELECT * FROM stream_session_destinations WHERE stream_session_id = ?', [session.id]);
   const localIngestUrl = config.CONTRIBUTION_INGEST_URL || 'rtmp://localhost/live';
@@ -3809,7 +3857,7 @@ async function activatePublishedStream(session, streamKey) {
           continue;
         }
       }
-      db.run("UPDATE stream_session_destinations SET status = 'failed', error_message = ? WHERE id = ?", [target?.provider === 'facebook' ? 'Facebook relay could not start' : err.message || 'Relay could not start', destination.id]);
+      db.run("UPDATE stream_session_destinations SET status = 'failed', error_message = ? WHERE id = ?", [latest.publish_capability_expires_at ? 'RELAY_START_FAILED' : target?.provider === 'facebook' ? 'Facebook relay could not start' : err.message || 'Relay could not start', destination.id]);
     }
   }
 
@@ -3821,6 +3869,7 @@ async function activatePublishedStream(session, streamKey) {
 }
 
 function findDeviceForIngestKey(streamKey) {
+  if (typeof streamKey !== 'string' || streamKey.startsWith('ep_')) return null;
   const computedHash = crypto.createHash('sha256').update(streamKey).digest('hex');
   const device = db.queryOne(
     "SELECT * FROM devices WHERE ingest_key_hash = ? AND status = 'active'",
@@ -3831,12 +3880,15 @@ function findDeviceForIngestKey(streamKey) {
   return device && matches ? device : null;
 }
 
-function reservePublishedStream(device, clientId = '') {
+function reservePublishedStream(device, clientId = '', admission = null) {
   if (inflightWorkspaceMutations.has(device.workspace_id)) {
     return { error: 'Conflict: A workspace settings mutation is in progress. Please retry shortly.', status: 409 };
   }
   reapExpiredStreamReservations(device.workspace_id);
   return db.transaction(() => {
+    if (admission && !activePublishDevice(device, admission.accessSessionId)) {
+      return { error: 'PUBLISH_UNAUTHORIZED', status: 401 };
+    }
     const workspace = db.queryOne('SELECT * FROM workspaces WHERE id = ?', [device.workspace_id]);
 
     const existing = db.queryOne(
@@ -3844,6 +3896,9 @@ function reservePublishedStream(device, clientId = '') {
       [device.id]
     );
     if (existing) {
+      if (admission || existing.publish_capability_expires_at) {
+        return { error: 'ADMISSION_ALREADY_OPEN', status: 409, streamId: existing.id };
+      }
       if (clientId && existing.publisher_identity && String(existing.publisher_identity) !== String(clientId)) {
         return { error: 'Conflict: A concurrent streaming session is already active with a different client ID.', status: 409 };
       }
@@ -3862,7 +3917,7 @@ function reservePublishedStream(device, clientId = '') {
     }
 
     const entitlement = getStrictWorkspaceEntitlement(device.workspace_id);
-    if (!entitlement.canStream) {
+    if (!entitlement.canStream || (admission && !hasPublishPayment(device.workspace_id, entitlement.paidUntil))) {
       return { error: 'Payment Required: An active or trialing subscription is required for streaming.', status: 402 };
     }
 
@@ -3951,9 +4006,9 @@ function reservePublishedStream(device, clientId = '') {
       [streamId, device.workspace_id, device.id, JSON.stringify(destinationIds), now]
     );
     db.run(
-      `INSERT INTO stream_sessions (id, workspace_id, device_id, status, expires_at, stream_key_hash, publisher_identity, started_at, stopped_at, created_at)
-       VALUES (?, ?, ?, 'reserved', ?, ?, ?, NULL, NULL, ?)`,
-      [streamId, device.workspace_id, device.id, expiresAt, device.ingest_key_hash, clientId, now]
+      `INSERT INTO stream_sessions (id, workspace_id, device_id, status, expires_at, stream_key_hash, publisher_identity, publish_capability_expires_at, started_at, stopped_at, created_at)
+       VALUES (?, ?, ?, 'reserved', ?, ?, ?, ?, NULL, NULL, ?)`,
+      [streamId, device.workspace_id, device.id, expiresAt, admission?.hash || device.ingest_key_hash, clientId || null, admission?.expiresAt || null, now]
     );
     for (const { id: targetId, target_type: targetType } of destinations) {
       let snapshot = null;
@@ -3968,23 +4023,9 @@ function reservePublishedStream(device, clientId = '') {
       );
     }
 
-    const monthStart = now.substring(0, 7) + '-01';
-    const monthEnd = new Date(new Date(monthStart).setMonth(new Date(monthStart).getMonth() + 1)).toISOString().substring(0, 10);
-    const existingCounter = db.queryOne(
-      "SELECT id FROM usage_counters WHERE workspace_id = ? AND metric = 'stream_sessions_count' AND period_start = ?",
-      [device.workspace_id, monthStart]
-    );
-    if (existingCounter) {
-      db.run('UPDATE usage_counters SET value = value + 1, updated_at = ? WHERE id = ?', [now, existingCounter.id]);
-    } else {
-      db.run(
-        `INSERT INTO usage_counters (id, workspace_id, metric, value, period_start, period_end, updated_at)
-         VALUES (?, ?, 'stream_sessions_count', 1, ?, ?, ?)`,
-        ['use_' + cryptoUtils.generateRandomToken(12), device.workspace_id, monthStart, monthEnd, now]
-      );
-    }
+    if (!admission) countPublishedSession(device.workspace_id, now);
 
-    db.logAudit({
+    if (!admission) db.logAudit({
       workspaceId: device.workspace_id,
       deviceId: device.id,
       action: 'stream.publish_started',
@@ -3997,17 +4038,133 @@ function reservePublishedStream(device, clientId = '') {
   });
 }
 
+function countPublishedSession(workspaceId, now) {
+  const monthStart = now.substring(0, 7) + '-01';
+  const monthEnd = new Date(new Date(monthStart).setMonth(new Date(monthStart).getMonth() + 1)).toISOString().substring(0, 10);
+  db.run(`INSERT INTO usage_counters (id, workspace_id, metric, value, period_start, period_end, updated_at)
+    VALUES (?, ?, 'stream_sessions_count', 1, ?, ?, ?)
+    ON CONFLICT(workspace_id, metric, period_start) DO UPDATE SET value = value + 1, updated_at = excluded.updated_at`,
+  ['use_' + cryptoUtils.generateRandomToken(12), workspaceId, monthStart, monthEnd, now]);
+}
+
+function hasPublishPayment(workspaceId, paidUntil) {
+  return Number.isFinite(Date.parse(paidUntil)) && Boolean(db.queryOne(
+    'SELECT 1 FROM paystack_payments WHERE workspace_id = ? AND mode = ? AND paid_until >= ? LIMIT 1',
+    [workspaceId, paystackMode(), paidUntil]));
+}
+
+function activePublishDevice(device, accessSessionId = null) {
+  const current = db.queryOne("SELECT id FROM devices WHERE id = ? AND workspace_id = ? AND status = 'active'",
+    [device.id, device.workspace_id]);
+  if (!current) return false;
+  if (!accessSessionId) return true;
+  const access = db.queryOne('SELECT expires_at FROM device_sessions WHERE id = ? AND device_id = ?', [accessSessionId, device.id]);
+  return Number.isFinite(Date.parse(access?.expires_at)) && Date.parse(access.expires_at) > Date.now();
+}
+
+addRoute('POST', '/api/device/publish-admission', async (req, res) => {
+  const text = (await readBody(req)).trim();
+  let body;
+  try { body = text ? JSON.parse(text) : {}; } catch { return json(res, { error: 'ADMISSION_INVALID_PAYLOAD' }, 400); }
+  if (!body || Array.isArray(body) || typeof body !== 'object' || Object.keys(body).length || new URL(req.url, 'http://localhost').search) {
+    return json(res, { error: 'ADMISSION_INVALID_PAYLOAD' }, 400);
+  }
+  const device = req.authContext.device;
+  const result = await serializeStreamOperation('device:' + device.id, () => {
+    const publishName = 'ep_' + crypto.randomBytes(32).toString('hex');
+    const expiresAt = new Date(Date.now() + 90000).toISOString();
+    const reserved = reservePublishedStream(device, '', {
+      hash: crypto.createHash('sha256').update(publishName).digest('hex'), expiresAt,
+      accessSessionId: req.authContext.accessSessionId
+    });
+    if (reserved.error) return reserved;
+    return { success: true, streamId: reserved.session.id, publishName, expiresAt };
+  });
+  if (result.error) return json(res, { error: result.error === 'ADMISSION_ALREADY_OPEN' ? result.error :
+    result.status === 402 ? 'ADMISSION_PAYMENT_REQUIRED' : result.status === 401 ? 'PUBLISH_UNAUTHORIZED' : 'ADMISSION_REJECTED',
+    ...(result.streamId ? { streamId: result.streamId } : {}) }, result.status);
+  return json(res, result);
+}, ['operator'], true, 'device');
+
+addRoute('GET', '/api/device/publish-status', (req, res) => {
+  const device = req.authContext.device;
+  if (!activePublishDevice(device, req.authContext.accessSessionId)) return json(res, { error: 'PUBLISH_UNAUTHORIZED' }, 401);
+  reapExpiredStreamReservations(device.workspace_id);
+  const stream = db.queryOne("SELECT id, status FROM stream_sessions WHERE device_id = ? AND workspace_id = ? AND status IN ('reserved', 'streaming') ORDER BY created_at DESC LIMIT 1", [device.id, device.workspace_id]);
+  const relay = { starting: 0, relaying: 0, stalled: 0, failed: 0, stopped: 0, unknown: 0 };
+  if (stream) {
+    const destinations = db.queryAll('SELECT target_id FROM stream_session_destinations WHERE stream_session_id = ?', [stream.id]);
+    for (const destination of destinations) {
+      let state = 'unknown';
+      try {
+        const candidate = workerManager.getDeliveryStatus(stream.id, destination.target_id)?.relayState;
+        if (typeof candidate === 'string' && Object.hasOwn(relay, candidate)) state = candidate;
+      } catch {}
+      relay[state]++;
+    }
+  }
+  // Only a containment boolean leaves this boundary, never snapshot metadata.
+  const cleanupPending = db.queryAll(`SELECT d.broadcast_snapshot FROM stream_session_destinations d
+    JOIN stream_sessions s ON s.id = d.stream_session_id
+    WHERE s.device_id = ? AND s.workspace_id = ? AND d.status = 'failed' AND d.broadcast_snapshot IS NOT NULL`,
+  [device.id, device.workspace_id]).some(d => {
+    try { const snap = JSON.parse(d.broadcast_snapshot); return snap?.provider === 'facebook' && snap.cleanupState !== 'ended'; }
+    catch { return true; }
+  });
+  return json(res, { success: true, stream: stream || null, relay, cleanupPending });
+}, ['operator'], true, 'device');
+
+async function claimPublishCapability(key, clientId) {
+  if (!/^ep_[a-f0-9]{64}$/.test(key)) return { error: 'PUBLISH_UNAUTHORIZED', status: 401 };
+  const hash = crypto.createHash('sha256').update(key).digest('hex');
+  const match = db.queryOne("SELECT * FROM stream_sessions WHERE stream_key_hash = ? AND publish_capability_expires_at IS NOT NULL AND status IN ('reserved', 'streaming')", [hash]);
+  if (!match) return { error: 'PUBLISH_UNAUTHORIZED', status: 401 };
+  return serializeStreamOperation('device:' + match.device_id, () => {
+    reapExpiredStreamReservations(match.workspace_id);
+    return db.transaction(() => {
+      const session = db.queryOne("SELECT * FROM stream_sessions WHERE id = ? AND stream_key_hash = ? AND status IN ('reserved', 'streaming')", [match.id, hash]);
+      if (!session || !activePublishDevice({ id: session.device_id, workspace_id: session.workspace_id })) {
+        return { error: 'PUBLISH_UNAUTHORIZED', status: 401 };
+      }
+      if (session.status === 'reserved' &&
+          (!Number.isFinite(Date.parse(session.publish_capability_expires_at)) || Date.parse(session.publish_capability_expires_at) <= Date.now())) {
+        db.run("UPDATE stream_sessions SET status = 'stopped', stopped_at = ? WHERE id = ?", [new Date().toISOString(), session.id]);
+        db.run("UPDATE streaming_sessions SET status = 'stopped', stopped_at = ? WHERE id = ?", [new Date().toISOString(), session.id]);
+        db.run("UPDATE stream_session_destinations SET status = 'stopped' WHERE stream_session_id = ? AND status = 'pending'", [session.id]);
+        return { error: 'PUBLISH_EXPIRED', status: 401 };
+      }
+      if (!clientId) return { error: 'PUBLISH_CLIENT_REQUIRED', status: 400 };
+      if (session.publisher_identity && session.publisher_identity !== clientId) return { error: 'PUBLISH_CLIENT_CONFLICT', status: 409 };
+      const entitlement = getStrictWorkspaceEntitlement(session.workspace_id);
+      const continuing = session.status === 'streaming' && session.started_at && entitlement.subscriptionStatus !== 'suspended' &&
+        Date.parse(session.expires_at) > Date.now();
+      if ((!entitlement.canStream || !hasPublishPayment(session.workspace_id, entitlement.paidUntil)) && !continuing) {
+        return { error: 'ADMISSION_PAYMENT_REQUIRED', status: 402 };
+      }
+      if (!Number.isFinite(Date.parse(session.expires_at)) || Date.parse(session.expires_at) <= Date.now()) return { error: 'PUBLISH_EXPIRED', status: 401 };
+      const first = !session.publisher_identity;
+      if (first) db.run('UPDATE stream_sessions SET publisher_identity = ? WHERE id = ?', [clientId, session.id]);
+      return { session, existing: !first };
+    });
+  });
+}
+
 // Device-safe status polling; never returns contribution or destination credentials.
 addRoute('GET', '/api/workspaces/:workspaceId/streams/:streamId/status', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
   reapExpiredStreamReservations(req.workspaceId);
   const stream = db.queryOne('SELECT id, status, expires_at, started_at, stopped_at FROM stream_sessions WHERE id = ? AND workspace_id = ?', [req.params.streamId, req.workspaceId]);
   if (!stream) return json(res, { error: 'Streaming session not found' }, 404);
   const destinations = db.queryAll('SELECT target_id, target_type, status, error_message, broadcast_snapshot FROM stream_session_destinations WHERE stream_session_id = ?', [stream.id]);
-  await enrichDestinations(req.workspaceId, stream.id, destinations);
-  return json(res, { success: true, stream, destinations });
+  const safeDestinations = await enrichDestinations(req.workspaceId, stream.id, destinations);
+  return json(res, { success: true, stream, destinations: safeDestinations });
 }, ['owner', 'operator'], true, 'both');
 
 addRoute('GET', '/api/device/stream-status', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  if (req.authContext?.type !== 'device' || req.authContext.device?.status !== 'active') {
+    return json(res, { error: 'ACCOUNT_UNAUTHORIZED' }, 401);
+  }
   let stream = db.queryOne(
     "SELECT id, status, started_at, stopped_at FROM stream_sessions WHERE device_id = ? AND status IN ('reserved', 'streaming') ORDER BY created_at DESC LIMIT 1",
     [req.authContext.device.id]
@@ -4023,8 +4180,8 @@ addRoute('GET', '/api/device/stream-status', async (req, res) => {
     [stream.id]
   );
   const workspaceId = req.workspaceId || req.authContext.device?.workspace_id;
-  await enrichDestinations(workspaceId, stream.id, destinations);
-  return json(res, { success: true, stream, destinations });
+  const safeDestinations = await enrichDestinations(workspaceId, stream.id, destinations);
+  return json(res, { success: true, stream, destinations: safeDestinations });
 }, ['operator'], true, 'device');
 
 // 26. NGINX-RTMP on_publish callback: authenticate the reusable device key,
@@ -4050,16 +4207,21 @@ addRoute('POST', '/api/streams/publish', async (req, res) => {
       clientId = params.get('clientid') || '';
     }
 
+    if (typeof key !== 'string' || (clientId && !['string', 'number'].includes(typeof clientId))) {
+      return json(res, { error: 'PUBLISH_INVALID_PAYLOAD' }, 400);
+    }
+    clientId = String(clientId);
     if (!key) {
       return json(res, { error: 'Missing stream key (name)' }, 400);
     }
 
-    const device = findDeviceForIngestKey(key);
-    if (!device) {
-      return json(res, { error: 'Unauthorized: Invalid stream key' }, 401);
+    let reserved;
+    if (key.startsWith('ep_')) reserved = await claimPublishCapability(key, clientId);
+    else {
+      const device = findDeviceForIngestKey(key);
+      if (!device) return json(res, { error: 'PUBLISH_UNAUTHORIZED' }, 401);
+      reserved = await serializeStreamOperation('device:' + device.id, () => reservePublishedStream(device, clientId));
     }
-
-    const reserved = await serializeStreamOperation('device:' + device.id, () => reservePublishedStream(device, clientId));
     if (reserved.error) return json(res, { error: reserved.error }, reserved.status);
     const session = reserved.session;
 
@@ -4084,7 +4246,7 @@ addRoute('POST', '/api/streams/publish', async (req, res) => {
       streamId: session.id
     }, 200);
   } catch (err) {
-    return json(res, { error: 'Publish authorization error: ' + err.message }, 500);
+    return json(res, { error: 'PUBLISH_AUTHORIZATION_FAILED' }, 500);
   }
 }, null, false, 'both');
 
@@ -4110,22 +4272,30 @@ addRoute('POST', '/api/streams/publish_done', async (req, res) => {
       clientId = params.get('clientid') || '';
     }
 
+    if (typeof key !== 'string' || (clientId && !['string', 'number'].includes(typeof clientId))) {
+      return json(res, { error: 'PUBLISH_INVALID_PAYLOAD' }, 400);
+    }
+    clientId = String(clientId);
     if (!key) {
       return json(res, { error: 'Missing stream key (name)' }, 400);
     }
 
-    const device = findDeviceForIngestKey(key);
-    if (!device) {
+    const hash = crypto.createHash('sha256').update(key).digest('hex');
+    const matched = db.queryOne("SELECT * FROM stream_sessions WHERE stream_key_hash = ? AND status IN ('reserved', 'streaming') ORDER BY created_at DESC LIMIT 1", [hash]);
+    if (!matched || (key.startsWith('ep_') !== Boolean(matched.publish_capability_expires_at))) {
       // Idempotency: Unknown/non-matching key is not an error for a done callback, just return success
       return json(res, { success: true, message: 'Done callback ignored for invalid key' }, 200);
     }
 
-    const responseData = await serializeStreamOperation('device:' + device.id, async () => {
+    const responseData = await serializeStreamOperation('device:' + matched.device_id, async () => {
       const session = db.queryOne(
         "SELECT * FROM stream_sessions WHERE device_id = ? AND status IN ('reserved', 'streaming') AND stream_key_hash = ? ORDER BY created_at DESC LIMIT 1",
-        [device.id, device.ingest_key_hash]
+        [matched.device_id, hash]
       );
       if (!session) return { success: true, message: 'No active session for device' };
+      if (session.publish_capability_expires_at && (!clientId || clientId !== session.publisher_identity)) {
+        return { success: true, message: 'Done callback ignored' };
+      }
 
       // Handle NGINX clientid stale publish_done: if clientid is present and session has publisher_identity,
       // verify they are identical. If they are different, ignore publish_done (stale connection)!
@@ -4137,7 +4307,7 @@ addRoute('POST', '/api/streams/publish_done', async (req, res) => {
         return { success: true, message: 'Done callback ignored because clientid is missing but session has a recorded publisher identity' };
       }
 
-      const result = await stopStreamSession(session.id, device.workspace_id);
+      const result = await stopStreamSession(session.id, session.workspace_id);
       return {
         success: true,
         message: result.alreadyStopped ? 'Session already stopped' : 'Session stopped and workers terminated'
@@ -4146,7 +4316,7 @@ addRoute('POST', '/api/streams/publish_done', async (req, res) => {
 
     return json(res, responseData, 200);
   } catch (err) {
-    return json(res, { error: 'Publish done callback error: ' + err.message }, 500);
+    return json(res, { error: 'PUBLISH_DONE_FAILED' }, 500);
   }
 }, null, false, 'both');
 
@@ -4154,6 +4324,26 @@ addRoute('POST', '/api/streams/publish_done', async (req, res) => {
 export async function handleRequest(req, res) {
   const parsedUrl = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
   const pathname = parsedUrl.pathname;
+  if (['/api/device/publish-admission', '/api/device/publish-status', '/api/streams/publish', '/api/streams/publish_done'].includes(pathname)) {
+    res.publishRoute = true;
+    res.setHeader('Cache-Control', 'no-store');
+    if (pathname.startsWith('/api/device/publish-') && req.headers.cookie) {
+      return json(res, { error: 'PUBLISH_UNAUTHORIZED' }, 401);
+    }
+  }
+
+  // Camera authorization/origin policy is deliberately stricter than legacy docks.
+  // Do this before generic CORS, static serving, cookie parsing and route errors.
+  if (cameraPath(pathname)) {
+    res.cameraRoute = true;
+    try {
+      if (process.env.CAMERA_ROOMS_ENABLED !== 'true') return json(res, { error: 'CAMERA_DISABLED' }, 503);
+      cameraSecurity(req, config.APP_BASE_URL, pathname.startsWith('/camera/') && req.method === 'GET');
+      if (req.method === 'OPTIONS') return json(res, { error: 'CAMERA_ORIGIN_DENIED' }, 403);
+      // Camera endpoints do not authenticate with ambient web-session cookies.
+      req.headers.cookie = undefined;
+    } catch (error) { return cameraError(res, error, json); }
+  }
 
   // Helper to identify device-safe stream control/bootstrap endpoints
   function isDeviceSafeRoute(path) {
@@ -4327,6 +4517,8 @@ export async function handleRequest(req, res) {
   try {
     await route.handler(req, res);
   } catch (err) {
+    if (cameraPath(pathname)) return cameraError(res, err, json);
+    if (res.publishRoute) return json(res, { error: 'PUBLISH_REQUEST_FAILED' }, 500);
     console.error(`Route execution failed: ${pathname}`, err);
     return json(res, { error: 'Internal Server Error' }, 500);
   }
@@ -4337,6 +4529,11 @@ export async function expireStreamingSessions() {
   const now = Date.now();
   const sessions = db.queryAll("SELECT * FROM stream_sessions WHERE status IN ('reserved', 'streaming')");
   for (const session of sessions) {
+    if (session.publish_capability_expires_at &&
+        ((session.status === 'reserved' && Date.parse(session.publish_capability_expires_at) <= now) || Date.parse(session.expires_at) <= now)) {
+      await stopStreamSession(session.id, session.workspace_id);
+      continue;
+    }
     const entitlement = getWorkspaceEntitlement(session.workspace_id);
     const device = db.queryOne('SELECT status FROM devices WHERE id = ?', [session.device_id]);
     const expiryGrace = session.status === 'streaming' && !!session.started_at &&
@@ -4346,7 +4543,7 @@ export async function expireStreamingSessions() {
       continue;
     }
     if (Number.isFinite(Date.parse(session.expires_at)) && Date.parse(session.expires_at) > now) continue;
-    if (entitlement.canStream) {
+    if (entitlement.canStream && !session.publish_capability_expires_at) {
       db.run('UPDATE stream_sessions SET expires_at = ? WHERE id = ?',
         [new Date(Date.parse(entitlement.paidUntil) + 2 * 3600000).toISOString(), session.id]);
     } else {

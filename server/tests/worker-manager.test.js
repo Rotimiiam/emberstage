@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { PassThrough } from 'node:stream';
 
+process.env.NODE_ENV = 'test';
 process.env.DATABASE_URL = ':memory:';
 process.env.ENCRYPTION_SECRET = 'worker-test-secret-not-a-live-credential';
 const { db, initDatabase } = await import('../src/db.js');
@@ -32,6 +33,44 @@ async function fixture({ withoutPid = false } = {}) {
   }, 'rtmp://127.0.0.1/live', 'private-contribution-key');
   return { id, workerId, manager, child, captured, status: () => manager.getDeliveryStatus(id, id) };
 }
+
+test('ffmpeg receives only OS paths and its ownership marker, never application secrets', async () => {
+  const paths = {
+    PATH: '/synthetic/bin', SystemRoot: 'C:\\SyntheticWindows', WINDIR: 'C:\\SyntheticWindows',
+    TEMP: 'C:\\SyntheticTemp', TMP: 'C:\\SyntheticTmp', TMPDIR: '/synthetic/tmp'
+  };
+  const secrets = {
+    NANGO_SECRET_KEY: 'synthetic-nango-secret', PAYSTACK_SECRET_KEY: 'synthetic-paystack-secret',
+    PAYSTACK: 'synthetic-paystack', AWS_SECRET_ACCESS_KEY: 'synthetic-aws-secret',
+    OTHER_PROVIDER_TOKEN: 'synthetic-provider-token', NODE_OPTIONS: '--synthetic-option',
+    LD_PRELOAD: '/synthetic/injected-library', EMBERSTAGE_WORKER_ID: 'untrusted-parent-marker'
+  };
+  const injected = { ...paths, ...secrets };
+  const previous = Object.fromEntries(Object.keys(injected).map(key => [key, process.env[key]]));
+  try {
+    Object.assign(process.env, injected);
+    const f = await fixture();
+    try {
+      assert.deepEqual(f.captured.options.env, { ...paths, EMBERSTAGE_WORKER_ID: f.workerId });
+      for (const key of Object.keys(secrets).filter(key => key !== 'EMBERSTAGE_WORKER_ID')) {
+        assert.equal(Object.hasOwn(f.captured.options.env, key), false);
+      }
+      assert.equal(f.captured.args[f.captured.args.indexOf('-i') + 1], 'rtmp://127.0.0.1/live/private-contribution-key');
+      assert.equal(f.captured.args.at(-1), 'rtmp://example.test/app/private-destination-key');
+    } finally { await f.manager.stopWorkersForSession(f.id); }
+
+    for (const key of Object.keys(paths)) delete process.env[key];
+    const withoutPaths = await fixture();
+    try {
+      assert.deepEqual(withoutPaths.captured.options.env, { EMBERSTAGE_WORKER_ID: withoutPaths.workerId });
+    } finally { await withoutPaths.manager.stopWorkersForSession(withoutPaths.id); }
+  } finally {
+    for (const [key, value] of Object.entries(previous)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+});
 
 test('spawn does not imply delivery; complete advancing progress marks relaying', async () => {
   const f = await fixture();

@@ -87,6 +87,10 @@ const state = {
   },
   ui: {
     busy: {},
+    sessionChecking: false,
+    startupHold: false,
+    authPending: false,
+    authGeneration: 0,
     statuses: {},
     activeView: 'overview',
     lastLoadedAt: null,
@@ -110,20 +114,20 @@ const FOCUSABLE_SELECTOR = [
 
 const PORTAL_VIEWS = {
   overview: {
-    title: 'Stream Overview',
-    subtitle: 'Live relay, destination readiness, and encoder setup'
+    title: 'Overview',
+    subtitle: 'Enrollment, pairing, and billing for this workspace.'
   },
   broadcasts: {
     title: 'Broadcasts',
-    subtitle: 'Select, create, update, and transition YouTube broadcasts'
+    subtitle: 'Select, create, update, and transition YouTube broadcasts.'
   },
   devices: {
     title: 'Devices',
-    subtitle: 'Pair OBS hardware and manage reusable encoder access'
+    subtitle: 'Pair a device and manage encoder access.'
   },
   workspace: {
     title: 'Workspace',
-    subtitle: 'Review billing status, plan limits, and workspace access'
+    subtitle: 'Billing status, plan limits, and workspace access.'
   }
 };
 
@@ -466,8 +470,167 @@ function isBusy(key) {
   return !!state.ui.busy[key];
 }
 
-function setBusy(key, busy) {
-  state.ui.busy[key] = busy;
+function setBusy(key, busy, options = {}) {
+  if (busy) state.ui.busy[key] = options.visual === false ? 'silent' : true;
+  else delete state.ui.busy[key];
+  syncLoader();
+}
+
+function foregroundBusy() {
+  return Object.values(state.ui.busy).some((value) => value === true) || state.ui.authPending === true;
+}
+
+function appViewOpen() {
+  const app = document.getElementById('app-view');
+  return !!app && app.style.display === 'grid';
+}
+
+const STARTUP_CYCLE_MS = 3600;
+
+function startupReducedMotion() {
+  return window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches === true;
+}
+
+function beginStartupHold() {
+  state.ui.startupHold = !startupReducedMotion();
+  state.ui.startupHoldStartedAt = state.ui.startupHold ? Date.now() : 0;
+}
+
+function clearStartupHold() {
+  state.ui.startupHold = false;
+  if (state.ui.startupHoldTimer) {
+    clearTimeout(state.ui.startupHoldTimer);
+    state.ui.startupHoldTimer = 0;
+  }
+}
+
+function finishStartupPresentation() {
+  if (state.ui.sessionChecking) return;
+  if (state.ui.startupHold && !startupReducedMotion()) {
+    const started = state.ui.startupHoldStartedAt || 0;
+    const wait = Math.max(0, STARTUP_CYCLE_MS - (Date.now() - started));
+    if (wait > 0) {
+      if (!state.ui.startupHoldTimer) {
+        state.ui.startupHoldTimer = setTimeout(() => {
+          state.ui.startupHoldTimer = 0;
+          state.ui.startupHold = false;
+          revealStartupView();
+        }, wait);
+      }
+      syncLoader();
+      return;
+    }
+  }
+  clearStartupHold();
+  revealStartupView();
+}
+
+function overlayStillUp(loadingView) {
+  return !!loadingView && loadingView.hidden !== true && loadingView.style.display !== 'none';
+}
+
+function revealStartupView() {
+  const viewName = state.ui.startupView || (state.user ? 'app' : 'auth');
+  const loadingView = document.getElementById('portal-loading');
+  const finishReveal = () => {
+    if (loadingView) {
+      loadingView.hidden = true;
+      loadingView.style.display = 'none';
+      loadingView.classList.remove('is-fading');
+    }
+    syncLoader();
+  };
+  if (overlayStillUp(loadingView)) {
+    if (startupReducedMotion()) {
+      finishReveal();
+    } else if (!loadingView.classList.contains('is-fading')) {
+      loadingView.classList.add('is-fading');
+      let dropped = false;
+      const drop = () => {
+        if (dropped) return;
+        dropped = true;
+        loadingView.removeEventListener('transitionend', onFade);
+        finishReveal();
+      };
+      const onFade = (event) => {
+        if (event.target !== loadingView || event.propertyName !== 'opacity') return;
+        drop();
+      };
+      loadingView.addEventListener('transitionend', onFade);
+      window.setTimeout(drop, 500);
+    }
+  }
+  if (viewName === 'auth') {
+    document.getElementById('auth-view').style.display = 'flex';
+    document.getElementById('app-view').style.display = 'none';
+    renderAuthView();
+  } else {
+    document.getElementById('auth-view').style.display = 'none';
+    document.getElementById('app-view').style.display = 'grid';
+    setActiveView(activeViewFromLocation(), { skipHash: true });
+    updateLastSyncLabel();
+  }
+  window.__emberstageBackdrop?.start();
+}
+
+function syncLoader() {
+  const loader = document.getElementById('emberstage-loader');
+  const park = document.getElementById('emberstage-loader-park');
+  const loading = document.getElementById('portal-loading');
+  const sessionOn = state.ui.sessionChecking === true || state.ui.startupHold === true;
+  const overlayUp = overlayStillUp(loading);
+  const pendingOn = !state.ui.sessionChecking && !state.ui.startupHold && !overlayUp && foregroundBusy();
+  document.querySelectorAll('[data-loader-slot]').forEach((slot) => {
+    slot.hidden = true;
+  });
+  if (loading && !overlayUp) {
+    loading.hidden = !sessionOn;
+    loading.style.display = sessionOn ? 'grid' : 'none';
+  }
+  const slot = (sessionOn || overlayUp)
+    ? document.getElementById('portal-loading-slot')
+    : pendingOn
+      ? document.getElementById(appViewOpen() ? 'app-pending-slot' : 'auth-pending-slot')
+      : null;
+  if (!loader || !park) return;
+  if (!slot) {
+    loader.hidden = true;
+    if (loader.parentElement !== park) park.appendChild(loader);
+    setLoaderBusy(false);
+    return;
+  }
+  slot.hidden = false;
+  if (loader.parentElement !== slot) slot.appendChild(loader);
+  loader.hidden = false;
+  setLoaderBusy(true);
+}
+
+const abortControllers = new Set();
+
+function trackAbort() {
+  const controller = new AbortController();
+  abortControllers.add(controller);
+  controller.signal.addEventListener('abort', () => abortControllers.delete(controller), { once: true });
+  return controller;
+}
+
+function releaseAbort(controller) {
+  abortControllers.delete(controller);
+}
+
+function abortTracked() {
+  for (const controller of Array.from(abortControllers)) controller.abort();
+}
+
+function setLoaderBusy(on) {
+  const region = document.getElementById(appViewOpen() ? 'app-view' : 'auth-view');
+  if (region) {
+    if (on) region.setAttribute('aria-busy', 'true');
+    else region.removeAttribute('aria-busy');
+  }
+  const container = document.getElementById('app-container');
+  if (container && state.ui.sessionChecking) container.setAttribute('aria-busy', 'true');
+  else if (container) container.removeAttribute('aria-busy');
 }
 
 function setStatus(key, type, message) {
@@ -488,7 +651,7 @@ function apiErrorMessage(error) {
   return error?.message || 'Something went wrong.';
 }
 
-async function apiCall(method, path, body = null) {
+async function apiCall(method, path, body = null, options = {}) {
   const headers = { Accept: 'application/json' };
   if (body) headers['Content-Type'] = 'application/json';
 
@@ -500,7 +663,8 @@ async function apiCall(method, path, body = null) {
   const response = await fetch(path, {
     method,
     headers,
-    body: body ? JSON.stringify(body) : undefined
+    body: body ? JSON.stringify(body) : undefined,
+    signal: options.signal
   });
 
   if (response.status === 401 && !path.includes('/api/auth/login') && !path.includes('/api/auth/register')) {
@@ -518,18 +682,24 @@ async function apiCall(method, path, body = null) {
 }
 
 function showView(viewName) {
-  const loadingView = document.getElementById('portal-loading');
-  if (loadingView) loadingView.style.display = 'none';
+  state.ui.startupView = viewName;
+  state.ui.sessionChecking = false;
+  if (state.ui.startupHold) {
+    finishStartupPresentation();
+    return;
+  }
   if (viewName === 'auth') {
     document.getElementById('auth-view').style.display = 'flex';
     document.getElementById('app-view').style.display = 'none';
     renderAuthView();
+    syncLoader();
     return;
   }
   document.getElementById('auth-view').style.display = 'none';
   document.getElementById('app-view').style.display = 'grid';
   setActiveView(activeViewFromLocation(), { skipHash: true });
   updateLastSyncLabel();
+  syncLoader();
 }
 
 function showAlert(message, type = 'danger') {
@@ -593,7 +763,7 @@ function renderAuthView() {
     workspaceGroup.style.display = 'block';
     modeLabel.textContent = 'Register';
     authTitle.textContent = 'Create your workspace';
-    authSubcopy.textContent = 'One account for your channels and devices.';
+    authSubcopy.textContent = 'Create the workspace this account will manage.';
     submitBtn.textContent = 'Create workspace';
     toggleCopy.textContent = 'Already have an account?';
     toggleLink.textContent = 'Sign in instead';
@@ -601,10 +771,10 @@ function renderAuthView() {
     workspaceGroup.style.display = 'none';
     modeLabel.textContent = 'Sign in';
     authTitle.textContent = 'Welcome back';
-    authSubcopy.textContent = 'Sign in to open your control room.';
+    authSubcopy.textContent = 'Sign in to manage your workspace.';
     submitBtn.textContent = 'Sign In';
     toggleCopy.textContent = 'Need an account?';
-    toggleLink.textContent = 'Create one';
+    toggleLink.textContent = 'Create an account';
   }
 
   updateAuthMethodsVisibility();
@@ -851,7 +1021,7 @@ async function fetchWorkspaceData(options, workspaceId) {
     document.getElementById('header-user-role').textContent = roleLabel(state.activeWorkspaceRole);
     document.getElementById('header-workspace-plan').textContent = getWorkspaceEntitlement().plan === 'pro'
       ? `${getWorkspacePlan().name || 'Emberstage Pro'} · ${formatPlanPrice(getWorkspacePlan())}`
-      : 'Free local core';
+      : 'Free';
 
     reconcileSelections();
     renderApp();
@@ -1114,12 +1284,13 @@ function renderProviderCard(provider) {
   const targets = state.providerTargets.filter((target) => target.provider === provider);
   const statusLabel = details.connected ? 'Connected' : (details.connect_available ? 'Disconnected' : 'Unavailable');
   const statusTone = details.connected ? 'success' : (details.connect_available ? 'warning' : 'muted');
+  const unavailableCopy = details.reason || 'OAuth is not configured.';
   return `
     <article class="provider-surface">
       <div class="section-head section-head-tight">
         <div>
           <h3>${escapeHtml(titleCase(provider))}</h3>
-          <p class="section-copy">${details.connected ? `${targets.length} destination${targets.length === 1 ? '' : 's'} connected` : 'Connect an account to add destinations.'}</p>
+          <p class="section-copy">${details.connected ? `${targets.length} destination${targets.length === 1 ? '' : 's'} connected` : details.connect_available ? 'Not connected.' : escapeHtml(unavailableCopy)}</p>
         </div>
         ${statusChip(statusLabel, statusTone)}
       </div>
@@ -1236,7 +1407,7 @@ function renderChannelsPanel() {
         <span class="overview-summary">${selectedDestinations().length ? `${selectedDestinations().length} enabled` : 'No destinations enabled yet'}</span>
       </div>
       <div class="provider-target-list destination-list">
-        ${state.providerTargets.length ? state.providerTargets.map((target) => renderProviderTargetRow(target)).join('') : '<div class="empty-state-inline">Connect your first channel below, then enable it to stream from OBS.</div>'}
+        ${state.providerTargets.length ? state.providerTargets.map((target) => renderProviderTargetRow(target)).join('') : '<div class="empty-state-inline">No destinations connected. Provider sign-in stays unavailable until it is configured.</div>'}
       </div>
       <details class="portal-details connections-details" ${state.providerTargets.length ? '' : 'open'}>
         <summary>Connect or manage accounts</summary>
@@ -1507,21 +1678,30 @@ function renderYouTubeStudio() {
   `;
 }
 
+function pairingBlockedReason() {
+  const entitlement = getWorkspaceEntitlement();
+  if (entitlement.plan !== 'pro' || Number(entitlement.maxDevices) <= 0 || entitlement.canStream !== true) {
+    return 'This workspace cannot pair a device on the Free plan.';
+  }
+  return '';
+}
+
 function renderDevicesPanel() {
   const devices = state.setup.devices || [];
   const activeDevice = selectedDevice();
+  const pairingBlocked = pairingBlockedReason();
   document.getElementById('devices-panel').innerHTML = `
     <div class="panel-stack">
       ${renderStatus('devices')}
       <div class="pairing-shell">
         <div>
-          <p class="field-label">New OBS hardware</p>
-          <h3>Create a short pairing code</h3>
-          <p class="section-copy">The dock uses this short-lived code once, then keeps its own device session.</p>
+          <p class="field-label">Pairing</p>
+          <h3>${pairingBlocked ? 'Pairing unavailable' : 'Create a short pairing code'}</h3>
+          <p class="section-copy">${escapeHtml(pairingBlocked || 'The dock uses this short-lived code once, then keeps its own device session.')}</p>
         </div>
         <form id="pairing-code-form" class="pairing-inline-form">
-          <input class="form-control" type="text" name="deviceName" value="${escapeHtml(state.linkCode?.deviceName || '')}" placeholder="Front left encoder" ${isSetupLocked() ? 'disabled' : ''}>
-          <button class="btn" type="submit" ${isSetupLocked() || isBusy('pairing-code') ? 'disabled' : ''}>${isBusy('pairing-code') ? 'Generating…' : 'Generate code'}</button>
+          <input class="form-control" type="text" name="deviceName" value="${escapeHtml(state.linkCode?.deviceName || '')}" placeholder="Front left encoder" ${isSetupLocked() || pairingBlocked ? 'disabled' : ''}>
+          <button class="btn" type="submit" ${isSetupLocked() || pairingBlocked || isBusy('pairing-code') ? 'disabled' : ''}>${isBusy('pairing-code') ? 'Generating…' : 'Generate code'}</button>
         </form>
         ${state.linkCode ? `
           <div class="pairing-live-card">
@@ -1598,16 +1778,16 @@ function renderSubscriptionPanel() {
             ${statusChip(billingModeLabel(mode), modeTone)}
           </div>
         </div>
-        <div class="subscription-price-panel">
-          <span class="subscription-price-kicker">Emberstage Pro · NGN</span>
-          <strong class="subscription-price">${escapeHtml(formatPlanPrice(plan))}</strong>
-          <span class="subscription-price-note">Per workspace</span>
+        <div class="subscription-price-panel ${entitlement.plan === 'pro' ? '' : 'is-free'}">
+          <span class="subscription-price-kicker">${entitlement.plan === 'pro' ? 'Current plan' : 'Current plan'}</span>
+          <strong class="subscription-price">${escapeHtml(entitlement.plan === 'pro' ? formatPlanPrice(plan) : 'Free')}</strong>
+          <span class="subscription-price-note">${escapeHtml(entitlement.plan === 'pro' ? 'Per workspace' : 'Pairing and paid destinations are not included.')}</span>
         </div>
       </section>
       <div class="metric-strip metric-strip-3">
-        <article class="metric-tile"><span>Pro · paired OBS devices</span><strong>${escapeHtml(plan.maxDevices)}</strong></article>
-        <article class="metric-tile"><span>Pro · simultaneous destinations</span><strong>${escapeHtml(plan.maxDestinations)}</strong></article>
-        <article class="metric-tile"><span>Pro · active broadcasts</span><strong>${escapeHtml(plan.maxActiveBroadcasts)}</strong></article>
+        <article class="metric-tile"><span>${entitlement.plan === 'pro' ? 'Paired devices' : 'Devices on this plan'}</span><strong>${escapeHtml(entitlement.plan === 'pro' ? plan.maxDevices : entitlement.maxDevices)}</strong></article>
+        <article class="metric-tile"><span>${entitlement.plan === 'pro' ? 'Destinations' : 'Destinations on this plan'}</span><strong>${escapeHtml(entitlement.plan === 'pro' ? plan.maxDestinations : entitlement.maxDestinations)}</strong></article>
+        <article class="metric-tile"><span>${entitlement.plan === 'pro' ? 'Active broadcasts' : 'Active broadcasts on this plan'}</span><strong>${escapeHtml(entitlement.plan === 'pro' ? plan.maxActiveBroadcasts : entitlement.maxActiveBroadcasts)}</strong></article>
       </div>
       <div class="billing-card-grid">
         <article class="billing-card billing-card-accent">
@@ -1633,7 +1813,7 @@ function renderSubscriptionPanel() {
         <div class="billing-detail-row"><span>Relay hosting</span><strong>Requires a configured relay; unlimited bandwidth is not included.</strong></div>
       </div>
       <div class="panel-actions panel-actions-wrap">
-        <button class="btn" type="button" data-action="billing-checkout" ${(canCheckout && !isBusy('billing-checkout')) ? '' : 'disabled'}>${isBusy('billing-checkout') ? 'Opening…' : entitlement.plan === 'pro' ? 'Pro is active' : mode === 'test' ? 'Try test checkout' : 'Upgrade to Pro'}</button>
+        <button class="btn" type="button" data-action="billing-checkout" ${(canCheckout && !isBusy('billing-checkout')) ? '' : 'disabled'}>${isBusy('billing-checkout') ? 'Opening…' : entitlement.plan === 'pro' ? 'Pro is active' : mode === 'test' ? 'Try test checkout' : 'Upgrade'}</button>
         <button class="btn btn-secondary" type="button" data-action="billing-portal" ${(canManage && !isBusy('billing-portal')) ? '' : 'disabled'}>${isBusy('billing-portal') ? 'Opening…' : manageLabel}</button>
       </div>
       ${!manager ? '<div class="inline-status inline-status-muted">Operators can review usage, expiry, and plan limits here, but only owner or finance roles can open billing actions.</div>' : ''}
@@ -1752,7 +1932,7 @@ function updateDraftFromInput(target) {
 async function ensureYoutubeBroadcasts(targetId, options = {}) {
   if (!targetId) return [];
   if (!options.force && state.youtubeBroadcasts[targetId]) return state.youtubeBroadcasts[targetId];
-  setBusy(`load-broadcasts-${targetId}`, true);
+  setBusy(`load-broadcasts-${targetId}`, true, { visual: options.silent !== true });
   renderYouTubeStudio();
   try {
     const result = await apiCall('GET', `/api/workspaces/${state.activeWorkspaceId}/providers/targets/${targetId}/broadcasts`);
@@ -1942,6 +2122,12 @@ async function handleDeleteCustomTarget(targetId) {
 }
 
 async function handleGeneratePairingCode(form) {
+  const blocked = pairingBlockedReason();
+  if (blocked) {
+    setStatus('devices', 'warning', blocked);
+    renderDevicesPanel();
+    return;
+  }
   const input = form.querySelector('[name="deviceName"]');
   const deviceName = input?.value.trim();
   if (!deviceName) {
@@ -2253,7 +2439,8 @@ function isUserInteracting() {
 function handleRefreshClick() {
   hideAlert();
   setStatus('channels', 'pending', 'Refreshing workspace state…');
-  loadWorkspaceData();
+  setBusy('portal-refresh', true);
+  Promise.resolve(loadWorkspaceData()).finally(() => setBusy('portal-refresh', false));
 }
 
 function setupEventListeners() {
@@ -2285,34 +2472,50 @@ function setupEventListeners() {
 
   document.getElementById('auth-form').addEventListener('submit', async (event) => {
     event.preventDefault();
+    const generation = ++state.ui.authGeneration;
     const email = document.getElementById('auth-email').value;
     const password = document.getElementById('auth-password').value;
     const alertEl = document.getElementById('auth-alert');
     const submitButton = document.getElementById('auth-submit-btn');
     const idleLabel = submitButton.textContent;
+    const controller = trackAbort();
     alertEl.style.display = 'none';
-    submitButton.disabled = true;
-    submitButton.textContent = state.isRegisterMode ? 'Creating workspace…' : 'Signing in…';
     try {
       if (state.isRegisterMode) {
         const workspaceName = document.getElementById('reg-workspace').value;
         if (!workspaceName) throw new Error('Workspace name is required for registration.');
-        await apiCall('POST', '/api/auth/register', { email, password, workspaceName });
-      } else {
-        await apiCall('POST', '/api/auth/login', { email, password });
       }
+      submitButton.disabled = true;
+      submitButton.textContent = state.isRegisterMode ? 'Creating workspace…' : 'Signing in…';
+      state.ui.authPending = true;
+      syncLoader();
+      if (state.isRegisterMode) {
+        const workspaceName = document.getElementById('reg-workspace').value;
+        await apiCall('POST', '/api/auth/register', { email, password, workspaceName }, { signal: controller.signal });
+      } else {
+        await apiCall('POST', '/api/auth/login', { email, password }, { signal: controller.signal });
+      }
+      if (generation !== state.ui.authGeneration) return;
       await init();
     } catch (error) {
+      if (generation !== state.ui.authGeneration || error?.name === 'AbortError') return;
       alertEl.textContent = error.message;
       alertEl.style.display = 'block';
     } finally {
+      releaseAbort(controller);
+      if (generation !== state.ui.authGeneration) return;
+      state.ui.authPending = false;
+      syncLoader();
       submitButton.disabled = false;
       submitButton.textContent = idleLabel;
     }
   });
 
   document.getElementById('logout-btn').addEventListener('click', async () => {
-    try { await apiCall('POST', '/api/auth/logout'); } catch (_) {}
+    const controller = trackAbort();
+    setBusy('logout', true);
+    try { await apiCall('POST', '/api/auth/logout', null, { signal: controller.signal }); } catch (_) {}
+    finally { releaseAbort(controller); setBusy('logout', false); }
     state.user = null;
     state.workspaces = [];
     state.activeWorkspaceId = null;
@@ -2361,9 +2564,12 @@ function setupEventListeners() {
       }
     };
     state.ui.busy = {};
+    state.ui.authPending = false;
+    state.ui.sessionChecking = false;
     state.ui.statuses = {};
     state.ui.lastLoadedAt = null;
     showView('auth');
+    syncLoader();
   });
 
   window.addEventListener('hashchange', () => {
@@ -2488,9 +2694,14 @@ function setupEventListeners() {
     if (action === 'delete-custom-target') handleDeleteCustomTarget(button.dataset.targetId);
     if (action === 'select-youtube-target') {
       state.selectedYoutubeTargetId = button.dataset.targetId;
-      await ensureYoutubeBroadcasts(state.selectedYoutubeTargetId, { silent: true });
-      hydrateDraftsFromBroadcast(selectedYoutubeBroadcast());
-      renderYouTubeStudio();
+      setBusy('youtube-target', true);
+      try {
+        await ensureYoutubeBroadcasts(state.selectedYoutubeTargetId, { silent: true });
+        hydrateDraftsFromBroadcast(selectedYoutubeBroadcast());
+        renderYouTubeStudio();
+      } finally {
+        setBusy('youtube-target', false);
+      }
     }
     if (action === 'refresh-broadcasts') await ensureYoutubeBroadcasts(button.dataset.targetId, { force: true });
     if (action === 'select-broadcast') handleSelectBroadcast(button.dataset.targetId, button.dataset.broadcastId);
@@ -2498,7 +2709,11 @@ function setupEventListeners() {
     if (action === 'transition-broadcast') handleTransitionBroadcast(button.dataset.targetId, button.dataset.status);
     if (action === 'billing-checkout') handleBillingCheckout();
     if (action === 'billing-portal') handleBillingPortal();
-    if (action === 'billing-manual-retry') await verifyBillingReturn({ manualOnly: true });
+    if (action === 'billing-manual-retry') {
+      setBusy('billing-verify', true);
+      try { await verifyBillingReturn({ manualOnly: true }); }
+      finally { setBusy('billing-verify', false); }
+    }
     if (action === 'billing-dismiss-return' && !state.billing.returnFlow?.checking) {
       clearBillingReturnFlow();
       clearStatus('billing');
@@ -2517,23 +2732,51 @@ function setupEventListeners() {
     }
     trapModalFocus(event);
   });
+
+  window.addEventListener('pagehide', () => {
+    state.ui.sessionChecking = false;
+    state.ui.authPending = false;
+    clearStartupHold();
+    abortTracked();
+    syncLoader();
+  });
+
+  window.addEventListener('pageshow', (event) => {
+    if (!event.persisted) return;
+    state.ui.sessionChecking = false;
+    state.ui.authPending = false;
+    syncLoader();
+  });
 }
 
 async function init() {
   primeBillingReturnFlowFromLocation();
   setupEventListeners();
-  await configureProductAuth();
+  const sessionAbort = trackAbort();
+  beginStartupHold();
+  state.ui.sessionChecking = true;
+  syncLoader();
+  window.__emberstageBackdrop?.start();
   try {
-    const meData = await apiCall('GET', '/api/auth/me');
+    await configureProductAuth();
+    if (sessionAbort.signal.aborted) return;
+    const meData = await apiCall('GET', '/api/auth/me', null, { signal: sessionAbort.signal });
+    if (sessionAbort.signal.aborted) return;
     if (meData?.success) {
       state.user = meData.user;
-      const wsData = await apiCall('GET', '/api/workspaces');
+      const wsData = await apiCall('GET', '/api/workspaces', null, { signal: sessionAbort.signal });
+      if (sessionAbort.signal.aborted) return;
       if (wsData?.workspaces?.length) {
         state.workspaces = wsData.workspaces;
         state.activeWorkspaceId = wsData.workspaces[0].id;
         showView('app');
         hideAlert();
-        await loadWorkspaceData();
+        setBusy('portal-open', true);
+        try {
+          await loadWorkspaceData();
+        } finally {
+          setBusy('portal-open', false);
+        }
         await resumeBillingReturnFlowIfNeeded();
       } else {
         showView('auth');
@@ -2541,9 +2784,218 @@ async function init() {
     } else {
       showView('auth');
     }
-  } catch (_) {
+  } catch (error) {
+    if (error?.name === 'AbortError') return;
     showView('auth');
+  } finally {
+    releaseAbort(sessionAbort);
+    state.ui.sessionChecking = false;
+    finishStartupPresentation();
   }
 }
 
 document.addEventListener('DOMContentLoaded', init);
+
+const ANIMATION_33_SOURCE_SHA256 = 'ec82cbb75876c0ca981b0b1ae2ed9c1eba0135c533b8d1feab971ae20ed04fcc';
+const BACKDROP_MAX_EDGE = 1280;
+
+const vs = `attribute vec2 a_position;
+varying vec2 v_texCoord;
+void main() {
+  v_texCoord = a_position * 0.5 + 0.5;
+  gl_Position = vec4(a_position, 0.0, 1.0);
+}`;
+  const fs = `precision highp float;
+
+uniform float u_time;
+uniform vec2 u_resolution;
+uniform vec2 u_mouse;
+varying vec2 v_texCoord;
+
+float hash(vec2 p) {
+  return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
+}
+
+float noise(vec2 p) {
+  vec2 i = floor(p);
+  vec2 f = fract(p);
+  vec2 u = f * f * (3.0 - 2.0 * f);
+  return mix(
+    mix(hash(i + vec2(0.0, 0.0)), hash(i + vec2(1.0, 0.0)), u.x),
+    mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x),
+    u.y
+  );
+}
+
+float fbm(vec2 p) {
+  float v = 0.0;
+  float a = 0.5;
+  mat2 rot = mat2(0.8, 0.6, -0.6, 0.8);
+  for (int i = 0; i < 4; i++) {
+    v += a * noise(p);
+    p = rot * p * 2.0;
+    a *= 0.5;
+  }
+  return v;
+}
+
+void main() {
+  vec2 uv = v_texCoord;
+  vec2 aspect = vec2(u_resolution.x / max(u_resolution.y, 1.0), 1.0);
+  vec2 p = (uv - 0.5) * aspect;
+
+  float t = u_time * 0.12;
+  vec2 mouseNorm = (u_mouse / max(u_resolution, vec2(1.0))) - 0.5;
+
+  float q = fbm(p * 1.6 + vec2(t * 0.6, -t * 0.4));
+  float r = fbm(p * 2.2 + vec2(q + t * 0.3, -q + t * 0.5) + mouseNorm * 0.15);
+
+  vec3 obsidianDeep = vec3(0.039, 0.059, 0.078);
+  vec3 obsidianMid  = vec3(0.075, 0.102, 0.135);
+  vec3 emberOrange  = vec3(1.0, 0.333, 0.0);
+  vec3 emberAmber   = vec3(1.0, 0.55, 0.1);
+
+  vec3 col = mix(obsidianDeep, obsidianMid, smoothstep(0.2, 0.8, r));
+
+  // Subtle flowing ember aura
+  float emberMask = smoothstep(0.52, 0.88, r) * smoothstep(0.95, 0.15, length(p * 0.85));
+  col += emberOrange * emberMask * 0.18;
+  col += emberAmber * pow(emberMask, 2.0) * 0.10;
+
+  // Soft vignette
+  float vignette = smoothstep(1.25, 0.25, length(p));
+  col *= mix(0.65, 1.0, vignette);
+
+  gl_FragColor = vec4(col, 1.0);
+}`;
+
+function backdropReducedMotion() {
+  return window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches === true;
+}
+
+function mountPortalBackdrop() {
+  const root = document.querySelector('.portal-backdrop');
+  const canvas = document.getElementById('portal-backdrop-canvas');
+  if (!root || !canvas || canvas.dataset.bound === '1') return;
+  canvas.dataset.bound = '1';
+  canvas.setAttribute('aria-hidden', 'true');
+
+  const gl = canvas.getContext('webgl', { alpha: false, antialias: false, powerPreference: 'low-power' })
+    || canvas.getContext('experimental-webgl');
+  if (!gl) return;
+
+  function compile(type, src) {
+    const shader = gl.createShader(type);
+    gl.shaderSource(shader, src);
+    gl.compileShader(shader);
+    if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+      gl.deleteShader(shader);
+      return null;
+    }
+    return shader;
+  }
+
+  const program = gl.createProgram();
+  const vertex = compile(gl.VERTEX_SHADER, vs);
+  const fragment = compile(gl.FRAGMENT_SHADER, fs);
+  if (!program || !vertex || !fragment) return;
+  gl.attachShader(program, vertex);
+  gl.attachShader(program, fragment);
+  gl.linkProgram(program);
+  if (!gl.getProgramParameter(program, gl.LINK_STATUS)) return;
+  gl.useProgram(program);
+
+  const buffer = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+  const position = gl.getAttribLocation(program, 'a_position');
+  gl.enableVertexAttribArray(position);
+  gl.vertexAttribPointer(position, 2, gl.FLOAT, false, 0, 0);
+  const uTime = gl.getUniformLocation(program, 'u_time');
+  const uRes = gl.getUniformLocation(program, 'u_resolution');
+  const uMouse = gl.getUniformLocation(program, 'u_mouse');
+  let mouse = { x: 0, y: 0 };
+  let frame = 0;
+  let running = false;
+
+  function drawingSize() {
+    const rect = canvas.getBoundingClientRect();
+    const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+    const width = Math.max(1, Math.min(BACKDROP_MAX_EDGE, Math.round((rect.width || 1280) * dpr)));
+    const height = Math.max(1, Math.min(BACKDROP_MAX_EDGE, Math.round((rect.height || 720) * dpr)));
+    return { width, height };
+  }
+
+  function syncSize() {
+    const size = drawingSize();
+    if (canvas.width !== size.width || canvas.height !== size.height) {
+      canvas.width = size.width;
+      canvas.height = size.height;
+      mouse = { x: canvas.width / 2, y: canvas.height / 2 };
+    }
+  }
+
+  function draw(timeMs) {
+    if (gl.isContextLost()) return stop();
+    syncSize();
+    gl.viewport(0, 0, canvas.width, canvas.height);
+    if (uTime) gl.uniform1f(uTime, timeMs * 0.001);
+    if (uRes) gl.uniform2f(uRes, canvas.width, canvas.height);
+    if (uMouse) gl.uniform2f(uMouse, mouse.x, mouse.y);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  }
+
+  function tick(timeMs) {
+    frame = 0;
+    if (!running) return;
+    draw(timeMs);
+    frame = window.requestAnimationFrame(tick);
+  }
+
+  function stop() {
+    running = false;
+    if (frame) window.cancelAnimationFrame(frame);
+    frame = 0;
+  }
+
+  function start() {
+    if (running || backdropReducedMotion() || document.hidden || gl.isContextLost()) return;
+    running = true;
+    frame = window.requestAnimationFrame(tick);
+  }
+
+  function onPointer(event) {
+    const rect = canvas.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    const nx = (event.clientX - rect.left) / rect.width;
+    const ny = 1 - ((event.clientY - rect.top) / rect.height);
+    mouse.x = nx * canvas.width;
+    mouse.y = ny * canvas.height;
+  }
+
+  window.addEventListener('pointermove', onPointer, { passive: true });
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) stop();
+    else start();
+  });
+  window.addEventListener('pagehide', stop);
+  canvas.addEventListener('webglcontextlost', (event) => {
+    event.preventDefault();
+    stop();
+    root.classList.remove('is-shader');
+  }, false);
+
+  root.classList.add('is-shader');
+  syncSize();
+  draw(0);
+  if (!backdropReducedMotion()) start();
+  window.__emberstageBackdrop = {
+    start,
+    stop,
+    draw,
+    sourceSha256: ANIMATION_33_SOURCE_SHA256,
+    maxEdge: BACKDROP_MAX_EDGE
+  };
+}
+
+document.addEventListener('DOMContentLoaded', mountPortalBackdrop);

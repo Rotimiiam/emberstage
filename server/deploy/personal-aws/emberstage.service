@@ -1,0 +1,38 @@
+[Unit]
+Description=Emberstage account control plane
+After=network.target
+
+[Service]
+Type=simple
+User=emberstage
+Group=emberstage
+WorkingDirectory=/opt/emberstage/current/server
+EnvironmentFile=/etc/emberstage/runtime.env
+ExecStart=/opt/node-v24.22.3-linux-x64/bin/node src/index.js
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=45
+KillMode=control-group
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/emberstage
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+CapabilityBoundingSet=
+IPAddressDeny=169.254.169.254/32
+IPAddressDeny=fd00:ec2::254/128
+MemoryHigh=1200M
+MemoryMax=1500M
+TasksMax=96
+LimitNOFILE=4096
+StandardOutput=null
+StandardError=null
+
+[Install]
+WantedBy=multi-user.target

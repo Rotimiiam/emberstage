@@ -6,68 +6,278 @@
   <link rel="icon" type="image/svg+xml" href="/assets/brand/favicon.svg">
   <link rel="shortcut icon" href="/assets/brand/favicon.svg">
   <link rel="stylesheet" href="/assets/css/emberstage_brand.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Syne:wght@600;700;800&display=swap" rel="stylesheet">
   <title>Emberstage Portal</title>
   <link rel="stylesheet" href="/app/app.css">
 </head>
 <body>
+  <div id="portal-loading" class="portal-loading" role="status" aria-live="polite" aria-label="Opening Emberstage">
+    <div id="portal-loading-slot" data-loader-slot>
+<div class="emberstage-loader" id="emberstage-loader" aria-hidden="true"><style>
+.emberstage-loader {
+  width: min(320px, 100%);
+  margin-inline: auto;
+  pointer-events: none;
+}
+.emberstage-loader[hidden] { display: none !important; }
+.emberstage-loader #animated-svg-ANIMATION_37,
+.emberstage-loader svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+@media (prefers-reduced-motion: reduce) {
+  .emberstage-loader .spine-facet {
+    animation: none !important;
+    opacity: 0.8 !important;
+    transform: scaleY(1) scaleX(1) !important;
+  }
+  .emberstage-loader .top-facet,
+  .emberstage-loader .bot-facet {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: translate(0, 0) rotate(0deg) scale(1) !important;
+  }
+  .emberstage-loader .mid-facet {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: translateX(0px) scaleX(1) !important;
+  }
+  .emberstage-loader .shimmer-sweep {
+    animation: none !important;
+    opacity: 0 !important;
+  }
+}
+</style><!-- STITCH_SVG_START:ANIMATION_37 class="fixed inset-0 w-full h-full" --><div class="fixed inset-0 w-full h-full" id="animated-svg-ANIMATION_37" style="display:block;"><svg fill="none" height="320" viewbox="0 0 320 320" width="320" xmlns="http://www.w3.org/2000/svg">
+<defs>
+<!-- Warm Ember Shading for Facets -->
+<lineargradient id="facetTop" x1="0%" x2="100%" y1="0%" y2="100%">
+<stop offset="0%" stop-color="#FFE066"></stop>
+<stop offset="50%" stop-color="#FFAE00"></stop>
+<stop offset="100%" stop-color="#FF5500"></stop>
+</lineargradient>
+<lineargradient id="facetMid" x1="0%" x2="100%" y1="0%" y2="100%">
+<stop offset="0%" stop-color="#FFAE00"></stop>
+<stop offset="60%" stop-color="#FF5500"></stop>
+<stop offset="100%" stop-color="#FF2200"></stop>
+</lineargradient>
+<lineargradient id="facetBot" x1="0%" x2="100%" y1="0%" y2="100%">
+<stop offset="0%" stop-color="#FF6600"></stop>
+<stop offset="60%" stop-color="#FF2A00"></stop>
+<stop offset="100%" stop-color="#C71500"></stop>
+</lineargradient>
+<lineargradient id="spineGrad" x1="0%" x2="100%" y1="0%" y2="100%">
+<stop offset="0%" stop-color="#FF5500" stop-opacity="0.8"></stop>
+<stop offset="100%" stop-color="#991500" stop-opacity="0.4"></stop>
+</lineargradient>
+</defs>
+<style>
+    /* Vertical Spine unfolds / expands first */
+    @keyframes spineUnfold {
+      0%, 10% {
+        transform: scaleY(0.05) scaleX(0.4);
+        opacity: 0;
+      }
+      25% {
+        transform: scaleY(1.05) scaleX(1.1);
+        opacity: 0.9;
+      }
+      35%, 75% {
+        transform: scaleY(1) scaleX(1);
+        opacity: 0.8;
+      }
+      90%, 100% {
+        transform: scaleY(0.05) scaleX(0.4);
+        opacity: 0;
+      }
+    }
+
+    /* Top Louver unfolds upward and fans out to the right */
+    @keyframes topBarUnfold {
+      0%, 15% {
+        transform: translate(64px, 60px) rotate(-55deg) scale(0);
+        opacity: 0;
+      }
+      35% {
+        transform: translate(0, 0) rotate(2deg) scale(1.04);
+        opacity: 1;
+      }
+      45%, 75% {
+        transform: translate(0, 0) rotate(0deg) scale(1);
+        opacity: 1;
+      }
+      90%, 100% {
+        transform: translate(64px, 60px) rotate(-55deg) scale(0);
+        opacity: 0;
+      }
+    }
+
+    /* Middle Louver slides and unfolds horizontally like an aperture blade */
+    @keyframes midBarUnfold {
+      0%, 22% {
+        transform: translateX(-40px) scaleX(0);
+        opacity: 0;
+      }
+      40% {
+        transform: translateX(4px) scaleX(1.06);
+        opacity: 1;
+      }
+      48%, 75% {
+        transform: translateX(0px) scaleX(1);
+        opacity: 1;
+      }
+      90%, 100% {
+        transform: translateX(-40px) scaleX(0);
+        opacity: 0;
+      }
+    }
+
+    /* Bottom Foundation unfolds downward with a solid snap */
+    @keyframes botBarUnfold {
+      0%, 28% {
+        transform: translate(64px, 140px) rotate(45deg) scale(0);
+        opacity: 0;
+      }
+      46% {
+        transform: translate(0, 0) rotate(-2deg) scale(1.03);
+        opacity: 1;
+      }
+      54%, 75% {
+        transform: translate(0, 0) rotate(0deg) scale(1);
+        opacity: 1;
+      }
+      90%, 100% {
+        transform: translate(64px, 140px) rotate(45deg) scale(0);
+        opacity: 0;
+      }
+    }
+
+    /* Shimmer highlight that sweeps across after full unfold */
+    @keyframes shimmerFlash {
+      0%, 50% { opacity: 0; transform: translateX(-60px) skewX(-25deg); }
+      60% { opacity: 0.85; }
+      75% { opacity: 0; transform: translateX(110px) skewX(-25deg); }
+      100% { opacity: 0; transform: translateX(110px) skewX(-25deg); }
+    }
+
+    .spine-facet {
+      transform-origin: 64px 100px;
+      animation: spineUnfold 3.6s cubic-bezier(0.34, 1.4, 0.64, 1) infinite;
+    }
+
+    .top-facet {
+      transform-origin: 64px 60px;
+      animation: topBarUnfold 3.6s cubic-bezier(0.34, 1.3, 0.64, 1) infinite;
+    }
+
+    .mid-facet {
+      transform-origin: 64px 97px;
+      animation: midBarUnfold 3.6s cubic-bezier(0.34, 1.3, 0.64, 1) infinite;
+    }
+
+    .bot-facet {
+      transform-origin: 64px 140px;
+      animation: botBarUnfold 3.6s cubic-bezier(0.34, 1.3, 0.64, 1) infinite;
+    }
+
+    .shimmer-sweep {
+      animation: shimmerFlash 3.6s ease-out infinite;
+    }
+  </style>
+<!-- Geometric Unfolding Brandmark Group (Centered at 160, 160) -->
+<g transform="translate(51, 45) scale(1.15)">
+<!-- Base Spine / Anchor Notch (Unfolds vertically) -->
+<polygon class="spine-facet" fill="url(#spineGrad)" points="64,50 78,50 64,150 50,150"></polygon>
+<!-- Top Louver / Flame Peak (Unfolds outward and up) -->
+<g class="top-facet">
+<path d="M 64 60 C 64 54 69 50 75 50 L 132 50 C 137 50 141 55 139 60 L 126 90 C 124 94 120 97 115 97 L 64 97 Z" fill="url(#facetTop)"></path>
+</g>
+<!-- Middle Louver / Stage Beam (Expands horizontally) -->
+<g class="mid-facet">
+<path d="M 64 88 L 105 88 C 110 88 114 92 113 97 L 104 116 C 102 120 98 123 93 123 L 64 123 Z" fill="url(#facetMid)"></path>
+</g>
+<!-- Bottom Louver / Stage Foundation (Unfolds outward and down) -->
+<g class="bot-facet">
+<path d="M 64 114 L 128 114 C 133 114 137 118 136 123 L 122 144 C 120 148 115 150 110 150 L 75 150 C 69 150 64 146 64 140 Z" fill="url(#facetBot)"></path>
+</g>
+<!-- Light Sheen Sweep across unfolded facets -->
+<g clip-path="url(#unfoldClip)">
+<rect class="shimmer-sweep" fill="#FFFFFF" fill-opacity="0.65" height="110" width="28" x="40" y="45"></rect>
+</g>
+<clippath id="unfoldClip">
+<path d="M 64 60 C 64 54 69 50 75 50 L 132 50 C 137 50 141 55 139 60 L 126 90 C 124 94 120 97 115 97 L 64 97 Z"></path>
+<path d="M 64 88 L 105 88 C 110 88 114 92 113 97 L 104 116 C 102 120 98 123 93 123 L 64 123 Z"></path>
+<path d="M 64 114 L 128 114 C 133 114 137 118 136 123 L 122 144 C 120 148 115 150 110 150 L 75 150 C 69 150 64 146 64 140 Z"></path>
+</clippath>
+</g>
+</svg></div><!-- STITCH_SVG_END:ANIMATION_37 --></div>
+    </div>
+  </div>
+
   <div id="app-container">
     <div class="portal-shell">
-      <div class="portal-backdrop" aria-hidden="true"></div>
-
-      <div id="portal-loading" class="portal-loading panel" role="status" aria-live="polite">
-        <span class="loading-mark" aria-hidden="true"></span>
-        <div><strong>Opening Emberstage</strong><small>Checking your local session…</small></div>
+      <div class="portal-backdrop" aria-hidden="true">
+        <div class="portal-backdrop-field"></div>
+        <canvas id="portal-backdrop-canvas"></canvas>
+        <div class="portal-backdrop-dots"></div>
       </div>
 
-      <div id="auth-view" class="auth-layout" style="display: none;">
-        <section class="auth-card panel" aria-labelledby="auth-title">
-          <div class="auth-brand" aria-label="Emberstage">
-            <span class="auth-brand-mark" aria-hidden="true">
-              <img class="brand-logo" src="/assets/brand/emberstage-logo.svg" alt="">
-            </span>
-            <img class="auth-brand-wordmark brand-wordmark" src="/assets/brand/emberstage-wordmark.svg" alt="Emberstage">
+      <div id="auth-view" class="auth-layout">
+        <section class="auth-stage" aria-label="Emberstage account">
+          <div class="auth-context">
+            <img class="auth-mark" src="/assets/brand/emberstage-logo.svg" alt="">
+            <h1 class="auth-word">Emberstage</h1>
+            <p class="auth-context-copy">Account portal for workspaces, pairing, and billing.</p>
           </div>
 
-          <div class="auth-card-head">
-            <p id="auth-mode-label" class="eyebrow">Sign in</p>
-            <h2 id="auth-title">Welcome back</h2>
-            <p id="auth-subcopy" class="auth-subcopy">Sign in to open your control room.</p>
-          </div>
-
-          <div id="auth-alert" class="alert alert-danger" style="display: none;"></div>
-
-          <div id="auth-methods" class="auth-methods" hidden>
-            <button type="button" id="auth0-auth-button" class="btn btn-secondary btn-auth0" hidden>
-              <span class="oauth-mark" aria-hidden="true">A</span>
-              <span>Continue with Auth0</span>
-            </button>
-            <button type="button" id="google-auth-button" class="btn btn-secondary btn-google" hidden style="display: none !important;">
-              <span class="oauth-mark" aria-hidden="true">G</span>
-              <span>Continue with Google</span>
-            </button>
-            <div id="auth-divider" class="auth-divider" hidden><span>or continue with email</span></div>
-          </div>
-
-          <form id="auth-form" class="auth-form">
-            <div class="form-group" id="workspace-group">
-              <label for="reg-workspace">Workspace Name</label>
-              <input type="text" id="reg-workspace" class="form-control" placeholder="Acme Streamers">
+          <section class="auth-card panel" aria-labelledby="auth-title">
+            <div class="auth-card-head">
+              <p id="auth-mode-label" class="eyebrow">Sign in</p>
+              <h2 id="auth-title">Welcome back</h2>
+              <p id="auth-subcopy" class="auth-subcopy">Sign in to manage your workspace.</p>
             </div>
-            <div class="form-group">
-              <label for="auth-email">Email Address</label>
-              <input type="email" id="auth-email" class="form-control" required placeholder="name@domain.com">
-            </div>
-            <div class="form-group">
-              <label for="auth-password">Password</label>
-              <input type="password" id="auth-password" class="form-control" required placeholder="••••••••">
+            <noscript>
+              <p class="auth-noscript">JavaScript is off, so this sign-in form stays on the page. Sending it needs JavaScript. Nothing is covering the form.</p>
+            </noscript>
+
+            <div id="auth-alert" class="alert alert-danger" style="display: none;"></div>
+            <div id="auth-pending-slot" data-loader-slot hidden></div>
+
+            <div id="auth-methods" class="auth-methods" hidden>
+              <button type="button" id="auth0-auth-button" class="btn btn-secondary btn-auth0" hidden>
+                <span class="oauth-mark" aria-hidden="true">A</span>
+                <span>Continue with Auth0</span>
+              </button>
+              <button type="button" id="google-auth-button" class="btn btn-secondary btn-google" hidden style="display: none !important;">
+                <span class="oauth-mark" aria-hidden="true">G</span>
+                <span>Continue with Google</span>
+              </button>
+              <div id="auth-divider" class="auth-divider" hidden><span>or continue with email</span></div>
             </div>
 
-            <button type="submit" id="auth-submit-btn" class="btn btn-block">Sign In</button>
-            <p class="auth-toggle-row">
-              <span id="auth-toggle-copy">Need an account?</span>
-              <a href="#" id="auth-toggle-link">Create an account instead</a>
-            </p>
-          </form>
+            <form id="auth-form" class="auth-form">
+              <div class="form-group" id="workspace-group">
+                <label for="reg-workspace">Workspace Name</label>
+                <input type="text" id="reg-workspace" class="form-control" placeholder="Sunday service" autocomplete="organization">
+              </div>
+              <div class="form-group">
+                <label for="auth-email">Email Address</label>
+                <input type="email" id="auth-email" class="form-control" required placeholder="name@domain.com" autocomplete="email">
+              </div>
+              <div class="form-group">
+                <label for="auth-password">Password</label>
+                <input type="password" id="auth-password" class="form-control" required placeholder="••••••••" autocomplete="current-password">
+              </div>
+
+              <button type="submit" id="auth-submit-btn" class="btn btn-block">Sign In</button>
+              <p class="auth-toggle-row">
+                <span id="auth-toggle-copy">Need an account?</span>
+                <a href="#" id="auth-toggle-link">Create an account</a>
+              </p>
+            </form>
+          </section>
         </section>
       </div>
 
@@ -75,19 +285,14 @@
         <aside class="app-sidebar panel" aria-label="Primary">
           <div class="sidebar-top">
             <div class="sidebar-brand">
-              <span class="sidebar-brand-mark" aria-hidden="true">
-                <img class="brand-logo" src="/assets/brand/emberstage-logo.svg" alt="">
-              </span>
-              <div>
-                <h1 class="sidebar-brand-title">Emberstage</h1>
-              </div>
+              <img class="sidebar-logo" src="/assets/brand/emberstage-logo.svg" alt="">
+              <h1 class="sidebar-brand-title">Emberstage</h1>
             </div>
 
             <div class="workspace-chip" aria-label="Active workspace">
-              <span class="workspace-chip-dot" aria-hidden="true"></span>
               <div class="workspace-chip-copy">
                 <strong id="header-workspace-name">--</strong>
-                <span id="header-workspace-plan">Active workspace</span>
+                <span id="header-workspace-plan">Free</span>
               </div>
             </div>
 
@@ -100,12 +305,7 @@
           </div>
 
           <div class="sidebar-bottom">
-            <div class="sidebar-note" aria-label="Portal note">
-              <strong>Portal</strong>
-              <span>Encoder setup, broadcasts, devices, and billing stay in these four views.</span>
-            </div>
             <div class="operator-card">
-              <span class="operator-avatar" aria-hidden="true">EM</span>
               <div class="operator-copy">
                 <strong id="header-user-email">--</strong>
                 <span id="header-user-role">Workspace member</span>
@@ -118,11 +318,8 @@
         <div class="app-main">
           <header class="topbar">
             <div class="topbar-copy">
-              <p class="topbar-kicker">Live ingestion</p>
-              <div>
-                <h2 id="view-title">Stream Overview</h2>
-                <p id="view-subtitle" class="topbar-subtitle">Live relay, destination readiness, and encoder setup</p>
-              </div>
+              <h2 id="view-title">Overview</h2>
+              <p id="view-subtitle" class="topbar-subtitle">Enrollment, pairing, and billing for this workspace.</p>
             </div>
             <div class="topbar-actions">
               <span id="last-sync-label" class="topbar-sync">Last sync: waiting</span>
@@ -138,6 +335,7 @@
           </nav>
 
           <div id="app-alert" class="alert" style="display: none;"></div>
+          <div id="app-pending-slot" data-loader-slot hidden></div>
 
           <section id="overview-view" class="portal-view" data-view="overview" aria-labelledby="command-stage-title">
             <section class="command-stage panel">
@@ -165,7 +363,7 @@
               <aside class="card panel encoder-rail" aria-labelledby="encoder-title">
                 <div class="section-head">
                   <div>
-                    <h2 id="encoder-title">OBS setup</h2>
+                    <h2 id="encoder-title">Encoder setup</h2>
                   </div>
                 </div>
                 <div id="encoder-panel"></div>
@@ -219,6 +417,8 @@
       <div id="portal-modal-content"></div>
     </div>
   </div>
+
+  <div id="emberstage-loader-park" hidden></div>
 
   <script src="/app/app.js"></script>
 </body>

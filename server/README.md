@@ -51,6 +51,11 @@ Emberstage includes a single-node managed relay path:
   - GET `/api/workspaces/:workspaceId/streams/:streamId/status`
 - All other endpoints require active same-origin web-sessions.
 
+**Build-only camera proposal:** [Phone camera signaling contract](CAMERA_ROOMS.md)
+documents a separate, default-disabled runtime surface. Its device routes require
+explicit authorization to extend the above allowlist and enable
+`CAMERA_ROOMS_ENABLED=true`; build authorization does not authorize deployment.
+
 ### 2. Double-Submit Cookie CSRF Validation
 - Validates both the `_csrf` cookie and custom `X-CSRF-Token` headers securely against the web-session's encrypted `csrf_secret` using standard Node `crypto.timingSafeEqual`.
 

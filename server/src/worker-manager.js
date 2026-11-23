@@ -7,6 +7,17 @@ import { decrypt } from './crypto-utils.js';
 import { config } from './config.js';
 import { nangoClient } from './nango-client.js';
 
+function ffmpegEnvironment(workerId) {
+  // Native ffmpeg needs OS lookup/temp paths, not application credentials.
+  const env = {};
+  for (const key of ['PATH', 'SystemRoot', 'WINDIR', 'TEMP', 'TMP', 'TMPDIR']) {
+    if (process.env[key] !== undefined) env[key] = process.env[key];
+  }
+  // Preserve the existing process-ownership marker for restart reconciliation.
+  env.EMBERSTAGE_WORKER_ID = workerId;
+  return env;
+}
+
 // Authenticate the immutable identity, not mutable relay/remote status. No token is stored.
 function facebookSnapshotSignature(snapshot) {
   return crypto.createHmac('sha256', config.ENCRYPTION_SECRET).update(JSON.stringify([
@@ -171,7 +182,7 @@ export class WorkerManager {
       } else {
         child = this.spawn(config.FFMPEG_PATH, ffmpegArgs, {
           stdio: ['ignore', 'pipe', 'pipe'],
-          env: { ...process.env, EMBERSTAGE_WORKER_ID: workerId }
+          env: ffmpegEnvironment(workerId)
         });
       }
       pid = child.pid ?? null;
