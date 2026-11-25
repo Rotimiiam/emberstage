@@ -993,6 +993,11 @@ async function returnDeskLink() {
   const result = await apiCall('POST', `/api/workspaces/${state.activeWorkspaceId}/devices/link-code`, { name: 'This Desk' });
   if (!result.linkCode) return;
   sessionStorage.setItem('emberstage-desk-link', result.linkCode);
+  const port = Number(new URLSearchParams(location.search).get('port'));
+  if (Number.isInteger(port) && port >= 1024 && port <= 65535) {
+    location.href = `http://127.0.0.1:${port}/callback?code=${encodeURIComponent(result.linkCode)}`;
+    return;
+  }
   const overlay = document.createElement('div');
   overlay.id = 'desk-return-overlay';
   overlay.innerHTML = `
