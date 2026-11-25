@@ -172,6 +172,52 @@ PY
     systemctl enable --now certbot.timer
     curl --fail --silent https://account.emberstage.live/api/auth/config >/dev/null
     printf 'EMBERSTAGE_TLS_READY\n' >&3
+elif [ "$operation" = live-tls ]; then
+    # Phone join name only. Do not rewrite the account vhost, APP_BASE_URL,
+    # runtime env, or CAMERA_ROOMS_ENABLED. The app still returns 503 until
+    # rooms are enabled by a separate step.
+    test ! -e /etc/letsencrypt/live/live.emberstage.live
+    certbot certonly --non-interactive --agree-tos --register-unsafely-without-email \
+        --webroot -w /var/www/letsencrypt -d live.emberstage.live
+    safe /etc/nginx/emberstage-live-tls.conf
+    python3 - <<'PY'
+from pathlib import Path
+path = Path('/etc/nginx/emberstage-live-tls.conf')
+assert not path.exists()
+path.write_text('''
+server {
+    listen 443 ssl;
+    server_name live.emberstage.live;
+    ssl_certificate /etc/letsencrypt/live/live.emberstage.live/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/live.emberstage.live/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    add_header Strict-Transport-Security "max-age=86400" always;
+    add_header X-Content-Type-Options nosniff always;
+    location = / { return 404; }
+    location ^~ /api/streams/ { return 403; }
+    location ^~ /camera/ {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_set_header Host live.emberstage.live;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Forwarded-For $remote_addr;
+    }
+    location / { return 404; }
+}
+''')
+PY
+    python3 - <<'PY'
+from pathlib import Path
+conf = Path('/etc/nginx/nginx.conf')
+text = conf.read_text()
+line = '    include /etc/nginx/emberstage-live-tls.conf;\n'
+if line not in text:
+    needle = '    include /etc/nginx/emberstage-tls.conf;\n'
+    assert needle in text
+    conf.write_text(text.replace(needle, needle + line, 1))
+PY
+    nginx -t
+    systemctl reload nginx
+    printf 'EMBERSTAGE_LIVE_TLS_READY\n' >&3
 else
     false
 fi
