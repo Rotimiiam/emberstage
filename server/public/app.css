@@ -2212,3 +2212,7 @@ body:has(#portal-loading:not([hidden])) .portal-backdrop {
     animation: none;
   }
 }
+#desk-return-overlay{position:fixed;inset:0;z-index:90;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:rgba(7,10,14,.94);color:#fff;font-family:Inter,sans-serif}
+#desk-return-overlay h2{font-size:22px;margin:0}
+#desk-return-overlay p{color:#9aa7b4;margin:0}
+#desk-return-overlay .btn{font-size:15px;padding:12px 24px;cursor:pointer}

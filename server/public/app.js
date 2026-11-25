@@ -990,8 +990,21 @@ async function returnDeskLink() {
   sessionStorage.setItem('emberstage-desk-return', '1');
   const result = await apiCall('POST', `/api/workspaces/${state.activeWorkspaceId}/devices/link-code`, { name: 'This Desk' });
   if (!result.linkCode) return;
-  sessionStorage.removeItem('emberstage-desk-return');
-  location.replace(`emberstage://link?code=${encodeURIComponent(result.linkCode)}`);
+  sessionStorage.setItem('emberstage-desk-link', result.linkCode);
+  const overlay = document.createElement('div');
+  overlay.id = 'desk-return-overlay';
+  overlay.innerHTML = `
+    <h2>Return to Emberstage Desk</h2>
+    <p>You are signed in. Continue to pair this computer.</p>
+    <button class="btn btn-primary" type="button">Open Emberstage Desk</button>`;
+  overlay.querySelector('button').addEventListener('click', () => {
+    const code = sessionStorage.getItem('emberstage-desk-link') || '';
+    sessionStorage.removeItem('emberstage-desk-link');
+    sessionStorage.removeItem('emberstage-desk-return');
+    overlay.remove();
+    location.href = `emberstage://link?code=${encodeURIComponent(code)}`;
+  });
+  document.body.appendChild(overlay);
 }
 
 function loadWorkspaceData(options = {}) {
