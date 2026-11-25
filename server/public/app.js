@@ -826,7 +826,8 @@ function setActiveView(viewName, options = {}) {
   });
 
   if (!options.skipHash && window.location) {
-    window.location.hash = `#${nextView}`;
+    const desk = deskReturnPending() ? '?desk=1' : '';
+    window.history.replaceState({}, '', `${window.location.pathname}${desk}#${nextView}`);
   }
 }
 
@@ -980,10 +981,17 @@ async function configureProductAuth() {
 
 let workspaceDataLoad = null;
 
+function deskReturnPending() {
+  return new URLSearchParams(location.search).get('desk') === '1' || sessionStorage.getItem('emberstage-desk-return') === '1';
+}
+
 async function returnDeskLink() {
-  if (new URLSearchParams(location.search).get('desk') !== '1' || !state.activeWorkspaceId) return;
+  if (!deskReturnPending() || !state.activeWorkspaceId) return;
+  sessionStorage.setItem('emberstage-desk-return', '1');
   const result = await apiCall('POST', `/api/workspaces/${state.activeWorkspaceId}/devices/link-code`, { name: 'This Desk' });
-  if (result.linkCode) location.replace(`emberstage://link?code=${encodeURIComponent(result.linkCode)}`);
+  if (!result.linkCode) return;
+  sessionStorage.removeItem('emberstage-desk-return');
+  location.replace(`emberstage://link?code=${encodeURIComponent(result.linkCode)}`);
 }
 
 function loadWorkspaceData(options = {}) {
