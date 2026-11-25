@@ -4338,7 +4338,7 @@ export async function handleRequest(req, res) {
     res.cameraRoute = true;
     try {
       if (process.env.CAMERA_ROOMS_ENABLED !== 'true') return json(res, { error: 'CAMERA_DISABLED' }, 503);
-      cameraSecurity(req, config.APP_BASE_URL, pathname.startsWith('/camera/') && req.method === 'GET');
+      cameraSecurity(req, config.CAMERA_PUBLIC_ORIGIN, pathname.startsWith('/camera/') && req.method === 'GET', config.APP_BASE_URL);
       if (req.method === 'OPTIONS') return json(res, { error: 'CAMERA_ORIGIN_DENIED' }, 403);
       // Camera endpoints do not authenticate with ambient web-session cookies.
       req.headers.cookie = undefined;

@@ -88,6 +88,7 @@ export const config = {
   get PAYSTACK_PLAN_AMOUNT() { return process.env.PAYSTACK_PLAN_AMOUNT || '300000'; },
   get PAYSTACK_CURRENCY() { return process.env.PAYSTACK_CURRENCY || 'NGN'; },
   get APP_BASE_URL() { return process.env.APP_BASE_URL || null; },
+  get CAMERA_PUBLIC_ORIGIN() { return process.env.CAMERA_PUBLIC_ORIGIN || process.env.APP_BASE_URL || null; },
   get IS_PROD() { return process.env.NODE_ENV === 'production'; },
   get CONTRIBUTION_INGEST_URL() { return process.env.CONTRIBUTION_INGEST_URL || 'rtmp://localhost/live'; },
   get FFMPEG_PATH() { return process.env.FFMPEG_PATH || 'ffmpeg'; },

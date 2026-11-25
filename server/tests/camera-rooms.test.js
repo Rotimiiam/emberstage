@@ -144,6 +144,9 @@ test('strict Origin and HTTPS reject null, foreign, missing mutation origin and 
   rejects(() => cameraSecurity({ ...req, socket: { encrypted: false, remoteAddress: '192.0.2.1' }, headers: { ...req.headers, 'x-forwarded-proto': 'https' } }, process.env.APP_BASE_URL), 'CAMERA_HTTPS_REQUIRED');
   assert.equal(cameraSecurity({ ...req, socket: { encrypted: false, remoteAddress: '127.0.0.1' }, headers: { ...req.headers, 'x-forwarded-proto': 'https' } }, process.env.APP_BASE_URL), process.env.APP_BASE_URL);
   assert.equal(cameraSecurity({ ...req, method: 'GET', headers: { host: 'camera.example', 'sec-fetch-site': 'same-origin' } }, process.env.APP_BASE_URL), process.env.APP_BASE_URL);
+  const split = { ...req, headers: { host: 'live.example', origin: 'https://account.example' } };
+  assert.equal(cameraSecurity(split, 'https://live.example', false, 'https://account.example'), 'https://live.example');
+  rejects(() => cameraSecurity({ ...split, headers: { ...split.headers, origin: 'https://evil.example' } }, 'https://live.example', false, 'https://account.example'), 'CAMERA_ORIGIN_DENIED');
 });
 test('HTTP contract with synthetic streams: auth, claim, code, approval, signaling, revoke', async () => {
   assert.equal((await request('/api/device/camera-rooms', { method: 'POST', body: {} })).status, 401);

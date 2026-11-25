@@ -96,15 +96,19 @@ export class CameraRooms {
 export function cameraPath(pathname) { return pathname === '/api/device/camera-rooms' || pathname.startsWith('/api/camera/') || pathname.startsWith('/camera/'); }
 
 // Only trust TLS forwarding from a local TLS terminator, never arbitrary clients.
-export function cameraSecurity(req, appBaseUrl, navigation = false) {
+export function cameraSecurity(req, appBaseUrl, navigation = false, deviceOrigin = appBaseUrl) {
   let url;
   try { url = new URL(appBaseUrl); } catch { fail('CAMERA_HTTPS_REQUIRED', 503); }
+  let device;
+  try { device = new URL(deviceOrigin); } catch { fail('CAMERA_HTTPS_REQUIRED', 503); }
+  if (device.protocol !== 'https:' || device.username || device.password || device.pathname !== '/' || device.search || device.hash) fail('CAMERA_HTTPS_REQUIRED', 503);
   if (url.protocol !== 'https:' || url.username || url.password || url.pathname !== '/' || url.search || url.hash) fail('CAMERA_HTTPS_REQUIRED', 503);
   const local = ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket?.remoteAddress);
   if (req.headers.host !== url.host || !(req.socket?.encrypted || (local && req.headers['x-forwarded-proto'] === 'https'))) fail('CAMERA_HTTPS_REQUIRED', 403);
   const origin = req.headers.origin;
-  if (origin !== undefined && origin !== url.origin) fail('CAMERA_ORIGIN_DENIED', 403);
-  if (!navigation && origin !== url.origin && !(req.method === 'GET' && req.headers['sec-fetch-site'] === 'same-origin')) fail('CAMERA_ORIGIN_DENIED', 403);
+  const allowed = new Set([url.origin, device.origin]);
+  if (origin !== undefined && !allowed.has(origin)) fail('CAMERA_ORIGIN_DENIED', 403);
+  if (!navigation && !allowed.has(origin) && !(req.method === 'GET' && req.headers['sec-fetch-site'] === 'same-origin')) fail('CAMERA_ORIGIN_DENIED', 403);
   return url.origin;
 }
 
@@ -118,7 +122,7 @@ export function installCameraRoutes({ addRoute, authAndAuthorize, json, config, 
   const wrap = (side, action, navigation = false) => async (req, res) => {
     try {
       if (process.env.CAMERA_ROOMS_ENABLED !== 'true') fail('CAMERA_DISABLED', 503);
-      const origin = cameraSecurity(req, config.APP_BASE_URL, navigation);
+      const origin = cameraSecurity(req, config.CAMERA_PUBLIC_ORIGIN, navigation, config.APP_BASE_URL);
       let room, device;
       if (side === 'device' || (side === 'both' && !req.headers['x-camera-claim'])) {
         // Explicit bearer-only admission: cookies cannot fall back to operator authority.
