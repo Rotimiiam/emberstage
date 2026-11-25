@@ -771,7 +771,7 @@ function renderAuthView() {
     workspaceGroup.style.display = 'none';
     modeLabel.textContent = 'Sign in';
     authTitle.textContent = 'Welcome back';
-    authSubcopy.textContent = 'Sign in to manage your workspace.';
+    authSubcopy.textContent = 'Sign in to manage your workspace and production decks.';
     submitBtn.textContent = 'Sign In';
     toggleCopy.textContent = 'Need an account?';
     toggleLink.textContent = 'Create an account';
@@ -980,6 +980,12 @@ async function configureProductAuth() {
 
 let workspaceDataLoad = null;
 
+async function returnDeskLink() {
+  if (new URLSearchParams(location.search).get('desk') !== '1' || !state.activeWorkspaceId) return;
+  const result = await apiCall('POST', `/api/workspaces/${state.activeWorkspaceId}/devices/link-code`, { name: 'This Desk' });
+  if (result.linkCode) location.replace(`emberstage://link?code=${encodeURIComponent(result.linkCode)}`);
+}
+
 function loadWorkspaceData(options = {}) {
   const workspaceId = state.activeWorkspaceId;
   if (!workspaceId) return Promise.resolve();
@@ -989,7 +995,7 @@ function loadWorkspaceData(options = {}) {
     if (workspaceDataLoad === load) workspaceDataLoad = null;
   });
   workspaceDataLoad = load;
-  return load.promise;
+  return load.promise.then(() => returnDeskLink());
 }
 
 async function fetchWorkspaceData(options, workspaceId) {
@@ -2141,6 +2147,10 @@ async function handleGeneratePairingCode(form) {
   renderDevicesPanel();
   try {
     const result = await apiCall('POST', `/api/workspaces/${state.activeWorkspaceId}/devices/link-code`, { name: deviceName });
+    if (new URLSearchParams(location.search).get('desk') === '1' && result.linkCode) {
+      location.replace(`emberstage://link?code=${encodeURIComponent(result.linkCode)}`);
+      return;
+    }
     state.linkCode = { code: result.linkCode, expiresAt: result.expiresAt, deviceName };
     startLinkCodeCountdown(result.expiresAt);
     await refreshWorkspaceAfterMutation('devices', 'Pairing code ready. Enter it in the OBS dock within ten minutes.');
