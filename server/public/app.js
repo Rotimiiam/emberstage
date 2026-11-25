@@ -987,6 +987,8 @@ function deskReturnPending() {
 
 async function returnDeskLink() {
   if (!deskReturnPending() || !state.activeWorkspaceId) return;
+  if (sessionStorage.getItem('emberstage-desk-link-issued') === '1') return;
+  sessionStorage.setItem('emberstage-desk-link-issued', '1');
   sessionStorage.setItem('emberstage-desk-return', '1');
   const result = await apiCall('POST', `/api/workspaces/${state.activeWorkspaceId}/devices/link-code`, { name: 'This Desk' });
   if (!result.linkCode) return;
@@ -1001,6 +1003,7 @@ async function returnDeskLink() {
     const code = sessionStorage.getItem('emberstage-desk-link') || '';
     sessionStorage.removeItem('emberstage-desk-link');
     sessionStorage.removeItem('emberstage-desk-return');
+    sessionStorage.removeItem('emberstage-desk-link-issued');
     overlay.remove();
     location.href = `emberstage://link?code=${encodeURIComponent(code)}`;
   });
