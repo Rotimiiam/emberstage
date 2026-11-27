@@ -173,9 +173,9 @@ PY
     curl --fail --silent https://account.emberstage.live/api/auth/config >/dev/null
     printf 'EMBERSTAGE_TLS_READY\n' >&3
 elif [ "$operation" = live-tls ]; then
-    # Phone join name only. Do not rewrite the account vhost, APP_BASE_URL,
-    # runtime env, or CAMERA_ROOMS_ENABLED. The app still returns 503 until
-    # rooms are enabled by a separate step.
+    # Phone join and camera-room control only. Do not expose account auth,
+    # streams, or the app UI on this host. Do not rewrite the account vhost,
+    # APP_BASE_URL, runtime env, or CAMERA_ROOMS_ENABLED.
     test ! -e /etc/letsencrypt/live/live.emberstage.live
     certbot certonly --non-interactive --agree-tos --register-unsafely-without-email \
         --webroot -w /var/www/letsencrypt -d live.emberstage.live
@@ -195,6 +195,12 @@ server {
     add_header X-Content-Type-Options nosniff always;
     location = / { return 404; }
     location ^~ /api/streams/ { return 403; }
+    location ^~ /api/camera/ {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_set_header Host live.emberstage.live;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Forwarded-For $remote_addr;
+    }
     location ^~ /camera/ {
         proxy_pass http://127.0.0.1:3000;
         proxy_set_header Host live.emberstage.live;

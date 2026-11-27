@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import { Readable } from 'node:stream';
 import { readFileSync } from 'node:fs';
-import { CameraRooms, cameraSecurity } from '../src/camera-rooms.js';
+import { CameraRooms, cameraSecurity, installCameraRoutes } from '../src/camera-rooms.js';
 
 process.env.NODE_ENV = 'test';
 process.env.DATABASE_URL = ':memory:';
@@ -32,15 +32,15 @@ function fixture(options) {
 }
 function approved() { const f = fixture(); f.claim = f.store.claim(f.room, fingerprint); f.store.approve(f.room, f.claim); return f; }
 function rejects(fn, marker) { assert.throws(fn, error => error.message === marker); }
-async function request(url, { method = 'GET', body, headers = {}, native = false } = {}) {
+async function request(url, { method = 'GET', body, headers = {}, native = false, peer = '192.0.2.1', handler = handleRequest } = {}) {
   const req = Readable.from(body === undefined ? [] : [typeof body === 'string' ? body : JSON.stringify(body)]);
   req.url = url; req.method = method;
   req.headers = { host: 'camera.example', origin: 'https://camera.example', ...headers };
-  req.socket = { encrypted: !native, remoteAddress: '192.0.2.1' };
+  req.socket = { encrypted: !native, remoteAddress: peer };
   const res = { headers: {}, status: 0, body: '', setHeader(k, v) { this.headers[k.toLowerCase()] = v; },
     writeHead(status, headers = {}) { this.status = status; for (const [k, v] of Object.entries(headers)) this.setHeader(k, v); },
     end(body = '') { this.body = String(body); } };
-  await handleRequest(req, res);
+  await handler(req, res);
   return { ...res, data: res.headers['content-type']?.includes('json') ? JSON.parse(res.body) : null };
 }
 const auth = { authorization: `Bearer ${deviceToken}` };
@@ -217,4 +217,170 @@ test('revoked owner device invalidates publisher access immediately', async () =
   assert.equal(created.status, 200); const room = created.data.room;
   database.run("UPDATE devices SET status = 'revoked' WHERE id = ?", [device.id]);
   assert.equal((await request(`/api/camera/rooms/${room.id}/claim`, { method: 'POST', body: { fingerprint }, headers: { authorization: `Bearer ${room.capability}` } })).status, 404);
+});
+
+const liveHeaders = { host: 'live.emberstage.live', origin: 'https://live.emberstage.live' };
+function guestHarness(options) {
+  const store = new CameraRooms(options), routes = [];
+  installCameraRoutes({ store, config: { CAMERA_PUBLIC_ORIGIN: 'https://camera.example', APP_BASE_URL: 'https://account.example' },
+    addRoute: (method, path, handler) => routes.push({ method, regex: new RegExp(`^${path.replace(':id', '([^/]+)')}$`), handler }),
+    authAndAuthorize: () => { throw new Error('Guest must not invoke account/device authentication'); },
+    deviceActive: () => { throw new Error('Guest must not read device/workspace state'); },
+    json: (res, data, status = 200, headers = {}) => {
+      res.writeHead(status, { 'Content-Type': 'application/json', ...headers }); res.end(JSON.stringify(data));
+    } });
+  const handler = async (req, res) => {
+    const pathname = new URL(req.url, 'https://live.emberstage.live').pathname;
+    const route = routes.find(r => r.method === req.method && r.regex.test(pathname));
+    assert.ok(route); req.params = { id: route.regex.exec(pathname)[1] }; await route.handler(req, res);
+  };
+  const send = (url, options = {}) => request(url, { ...options, handler, headers: { ...liveHeaders, ...options.headers } });
+  const create = () => send('/api/camera/guest-rooms', { method: 'POST', body: {} });
+  return { store, send, create };
+}
+const publisherCapability = room => new URLSearchParams(new URL(room.join_url).hash.slice(1)).get('capability');
+
+test('guest creation has exactly two independent 256-bit capabilities, hashes only, no identity', async () => {
+  const { store, create } = guestHarness({ now: () => 1000 });
+  const response = await create(); assert.equal(response.status, 200);
+  const room = response.data.room, publisher = publisherCapability(room);
+  assert.deepEqual(Object.keys(response.data), ['room']);
+  assert.deepEqual(Object.keys(room).sort(), ['expires_at', 'id', 'join_url', 'operator_capability']);
+  for (const cap of [room.operator_capability, publisher]) assert.equal(Buffer.from(cap, 'base64url').length, 32);
+  assert.notEqual(room.operator_capability, publisher); assert.notEqual(room.id, publisher);
+  assert.equal(Date.parse(room.expires_at), 301000); assert.equal(new URL(room.join_url).search, '');
+  const state = store.get(room.id);
+  assert.equal(state.deviceId, undefined); assert.equal(state.workspaceId, undefined);
+  assert.equal(state.operatorHash.length, 32); assert.equal(state.capabilityHash.length, 32);
+  for (const cap of [room.operator_capability, publisher]) assert.ok(!JSON.stringify([...store.rooms]).includes(cap));
+  assert.equal(response.headers['cache-control'], 'no-store');
+});
+
+test('guest creation rejects ambient authority, untrusted origins/hosts and every nonempty body with markers only', async () => {
+  const { send, store } = guestHarness(); const logs = [];
+  const originals = [console.log, console.warn, console.error];
+  console.log = console.warn = console.error = (...args) => logs.push(args);
+  try {
+    for (const options of [
+      { headers: { origin: undefined } }, { headers: { origin: 'null' } },
+      { headers: { origin: 'https://account.example' } }, { headers: { origin: 'https://evil.example' } },
+      { headers: { host: 'live.emberstage.live:443' } }, { headers: { host: 'account.example' } },
+      { headers: { cookie: '' } }, { headers: { cookie: 'session=secret' } },
+      { headers: { authorization: '' } }, { headers: { authorization: `Bearer ${deviceToken}` } },
+      ...[undefined, '', 'null', '[]', '{"private":secret}', { device: 'secret' }, { workspace: 'secret' },
+        { ip: '192.0.2.8' }, { url: 'https://evil.example' }, { key: 'secret' }].map(body => ({ body }))
+    ]) {
+      const response = await send('/api/camera/guest-rooms', { method: 'POST', body: {}, ...options });
+      assert.ok(response.status >= 400); assert.match(response.data.error, /^CAMERA_[A-Z_]+$/);
+      assert.ok(!response.body.includes('secret')); assert.equal(response.headers['cache-control'], 'no-store');
+    }
+    const created = await send('/api/camera/guest-rooms', { method: 'POST', body: {} });
+    const room = created.data.room;
+    await send(`/api/camera/rooms/${room.id}/status`, { headers: { authorization: `Bearer ${publisherCapability(room)}` } });
+    assert.deepEqual(logs, []); assert.equal(store.rooms.size, 1);
+  } finally { [console.log, console.warn, console.error] = originals; }
+});
+
+test('guest roles bind approval, code/status, offer/answer and candidate exchange without device authority', async () => {
+  const { send, create } = guestHarness(); const room = (await create()).data.room;
+  const base = `/api/camera/rooms/${room.id}`, op = { authorization: `Bearer ${room.operator_capability}` };
+  const publisher = { authorization: `Bearer ${publisherCapability(room)}` };
+  const claim = (await send(`${base}/claim`, { method: 'POST', body: { fingerprint }, headers: publisher })).data;
+  assert.match(claim.code, /^\d{6}$/);
+  const pub = { ...publisher, 'x-camera-claim': claim.claim_id };
+  for (const headers of [publisher, pub, auth, {}]) {
+    const status = await send(`${base}/status`, { headers }); assert.equal(status.status, 401);
+    assert.ok(!status.body.includes(claim.code)); assert.ok(!status.body.includes(claim.claim_id));
+    assert.equal((await send(`${base}/approve`, { method: 'POST', body: claim, headers })).status, 401);
+    assert.equal((await send(`${base}/revoke`, { method: 'POST', body: {}, headers })).status, 401);
+  }
+  assert.equal((await send(`${base}/claim`, { method: 'POST', body: { fingerprint }, headers: op })).status, 403);
+  assert.equal((await send(`${base}/claim`, { method: 'POST', body: { fingerprint }, headers: publisher })).status, 409);
+  assert.equal((await send(`${base}/status`, { headers: op })).data.code, claim.code);
+  assert.equal((await send(`${base}/offer`, { method: 'POST', body: { sdp: sdp(fingerprint) }, headers: pub })).status, 409);
+  assert.equal((await send(`${base}/approve`, { method: 'POST', body: { ...claim, fingerprint: otherFingerprint }, headers: op })).status, 409);
+  assert.equal((await send(`${base}/approve`, { method: 'POST', body: claim, headers: op })).status, 200);
+  assert.equal((await send(`${base}/offer`, { method: 'POST', body: { sdp: sdp(fingerprint) }, headers: op })).status, 403);
+  assert.equal((await send(`${base}/offer`, { method: 'POST', body: { sdp: sdp(otherFingerprint) }, headers: pub })).status, 409);
+  assert.equal((await send(`${base}/offer`, { method: 'POST', body: { sdp: sdp(fingerprint) }, headers: publisher })).status, 401);
+  assert.equal((await send(`${base}/offer`, { method: 'POST', body: { sdp: sdp(fingerprint) }, headers: pub })).status, 202);
+  assert.equal((await send(`${base}/offer`, { headers: op })).data.sdp, sdp(fingerprint));
+  assert.equal((await send(`${base}/offer`, { headers: pub })).status, 401);
+  assert.equal((await send(`${base}/answer`, { method: 'POST', body: { sdp: sdp(otherFingerprint) }, headers: pub })).status, 401);
+  assert.equal((await send(`${base}/answer`, { method: 'POST', body: { sdp: sdp(otherFingerprint) }, headers: op })).status, 202);
+  assert.equal((await send(`${base}/answer`, { headers: pub })).data.sdp, sdp(otherFingerprint));
+  const candidate = { candidate: 'candidate:synthetic', sdpMid: '0', sdpMLineIndex: 0 };
+  for (const headers of [pub, op]) assert.equal((await send(`${base}/candidate`, { method: 'POST', body: { candidate }, headers })).status, 202);
+  for (const headers of [pub, op]) assert.equal((await send(`${base}/candidates?from=0`, { headers })).data.next, 1);
+  assert.equal((await send(`${base}/status`, { headers: { ...op, origin: 'https://account.example' } })).status, 403);
+});
+
+test('guest unknown, expired and revoked are identical 404s; join HTML never reveals phase/capabilities', async () => {
+  let clock = 0; const { send, create } = guestHarness({ now: () => clock });
+  const expired = (await create()).data.room;
+  clock = 1000; const revoked = (await create()).data.room;
+  const headers = { authorization: `Bearer ${revoked.operator_capability}` };
+  const page = await send(`/camera/join/${revoked.id}`, { headers: { origin: undefined } });
+  assert.equal(page.status, 200);
+  for (const value of ['waiting', revoked.operator_capability, publisherCapability(revoked)]) assert.ok(!page.body.includes(value));
+  assert.equal((await send(`/api/camera/rooms/${revoked.id}/revoke`, { method: 'POST', body: {}, headers })).status, 200);
+  clock = 300000;
+  for (const id of [revoked.id, expired.id, 'missing']) {
+    for (const [url, options] of [[`/camera/join/${id}`, {}], [`/api/camera/rooms/${id}/status`, { headers }],
+      [`/api/camera/rooms/${id}/claim`, { method: 'POST', body: { fingerprint }, headers }],
+      [`/api/camera/rooms/${id}/revoke`, { method: 'POST', body: {}, headers }]]) {
+      const response = await send(url, options); assert.equal(response.status, 404);
+      assert.deepEqual(response.data, { error: 'CAMERA_ROOM_UNAVAILABLE' });
+    }
+  }
+});
+
+test('guest cap, coarse-prefix rate bounds, map expiry and spoofed forwarding are bounded', () => {
+  let clock = 0; const store = new CameraRooms({ now: () => clock });
+  const peer = (ip, forwarded = '198.51.100.1') => ({ socket: { remoteAddress: ip }, headers: { 'x-forwarded-for': forwarded } });
+  for (let i = 1; i <= 4; i++) store.createGuest(peer(`192.0.2.${i}`));
+  rejects(() => store.createGuest(peer('192.0.2.99')), 'CAMERA_RATE_LIMIT');
+  for (let i = 0; i < 4; i++) store.createGuest(peer(i % 2 ? '2001:db8:0:0::1' : '2001:0db8::2'));
+  rejects(() => store.createGuest(peer('2001:db8::3')), 'CAMERA_RATE_LIMIT');
+  for (let i = 1; i <= 4; i++) store.createGuest(peer('127.0.0.1', `198.51.100.${i}`));
+  rejects(() => store.createGuest(peer('127.0.0.1', '198.51.100.99')), 'CAMERA_RATE_LIMIT');
+  for (let i = 1; i <= 4; i++) store.createGuest(peer('127.0.0.1', `203.0.113.${i}`));
+  rejects(() => store.createGuest(peer('127.0.0.1', '203.0.113.99')), 'CAMERA_RATE_LIMIT');
+  for (let i = 1; i <= 4; i++) store.createGuest(peer('198.18.0.1', `192.0.2.${i}`));
+  rejects(() => store.createGuest(peer('198.18.0.99', '203.0.113.8')), 'CAMERA_RATE_LIMIT');
+  for (const key of store.guestClients.keys()) assert.match(key, /^[a-f0-9]{64}$/);
+  assert.ok(!JSON.stringify([...store.guestClients]).includes('192.0.2'));
+  clock = 300000; store.sweep(); assert.equal(store.guestClients.size, 0); assert.equal(store.rooms.size, 0);
+  store.create(device, 'https://camera.example');
+  for (let i = 0; i < 127; i++) store.createGuest(peer(`198.18.${i}.1`));
+  rejects(() => store.createGuest(peer('203.0.113.1')), 'CAMERA_CAPACITY'); assert.equal(store.rooms.size, 128);
+  const limiter = new CameraRooms();
+  for (let i = 0; i < 128; i++) { const room = limiter.createGuest(peer(`198.19.${i}.1`)); limiter.rooms.delete(room.room.id); }
+  rejects(() => limiter.createGuest(peer('203.0.113.1')), 'CAMERA_RATE_LIMIT'); assert.equal(limiter.guestClients.size, 128);
+});
+
+test('live vhost forwards only the phone camera control API through loopback TLS', () => {
+  const deploy = readFileSync(new URL('../deploy/personal-aws/guest.sh', import.meta.url), 'utf8');
+  const live = deploy.split("server_name live.emberstage.live;").at(-1)?.split("\n}")[0];
+  assert.ok(live, 'live HTTPS vhost is present');
+  assert.match(live, /location \^~ \/api\/camera\/\s*\{[\s\S]*?proxy_pass http:\/\/127\.0\.0\.1:3000;[\s\S]*?proxy_set_header Host live\.emberstage\.live;[\s\S]*?proxy_set_header X-Forwarded-Proto https;[\s\S]*?proxy_set_header X-Forwarded-For \$remote_addr;/);
+  assert.match(live, /location \^~ \/camera\//);
+});
+
+test('main handler preserves guest credential rejection, live-origin admission and disabled gate', async () => {
+  for (const headers of [{ ...liveHeaders, cookie: '' }, { ...liveHeaders, authorization: `Bearer ${deviceToken}` },
+    { ...liveHeaders, origin: undefined }, { ...liveHeaders, origin: 'https://camera.example' }]) {
+    assert.ok((await request('/api/camera/guest-rooms', { method: 'POST', body: {}, headers })).status >= 400);
+  }
+  const created = await request('/api/camera/guest-rooms', { method: 'POST', body: {}, headers: liveHeaders });
+  assert.equal(created.status, 200);
+  const room = created.data.room, headers = { ...liveHeaders, authorization: `Bearer ${room.operator_capability}` };
+  assert.equal((await request(`/api/camera/rooms/${room.id}/status`, { headers })).status, 200);
+  assert.equal((await request(`/api/camera/rooms/${room.id}/revoke`, { method: 'POST', body: {}, headers })).status, 200);
+  assert.equal((await request(`/api/camera/rooms/${room.id}/status`, { headers })).status, 404);
+  process.env.CAMERA_ROOMS_ENABLED = 'false';
+  try {
+    const response = await request('/api/camera/guest-rooms', { method: 'POST', body: {}, headers: liveHeaders });
+    assert.equal(response.status, 503); assert.deepEqual(response.data, { error: 'CAMERA_DISABLED' });
+  } finally { process.env.CAMERA_ROOMS_ENABLED = 'true'; }
 });

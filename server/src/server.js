@@ -8,7 +8,7 @@ import * as db from './db.js';
 import * as cryptoUtils from './crypto-utils.js';
 import { workerManager, createFacebookSnapshot, readFacebookSnapshot } from './worker-manager.js';
 import { nangoClient } from './nango-client.js';
-import { installCameraRoutes, cameraPath, cameraSecurity, cameraError } from './camera-rooms.js';
+import { installCameraRoutes, cameraPath, cameraSecurity, guestCameraSecurity, guestCreateSecurity, cameraError } from './camera-rooms.js';
 import { installDeviceSummary } from './device-summary.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -403,7 +403,7 @@ function authAndAuthorize(req, res, route) {
 
 // --- DEFINE ROUTES ---
 
-installCameraRoutes({ addRoute, authAndAuthorize, json, config,
+const cameraRooms = installCameraRoutes({ addRoute, authAndAuthorize, json, config,
   deviceActive: (id, workspaceId) => !!db.queryOne("SELECT id FROM devices WHERE id = ? AND workspace_id = ? AND status = 'active'", [id, workspaceId]) });
 
 // 1. Auth: Register
@@ -4338,7 +4338,11 @@ export async function handleRequest(req, res) {
     res.cameraRoute = true;
     try {
       if (process.env.CAMERA_ROOMS_ENABLED !== 'true') return json(res, { error: 'CAMERA_DISABLED' }, 503);
-      cameraSecurity(req, config.CAMERA_PUBLIC_ORIGIN, pathname.startsWith('/camera/') && req.method === 'GET', config.APP_BASE_URL);
+      const roomId = /^\/(?:api\/camera\/rooms|camera\/join)\/([^/]+)(?:\/|$)/.exec(pathname)?.[1];
+      const room = roomId ? cameraRooms.get(roomId) : undefined;
+      if (pathname === '/api/camera/guest-rooms') guestCreateSecurity(req);
+      else if (room?.guest) guestCameraSecurity(req, pathname.startsWith('/camera/') && req.method === 'GET');
+      else cameraSecurity(req, config.CAMERA_PUBLIC_ORIGIN, pathname.startsWith('/camera/') && req.method === 'GET', config.APP_BASE_URL);
       if (req.method === 'OPTIONS') return json(res, { error: 'CAMERA_ORIGIN_DENIED' }, 403);
       // Camera endpoints do not authenticate with ambient web-session cookies.
       req.headers.cookie = undefined;
@@ -4375,7 +4379,7 @@ export async function handleRequest(req, res) {
       res.writeHead(204);
       return res.end();
     }
-  } else {
+  } else if (!res.cameraRoute) {
     // Standard origin check for web/admin/provider routes
     if (origin === 'null') {
       return json(res, { error: 'Forbidden: Request origin null is not allowed' }, 403);

@@ -1,7 +1,9 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
+import net from 'node:net';
 
 const TTL = 5 * 60 * 1000;
+const GUEST_ORIGIN = 'https://live.emberstage.live';
 const fingerprintPattern = /^(?:[0-9A-F]{2}:){31}[0-9A-F]{2}$/;
 const digest = value => crypto.createHash('sha256').update(value).digest();
 const token = () => crypto.randomBytes(32).toString('base64url');
@@ -13,8 +15,55 @@ const equal = (value, expected) => typeof value === 'string' && value.length <= 
 
 // Deliberately volatile: restart invalidates every capability and generation.
 export class CameraRooms {
-  constructor({ now = Date.now, maxRooms = 128 } = {}) { this.now = now; this.maxRooms = maxRooms; this.rooms = new Map(); }
-  sweep() { for (const [id, room] of this.rooms) if (room.deadline <= this.now()) this.rooms.delete(id); }
+  constructor({ now = Date.now, maxRooms = 128 } = {}) {
+    this.now = now; this.maxRooms = Math.min(maxRooms, 128); this.rooms = new Map();
+    this.guestClients = new Map(); this.prefixSalt = crypto.randomBytes(32);
+  }
+  sweep() {
+    for (const [id, room] of this.rooms) if (room.deadline <= this.now()) this.rooms.delete(id);
+    for (const [key, client] of this.guestClients) if (client.deadline <= this.now()) this.guestClients.delete(key);
+  }
+  guestLimit(req) {
+    // The app accepts HTTPS forwarding only from loopback, and guest.sh's live
+    // vhost overwrites X-Forwarded-For with nginx's $remote_addr. Trust exactly
+    // one validated address only across that verified proxy boundary.
+    const peer = req.socket?.remoteAddress;
+    let ip = peer;
+    if (['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(peer)) {
+      const forwarded = req.headers['x-forwarded-for'];
+      if (typeof forwarded === 'string' && !forwarded.includes(',') && net.isIP(forwarded)) ip = forwarded;
+    }
+    if (typeof ip !== 'string' || !net.isIP(ip)) return;
+    if (/^::ffff:\d+\.\d+\.\d+\.\d+$/i.test(ip)) ip = ip.slice(7);
+    let prefix;
+    if (net.isIP(ip) === 4) prefix = `v4:${ip.split('.').slice(0, 3).join('.')}`;
+    else {
+      const canonical = new URL(`http://[${ip}]/`).hostname.slice(1, -1);
+      const [left, right] = canonical.split('::');
+      const a = left ? left.split(':') : [], b = right ? right.split(':') : [];
+      const parts = canonical.includes('::') ? [...a, ...Array(8 - a.length - b.length).fill('0'), ...b] : a;
+      prefix = `v6:${parts.slice(0, 4).map(p => p.padStart(4, '0')).join(':')}`;
+    }
+    const key = crypto.createHmac('sha256', this.prefixSalt).update(prefix).digest('hex');
+    const client = this.guestClients.get(key);
+    if (client) {
+      if (client.count >= 4) fail('CAMERA_RATE_LIMIT', 429);
+      client.count++;
+    } else {
+      if (this.guestClients.size >= 128) fail('CAMERA_RATE_LIMIT', 429);
+      this.guestClients.set(key, { count: 1, deadline: this.now() + TTL });
+    }
+  }
+  createGuest(req) {
+    this.sweep();
+    if (this.rooms.size >= this.maxRooms) fail('CAMERA_CAPACITY', 429);
+    this.guestLimit(req);
+    const id = token(), operator = token(), publisher = token(), deadline = this.now() + TTL;
+    this.rooms.set(id, { id, guest: true, operatorHash: digest(operator), capabilityHash: digest(publisher), deadline,
+      phase: 'waiting', claim: null, offer: null, answer: null, embeddedCandidates: { device: 0, publisher: 0 }, candidates: { device: [], publisher: [] } });
+    return { room: { id, join_url: `${GUEST_ORIGIN}/camera/join/${id}#capability=${publisher}`,
+      expires_at: new Date(deadline).toISOString(), operator_capability: operator } };
+  }
   create(device, origin) {
     this.sweep();
     if (this.rooms.size >= this.maxRooms) fail('CAMERA_CAPACITY', 429);
@@ -25,11 +74,15 @@ export class CameraRooms {
       phase: 'waiting', claim: null, offer: null, answer: null, embeddedCandidates: { device: 0, publisher: 0 }, candidates: { device: [], publisher: [] } });
     return { room: { id, join_url: `${origin}/camera/join/${id}#capability=${capability}`, expires_at: new Date(deadline).toISOString(), capability } };
   }
-  get(id) { this.sweep(); const room = this.rooms.get(id); if (!room) fail('CAMERA_ROOM_UNAVAILABLE', 404); return room; }
+  get(id) { this.sweep(); const room = this.rooms.get(id); if (!room || (room.guest && room.phase === 'revoked')) fail('CAMERA_ROOM_UNAVAILABLE', 404); return room; }
   live(room) { if (this.get(room.id) !== room) fail('CAMERA_ROOM_UNAVAILABLE', 404); }
   device(room, device) {
     this.live(room);
-    if (!device || device.id !== room.deviceId || device.workspace_id !== room.workspaceId || device.status !== 'active') fail('CAMERA_FORBIDDEN', 403);
+    if (room.guest || !device || device.id !== room.deviceId || device.workspace_id !== room.workspaceId || device.status !== 'active') fail('CAMERA_FORBIDDEN', 403);
+  }
+  operator(room, capability) {
+    this.live(room);
+    if (!room.guest || !equal(capability, room.operatorHash)) fail('CAMERA_UNAUTHORIZED', 401);
   }
   publisher(room, capability, claimId, pending = false) {
     this.live(room);
@@ -95,6 +148,18 @@ export class CameraRooms {
 
 export function cameraPath(pathname) { return pathname === '/api/device/camera-rooms' || pathname.startsWith('/api/camera/') || pathname.startsWith('/camera/'); }
 
+export function guestCameraSecurity(req, navigation = false) {
+  cameraSecurity(req, GUEST_ORIGIN, navigation, GUEST_ORIGIN);
+  if (!navigation && req.headers.origin !== GUEST_ORIGIN) fail('CAMERA_ORIGIN_DENIED', 403);
+  return GUEST_ORIGIN;
+}
+
+export function guestCreateSecurity(req) {
+  const origin = guestCameraSecurity(req);
+  if (req.headers.cookie !== undefined || req.headers.authorization !== undefined) fail('CAMERA_UNAUTHORIZED', 401);
+  return origin;
+}
+
 // Only trust TLS forwarding from a local TLS terminator, never arbitrary clients.
 export function cameraSecurity(req, appBaseUrl, navigation = false, deviceOrigin = appBaseUrl) {
   let url;
@@ -122,9 +187,21 @@ export function installCameraRoutes({ addRoute, authAndAuthorize, json, config, 
   const wrap = (side, action, navigation = false) => async (req, res) => {
     try {
       if (process.env.CAMERA_ROOMS_ENABLED !== 'true') fail('CAMERA_DISABLED', 503);
-      const origin = cameraSecurity(req, config.CAMERA_PUBLIC_ORIGIN, navigation, config.APP_BASE_URL);
-      let room, device;
-      if (side === 'device' || (side === 'both' && !req.headers['x-camera-claim'])) {
+      const room = req.params.id ? store.get(req.params.id) : undefined;
+      const origin = action === 'guest-create' ? guestCreateSecurity(req) : room?.guest ? guestCameraSecurity(req, navigation)
+        : cameraSecurity(req, config.CAMERA_PUBLIC_ORIGIN, navigation, config.APP_BASE_URL);
+      let device, guestOperator = false;
+      if (room?.guest && side !== 'public') {
+        const capability = /^Bearer ([^\s]+)$/.exec(req.headers.authorization || '')?.[1];
+        guestOperator = equal(capability, room.operatorHash);
+        if (guestOperator) {
+          if (side === 'publisher') fail('CAMERA_FORBIDDEN', 403);
+          store.operator(room, capability);
+        } else {
+          if (side === 'device' || action === 'status') fail('CAMERA_UNAUTHORIZED', 401);
+          store.publisher(room, capability, req.headers['x-camera-claim'], action === 'claim');
+        }
+      } else if (side === 'device' || (side === 'both' && !req.headers['x-camera-claim'])) {
         // Explicit bearer-only admission: cookies cannot fall back to operator authority.
         if (!/^Bearer [^\s]+$/.test(req.headers.authorization || '')) fail('CAMERA_UNAUTHORIZED', 401);
         const ctx = authAndAuthorize(req, res, { authRequired: true, authKind: 'device', rolesAllowed: ['operator'] });
@@ -133,10 +210,9 @@ export function installCameraRoutes({ addRoute, authAndAuthorize, json, config, 
         device = ctx.device;
       }
       if (req.params.id) {
-        room = store.get(req.params.id);
-        if (!deviceActive(room.deviceId, room.workspaceId)) fail('CAMERA_ROOM_UNAVAILABLE', 404);
+        if (!room.guest && !deviceActive(room.deviceId, room.workspaceId)) fail('CAMERA_ROOM_UNAVAILABLE', 404);
         if (device) store.device(room, device);
-        else if (side !== 'public') {
+        else if (!room.guest && side !== 'public') {
           const match = /^Bearer ([^\s]+)$/.exec(req.headers.authorization || '');
           store.publisher(room, match?.[1], req.headers['x-camera-claim'], action === 'claim');
         }
@@ -145,14 +221,17 @@ export function installCameraRoutes({ addRoute, authAndAuthorize, json, config, 
       if (req.method === 'POST') {
         let size = 0; const chunks = [];
         for await (const chunk of req) { size += Buffer.byteLength(chunk); if (size > 48 * 1024) fail('CAMERA_BODY_LIMIT', 413); chunks.push(Buffer.from(chunk)); }
-        try { body = JSON.parse(Buffer.concat(chunks).toString() || '{}'); } catch { fail('CAMERA_BODY_INVALID'); }
+        const raw = Buffer.concat(chunks).toString();
+        if (action === 'guest-create' && !raw.trim()) fail('CAMERA_BODY_INVALID');
+        try { body = JSON.parse(raw || '{}'); } catch { fail('CAMERA_BODY_INVALID'); }
         if (!body || typeof body !== 'object' || Array.isArray(body)) fail('CAMERA_BODY_INVALID');
+        if (action === 'guest-create' && Object.keys(body).length) fail('CAMERA_BODY_INVALID');
       }
       // Body reads yield: expiry, device revocation and bearer expiry must be
       // checked again immediately before synchronous state changes.
       if (room) {
         store.live(room);
-        if (!deviceActive(room.deviceId, room.workspaceId)) fail('CAMERA_ROOM_UNAVAILABLE', 404);
+        if (!room.guest && !deviceActive(room.deviceId, room.workspaceId)) fail('CAMERA_ROOM_UNAVAILABLE', 404);
       }
       if (device && req.method === 'POST') {
         const fresh = authAndAuthorize(req, res, { authRequired: true, authKind: 'device', rolesAllowed: ['operator'] });
@@ -161,7 +240,8 @@ export function installCameraRoutes({ addRoute, authAndAuthorize, json, config, 
         device = fresh.device;
         if (room) store.device(room, device);
       }
-      const actor = device ? 'device' : 'publisher';
+      const actor = device || guestOperator ? 'device' : 'publisher';
+      if (action === 'guest-create') return json(res, store.createGuest(req), 200, { 'Cache-Control': 'no-store' });
       if (action === 'create') return json(res, store.create(device, origin), 200, { 'Cache-Control': 'no-store' });
       if (action === 'page' || action === 'script') {
         if (room?.phase === 'revoked') fail('CAMERA_REVOKED', 410);
@@ -187,6 +267,7 @@ export function installCameraRoutes({ addRoute, authAndAuthorize, json, config, 
   // Feature flag is the explicit authorization gate for the new device allowlist.
   const route = (method, path, side, action, nav = false) => addRoute(method, path, wrap(side, action, nav), null, false);
   route('POST', '/api/device/camera-rooms', 'device', 'create');
+  route('POST', '/api/camera/guest-rooms', 'public', 'guest-create');
   route('GET', '/camera/join/:id', 'public', 'page', true);
   route('GET', '/camera/camera.js', 'public', 'script', true);
   for (const [method, action, side] of [['POST','claim','publisher'], ['POST','approve','device'], ['POST','offer','publisher'],
