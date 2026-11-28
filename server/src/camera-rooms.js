@@ -135,7 +135,10 @@ export class CameraRooms {
         // Split on CR as well as LF: no alternate line ending may conceal ICE.
         if (body.sdp.includes('\0') || /\r(?!\n)/.test(body.sdp)) fail('CAMERA_SDP_INVALID');
         for (const line of body.sdp.split(/\r?\n/)) {
-          if (/^\s*a=candidate:/i.test(line)) guestCandidate(line.slice(2));
+          if (/^\s*a\s*=\s*candidate:/i.test(line)) {
+            if (!line.startsWith('a=candidate:')) fail('CAMERA_CANDIDATE_INVALID');
+            guestCandidate(line.slice(2));
+          }
         }
       }
       const embedded = [...body.sdp.matchAll(/^a=candidate:/gm)].length;
