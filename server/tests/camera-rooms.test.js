@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import { Readable } from 'node:stream';
 import { readFileSync } from 'node:fs';
-import { CameraRooms, cameraSecurity, installCameraRoutes } from '../src/camera-rooms.js';
+import { CameraRooms, cameraSecurity, guestCameraSecurity, installCameraRoutes } from '../src/camera-rooms.js';
 
 process.env.NODE_ENV = 'test';
 process.env.DATABASE_URL = ':memory:';
@@ -147,6 +147,31 @@ test('strict Origin and HTTPS reject null, foreign, missing mutation origin and 
   const split = { ...req, headers: { host: 'live.example', origin: 'https://account.example' } };
   assert.equal(cameraSecurity(split, 'https://live.example', false, 'https://account.example'), 'https://live.example');
   rejects(() => cameraSecurity({ ...split, headers: { ...split.headers, origin: 'https://evil.example' } }, 'https://live.example', false, 'https://account.example'), 'CAMERA_ORIGIN_DENIED');
+});
+test('guest read-only browser GET permits absent Origin only with exact same-origin metadata', () => {
+  const origin = 'https://live.emberstage.live';
+  const req = { method: 'GET', headers: { host: 'live.emberstage.live', 'sec-fetch-site': 'same-origin' }, socket: { encrypted: true, remoteAddress: '192.0.2.1' } };
+  assert.equal(guestCameraSecurity(req), origin);
+  for (const site of [undefined, 'same-site', 'cross-site', 'none']) rejects(() => guestCameraSecurity({ ...req, headers: { ...req.headers, 'sec-fetch-site': site } }), 'CAMERA_ORIGIN_DENIED');
+  for (const value of ['null', '', [origin], origin + ', ' + origin, 'https://account.emberstage.live', 'https://evil.example']) rejects(() => guestCameraSecurity({ ...req, headers: { ...req.headers, origin: value } }), 'CAMERA_ORIGIN_DENIED');
+  for (const method of ['POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS']) rejects(() => guestCameraSecurity({ ...req, method }), 'CAMERA_ORIGIN_DENIED');
+  rejects(() => guestCameraSecurity({ ...req, headers: { ...req.headers, host: 'evil.example' } }), 'CAMERA_HTTPS_REQUIRED');
+  rejects(() => guestCameraSecurity({ ...req, socket: { ...req.socket, encrypted: false }, headers: { ...req.headers, 'x-forwarded-proto': 'https' } }), 'CAMERA_HTTPS_REQUIRED');
+});
+test('real main handler admits authenticated same-origin browser answer reads without weakening roles or claim binding', async () => {
+  const origin = 'https://live.emberstage.live', host = 'live.emberstage.live';
+  const room = (await request('/api/camera/guest-rooms', { method: 'POST', body: {}, headers: { host, origin } })).data.room;
+  const publisher = new URLSearchParams(new URL(room.join_url).hash.slice(1)).get('capability');
+  const base = `/api/camera/rooms/${room.id}`;
+  const claim = (await request(base + '/claim', { method: 'POST', body: { fingerprint }, headers: { host, origin, authorization: `Bearer ${publisher}` } })).data;
+  const headers = { host, origin: undefined, 'sec-fetch-site': 'same-origin', authorization: `Bearer ${publisher}`, 'x-camera-claim': claim.claim_id };
+  const pending = await request(base + '/answer', { headers });
+  assert.equal(pending.status, 409); assert.equal(pending.data.error, 'CAMERA_NOT_APPROVED');
+  assert.equal((await request(base + '/answer', { headers: { ...headers, 'x-camera-claim': undefined } })).status, 401);
+  assert.equal((await request(base + '/status', { headers })).status, 401);
+  assert.equal((await request(base + '/answer', { headers: { ...headers, 'sec-fetch-site': 'cross-site' } })).status, 403);
+  assert.equal((await request(base + '/offer', { method: 'POST', body: { sdp: sdp(fingerprint) }, headers })).status, 403);
+  await request(base + '/revoke', { method: 'POST', body: {}, headers: { host, origin, authorization: `Bearer ${room.operator_capability}` } });
 });
 test('HTTP contract with synthetic streams: auth, claim, code, approval, signaling, revoke', async () => {
   assert.equal((await request('/api/device/camera-rooms', { method: 'POST', body: {} })).status, 401);

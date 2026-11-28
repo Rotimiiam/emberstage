@@ -21,10 +21,15 @@ async function fixture({ permissionDenied = false, ice = candidate, candidateCou
     deviceActive: () => assert.fail('Guest must not use device state'),
     json: (res, data, status = 200) => { res.writeHead(status); res.end(JSON.stringify(data)); }
   });
-  async function send(url, { method = 'GET', headers = {}, body } = {}) {
+  async function send(url, { method = 'GET', headers = {}, body, browser = false } = {}) {
     const req = Readable.from(body === undefined ? [] : [typeof body === 'string' ? body : JSON.stringify(body)]);
     req.method = method; req.url = url;
-    req.headers = { host: new URL(origin).host, origin, ...Object.fromEntries(Object.entries(headers).map(([k, v]) => [k.toLowerCase(), v])) };
+    // Browsers do not send Origin on ordinary same-origin GET fetches.
+    // POSTs send Origin; native/operator fixtures still send it explicitly.
+    req.headers = { host: new URL(origin).host,
+      ...(browser && method === 'GET' ? {} : { origin }),
+      ...(browser ? { 'sec-fetch-site': 'same-origin' } : {}),
+      ...Object.fromEntries(Object.entries(headers).map(([k, v]) => [k.toLowerCase(), v])) };
     req.socket = { encrypted: true, remoteAddress: '192.0.2.1' };
     const path = new URL(url, origin).pathname;
     const route = routes.find(r => r.method === method && r.regex.test(path));
@@ -32,7 +37,7 @@ async function fixture({ permissionDenied = false, ice = candidate, candidateCou
     req.params = { id: route.regex.exec(path)[1] };
     const res = { status: 0, body: '', writeHead(status) { this.status = status; }, end(body) { this.body = body; } };
     await route.handler(req, res);
-    return { status: res.status, data: JSON.parse(res.body) };
+    return { status: res.status, data: JSON.parse(res.body), originPresent: req.headers.origin !== undefined };
   }
   const room = (await send('/api/camera/guest-rooms', { method: 'POST', body: {} })).data.room;
   const elements = Object.fromEntries(['start', 'stop', 'facing', 'facing-rear', 'facing-front', 'status', 'status-detail', 'code', 'code-group', 'preview', 'preview-placeholder'].map(id => [id, {
@@ -80,9 +85,9 @@ async function fixture({ permissionDenied = false, ice = candidate, candidateCou
         assert.equal(options.headers.Authorization, `Bearer ${new URL(room.join_url).hash.slice('#capability='.length)}`);
         if (!url.endsWith('/claim')) assert.equal(options.headers['X-Camera-Claim'], winningClaim);
         if (options.signal.aborted) throw Object.assign(new Error(), { name: 'AbortError' });
-        const result = override ? override(url, options) : await send(url, options);
+        const result = override ? override(url, options) : await send(url, { ...options, browser: true });
         if (url.endsWith('/claim') && result.status === 200) winningClaim = result.data.claim_id;
-        requests.push({ action: url.split('/').pop(), method: options.method, status: result.status, signal: options.signal });
+        requests.push({ action: url.split('/').pop(), method: options.method, status: result.status, signal: options.signal, originPresent: result.originPresent });
         return { ok: result.status >= 200 && result.status < 300, status: result.status, json: async () => result.data };
       }
     });
@@ -103,6 +108,8 @@ test('actual browser keeps claimed code and waits on answer approval, never oper
   const f = await fixture(); await f.browser();
   assert.match(f.elements.code.textContent, /^\d{3} \d{3}$/);
   assert.deepEqual(f.requests.map(r => [r.action, r.status]), [['claim', 200], ['answer', 409]]);
+  assert.equal(f.requests[0].originPresent, true);
+  assert.equal(f.requests[1].originPresent, false);
   assert.equal(f.elements.status.textContent, 'Waiting for desk approval');
   assert.equal(f.body.dataset.state, 'waiting'); assert.equal(f.elements['code-group'].hidden, false);
   assert.equal(f.stops, 0);

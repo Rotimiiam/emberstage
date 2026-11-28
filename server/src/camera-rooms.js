@@ -177,7 +177,8 @@ export function cameraPath(pathname) { return pathname === '/api/device/camera-r
 
 export function guestCameraSecurity(req, navigation = false) {
   cameraSecurity(req, GUEST_ORIGIN, navigation, GUEST_ORIGIN);
-  if (!navigation && req.headers.origin !== GUEST_ORIGIN) fail('CAMERA_ORIGIN_DENIED', 403);
+  const sameOriginRead = req.method === 'GET' && req.headers.origin === undefined && req.headers['sec-fetch-site'] === 'same-origin';
+  if (!navigation && req.headers.origin !== GUEST_ORIGIN && !sameOriginRead) fail('CAMERA_ORIGIN_DENIED', 403);
   return GUEST_ORIGIN;
 }
 
