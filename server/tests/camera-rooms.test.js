@@ -309,10 +309,51 @@ test('guest roles bind approval, code/status, offer/answer and candidate exchang
   assert.equal((await send(`${base}/answer`, { method: 'POST', body: { sdp: sdp(otherFingerprint) }, headers: pub })).status, 401);
   assert.equal((await send(`${base}/answer`, { method: 'POST', body: { sdp: sdp(otherFingerprint) }, headers: op })).status, 202);
   assert.equal((await send(`${base}/answer`, { headers: pub })).data.sdp, sdp(otherFingerprint));
-  const candidate = { candidate: 'candidate:synthetic', sdpMid: '0', sdpMLineIndex: 0 };
+  const candidate = { candidate: 'candidate:1 1 udp 123 192.0.2.8 9000 typ host', sdpMid: '0', sdpMLineIndex: 0 };
   for (const headers of [pub, op]) assert.equal((await send(`${base}/candidate`, { method: 'POST', body: { candidate }, headers })).status, 202);
   for (const headers of [pub, op]) assert.equal((await send(`${base}/candidates?from=0`, { headers })).data.next, 1);
   assert.equal((await send(`${base}/status`, { headers: { ...op, origin: 'https://account.example' } })).status, 403);
+});
+
+test('guest ICE accepts only numeric UDP host candidates in trickle and embedded SDP', async () => {
+  const { send, create } = guestHarness();
+  const ready = async () => {
+    const room = (await create()).data.room;
+    const base = `/api/camera/rooms/${room.id}`;
+    const publisher = { authorization: `Bearer ${publisherCapability(room)}` };
+    const claim = (await send(`${base}/claim`, { method: 'POST', body: { fingerprint }, headers: publisher })).data;
+    const pub = { ...publisher, 'x-camera-claim': claim.claim_id };
+    const op = { authorization: `Bearer ${room.operator_capability}` };
+    await send(`${base}/approve`, { method: 'POST', body: claim, headers: op });
+    return { room, base, pub };
+  };
+  const live = await ready();
+  await send(`${live.base}/offer`, { method: 'POST', body: { sdp: sdp(fingerprint) }, headers: live.pub });
+  const host = { candidate: 'candidate:1 1 udp 2130706431 192.0.2.8 9000 typ host generation 0 network-id 1 network-cost 999', sdpMid: '0', sdpMLineIndex: 0 };
+  assert.equal((await send(`${live.base}/candidate`, { method: 'POST', body: { candidate: host }, headers: live.pub })).status, 202);
+  for (const candidate of [
+    'candidate:1 1 udp 123 192.0.2.8 9000 typ srflx raddr 198.51.100.1 rport 8999',
+    'candidate:1 1 udp 123 192.0.2.8 9000 typ prflx',
+    'candidate:1 1 udp 123 192.0.2.8 9000 typ relay raddr 198.51.100.1 rport 8999',
+    'candidate:1 1 udp 123 192.0.2.8 9000 typ host raddr 198.51.100.1 rport 8999',
+    'candidate:1 1 tcp 123 192.0.2.8 9000 typ host tcptype active',
+    'candidate:1 1 udp 123 phone.local 9000 typ host',
+  ]) {
+    const result = await send(`${live.base}/candidate`, { method: 'POST', body: { candidate: { ...host, candidate } }, headers: live.pub });
+    assert.equal(result.status, 400, candidate);
+    assert.deepEqual(result.data, { error: 'CAMERA_CANDIDATE_INVALID' });
+    assert.ok(!result.body.includes('192.0.2.8'));
+  }
+
+  const embeddedRelay = await ready();
+  const relaySdp = sdp(fingerprint).replace('m=video', 'a=candidate:1 1 udp 123 192.0.2.8 9000 typ relay raddr 198.51.100.1 rport 8999\r\nm=video');
+  const rejected = await send(`${embeddedRelay.base}/offer`, { method: 'POST', body: { sdp: relaySdp }, headers: embeddedRelay.pub });
+  assert.equal(rejected.status, 400);
+  assert.deepEqual(rejected.data, { error: 'CAMERA_CANDIDATE_INVALID' });
+
+  const embeddedHost = await ready();
+  const hostSdp = sdp(fingerprint).replace('m=video', 'a=candidate:1 1 udp 2130706431 192.0.2.8 9000 typ host generation 0\r\nm=video');
+  assert.equal((await send(`${embeddedHost.base}/offer`, { method: 'POST', body: { sdp: hostSdp }, headers: embeddedHost.pub })).status, 202);
 });
 
 test('guest unknown, expired and revoked are identical 404s; join HTML never reveals phase/capabilities', async () => {

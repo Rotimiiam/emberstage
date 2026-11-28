@@ -11,6 +11,22 @@ class CameraError extends Error {
   constructor(marker, status = 400) { super(marker); this.status = status; }
 }
 const fail = (marker, status) => { throw new CameraError(marker, status); };
+// Guest media has no STUN/TURN path. Numeric host addresses are subsequently
+// checked against the receiver's OS-selected on-link prefix by Desk.
+function guestCandidate(text) {
+  if (typeof text !== 'string' || text.length > 2048 || !/^[\x21-\x7e]+(?: [\x21-\x7e]+)*$/.test(text)) fail('CAMERA_CANDIDATE_INVALID');
+  const p = text.split(' ');
+  const decimal = (s, max, allowZero = false) => /^\d+$/.test(s) && Number.isSafeInteger(Number(s)) && (allowZero || Number(s) > 0) && Number(s) <= max;
+  if (p.length < 8 || (p.length - 8) % 2 || !/^candidate:[a-zA-Z0-9+/]{1,32}$/.test(p[0]) ||
+      p[1] !== '1' || p[2].toLowerCase() !== 'udp' || !decimal(p[3], 0xffffffff) ||
+      !net.isIP(p[4]) || p[4].includes('%') || !decimal(p[5], 65535) || p[6] !== 'typ' || p[7] !== 'host') fail('CAMERA_CANDIDATE_INVALID');
+  const seen = new Set();
+  for (let i = 8; i < p.length; i += 2) {
+    if (seen.has(p[i]) || !['generation', 'network-id', 'network-cost', 'ufrag'].includes(p[i]) ||
+        (p[i] === 'ufrag' ? !/^[a-zA-Z0-9+/]{4,256}$/.test(p[i + 1]) : !decimal(p[i + 1], 0xffffffff, p[i] === 'generation'))) fail('CAMERA_CANDIDATE_INVALID');
+    seen.add(p[i]);
+  }
+}
 const equal = (value, expected) => typeof value === 'string' && value.length <= 256 && crypto.timingSafeEqual(digest(value), expected);
 
 // Deliberately volatile: restart invalidates every capability and generation.
@@ -115,6 +131,13 @@ export class CameraRooms {
       const fingerprints = [...body.sdp.matchAll(/^a=fingerprint:([^\r\n]+)\r?$/gm)].map(m => m[1]);
       if (!fingerprints.length || fingerprints.some(f => !/^sha-256 (?:[0-9A-F]{2}:){31}[0-9A-F]{2}$/.test(f))) fail('CAMERA_SDP_FINGERPRINT_INVALID');
       if (kind === 'offer' && fingerprints.some(f => f !== `sha-256 ${room.claim.fingerprint}`)) fail('CAMERA_APPROVAL_MISMATCH', 409);
+      if (room.guest) {
+        // Split on CR as well as LF: no alternate line ending may conceal ICE.
+        if (body.sdp.includes('\0') || /\r(?!\n)/.test(body.sdp)) fail('CAMERA_SDP_INVALID');
+        for (const line of body.sdp.split(/\r?\n/)) {
+          if (/^\s*a=candidate:/i.test(line)) guestCandidate(line.slice(2));
+        }
+      }
       const embedded = [...body.sdp.matchAll(/^a=candidate:/gm)].length;
       if (embedded + room.candidates[side].length > 64) fail('CAMERA_CANDIDATE_LIMIT', 429);
       room.embeddedCandidates[side] = embedded;
@@ -126,6 +149,7 @@ export class CameraRooms {
           !(c.sdpMid === null || (typeof c.sdpMid === 'string' && c.sdpMid.length <= 64)) ||
           !(c.sdpMLineIndex === null || (Number.isInteger(c.sdpMLineIndex) && c.sdpMLineIndex >= 0 && c.sdpMLineIndex <= 32))) fail('CAMERA_CANDIDATE_INVALID');
       if (room.candidates[side].length + room.embeddedCandidates[side] >= 64) fail('CAMERA_CANDIDATE_LIMIT', 429);
+      if (room.guest) guestCandidate(c.candidate);
       room.candidates[side].push({ candidate: c.candidate, sdpMid: c.sdpMid, sdpMLineIndex: c.sdpMLineIndex });
     }
     return { ok: true };
