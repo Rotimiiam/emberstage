@@ -35,11 +35,13 @@ async function fixture({ permissionDenied = false, ice = candidate, candidateCou
     return { status: res.status, data: JSON.parse(res.body) };
   }
   const room = (await send('/api/camera/guest-rooms', { method: 'POST', body: {} })).data.room;
-  const elements = Object.fromEntries(['start', 'stop', 'facing', 'status', 'code', 'preview'].map(id => [id, {
+  const elements = Object.fromEntries(['start', 'stop', 'facing', 'facing-rear', 'facing-front', 'status', 'status-detail', 'code', 'code-group', 'preview', 'preview-placeholder'].map(id => [id, {
     disabled: false, textContent: '', value: 'environment', srcObject: null, listeners: {},
+    attributes: {}, setAttribute(name, value) { this.attributes[name] = value; },
     addEventListener(name, fn) { this.listeners[name] = fn; }
   }]));
-  const timers = new Map(), windows = {}, peers = [], logs = [], historyCalls = [];
+  const body = { dataset: { state: 'ready' } };
+  const timers = new Map(), windows = {}, peers = [], logs = [], historyCalls = [], facings = [];
   let timerId = 0, stops = 0, offerCreates = 0;
   const track = { stop() { stops++; } };
   const stream = { getTracks: () => [track], getVideoTracks: () => [track] };
@@ -57,13 +59,14 @@ async function fixture({ permissionDenied = false, ice = candidate, candidateCou
     close() { this.closed = true; }
   }
   let override, winningClaim;
-  function browser() {
+  function browser({ front = false } = {}) {
     const context = vm.createContext({
-      document: { getElementById: id => elements[id] }, location: new URL(room.join_url),
+      document: { body, getElementById: id => elements[id] }, location: new URL(room.join_url),
       history: { replaceState: (...args) => historyCalls.push(args) }, URLSearchParams, AbortController,
       window: { isSecureContext: true, addEventListener: (name, fn) => { windows[name] = fn; } },
       navigator: { mediaDevices: { getUserMedia: async constraints => {
         assert.equal(constraints.audio, false);
+        facings.push(constraints.video.facingMode.ideal);
         if (permissionDenied) throw Object.assign(new Error('private device detail'), { name: 'NotAllowedError' });
         return stream;
       } } },
@@ -84,11 +87,12 @@ async function fixture({ permissionDenied = false, ice = candidate, candidateCou
       }
     });
     vm.runInContext(source, context, { filename: 'camera.js' });
+    if (front) elements['facing-front'].listeners.click();
     return elements.start.listeners.click();
   }
   const base = `/api/camera/rooms/${room.id}`;
   const operator = (action, body) => send(`${base}/${action}`, { method: body === undefined ? 'GET' : 'POST', body, headers: { authorization: `Bearer ${room.operator_capability}` } });
-  return { browser, store, room, elements, requests, peers, timers, windows, logs, historyCalls, operator,
+  return { browser, store, room, elements, body, facings, requests, peers, timers, windows, logs, historyCalls, operator,
     get stops() { return stops; }, get offerCreates() { return offerCreates; },
     expire() { clock = 300000; }, override(fn) { override = fn; },
     async tick() { assert.equal(timers.size, 1); const [id, fn] = timers.entries().next().value; timers.delete(id); await fn(); }
@@ -97,9 +101,10 @@ async function fixture({ permissionDenied = false, ice = candidate, candidateCou
 
 test('actual browser keeps claimed code and waits on answer approval, never operator status', async () => {
   const f = await fixture(); await f.browser();
-  assert.match(f.elements.code.textContent, /^\d{6}$/);
+  assert.match(f.elements.code.textContent, /^\d{3} \d{3}$/);
   assert.deepEqual(f.requests.map(r => [r.action, r.status]), [['claim', 200], ['answer', 409]]);
-  assert.match(f.elements.status.textContent, /Waiting for explicit approval/);
+  assert.equal(f.elements.status.textContent, 'Waiting for desk approval');
+  assert.equal(f.body.dataset.state, 'waiting'); assert.equal(f.elements['code-group'].hidden, false);
   assert.equal(f.stops, 0);
   await f.tick();
   assert.equal(f.requests.filter(r => r.action === 'offer').length, 0);
@@ -124,6 +129,22 @@ test('actual browser keeps claimed code and waits on answer approval, never oper
   assert.deepEqual(f.logs, []);
 });
 
+test('approved page camera selector is draft-only and status follows real connection state', async () => {
+  const f = await fixture(); await f.browser({ front: true });
+  assert.deepEqual(f.facings, ['user']);
+  assert.equal(f.elements['facing-front'].attributes['aria-pressed'], 'true');
+  f.elements['facing-rear'].listeners.click();
+  assert.equal(f.elements.facing.value, 'user', 'Camera cannot switch after Start without a new room');
+  assert.equal(f.elements['facing-rear'].disabled, true);
+  await f.operator('approve', (await f.operator('status')).data); await f.tick();
+  assert.equal(f.body.dataset.state, 'connecting'); assert.equal(f.elements['code-group'].hidden, true);
+  assert.equal(f.elements.code.textContent, '');
+  await f.operator('answer', { sdp }); f.peers[0].connectionState = 'connected'; await f.tick();
+  assert.equal(f.body.dataset.state, 'connected'); assert.equal(f.elements.status.textContent, 'Connected to desk');
+  assert.equal(f.elements['preview-placeholder'].hidden, true);
+  f.windows.pagehide(); assert.equal(f.elements['preview-placeholder'].hidden, false);
+});
+
 for (const phase of ['waiting', 'answered']) for (const ending of ['expiry', 'revoke']) {
   test(`authoritative ${ending} stops tracks while ${phase}`, async () => {
     const f = await fixture(); await f.browser();
@@ -137,13 +158,17 @@ for (const phase of ['waiting', 'answered']) for (const ending of ['expiry', 're
     assert.equal(f.stops, 1); assert.ok(f.peers[0].closed);
     assert.equal(f.elements.preview.srcObject, null); assert.equal(f.timers.size, 0);
     assert.ok(f.requests.at(-1).signal.aborted);
-    assert.match(f.elements.status.textContent, /Room ended or expired/);
+    assert.equal(f.elements.status.textContent, 'Room ended');
+    assert.match(f.elements['status-detail'].textContent, /Room ended or expired/);
+    assert.equal(f.elements['code-group'].hidden, true); assert.equal(f.elements.code.textContent, '');
   });
 }
 
 test('camera permission denied is distinct and never claims', async () => {
   const f = await fixture({ permissionDenied: true }); await f.browser();
-  assert.match(f.elements.status.textContent, /Camera permission denied/);
+  assert.equal(f.elements.status.textContent, 'Camera access denied');
+  assert.match(f.elements['status-detail'].textContent, /Camera permission denied/);
+  assert.equal(f.elements.start.disabled, true); assert.equal(f.elements['facing-front'].disabled, true);
   assert.equal(f.requests.length, 0); assert.equal(f.timers.size, 0);
   assert.deepEqual(f.logs, []);
 });
@@ -154,9 +179,9 @@ test('a second actual browser claim is terminal, not permission failure or retry
   f.windows.pagehide();
   await f.browser();
   assert.equal(f.requests.at(-1).status, 409);
-  assert.match(f.elements.status.textContent, /already claimed/);
+  assert.match(f.elements['status-detail'].textContent, /already claimed/);
   assert.equal(f.stops, 2); assert.equal(f.timers.size, 0);
-  assert.equal(f.store.get(f.room.id).claim.code, firstCode);
+  assert.equal(f.store.get(f.room.id).claim.code, firstCode.replace(/\s/g, ''));
   assert.equal(f.requests.filter(r => r.action === 'claim').length, 2);
 });
 
@@ -169,7 +194,7 @@ test('64 pending candidates flush only after approval; overflow stops before cla
   assert.equal(f.requests.filter(r => r.action === 'offer').length, 1);
   const overflow = await fixture({ candidateCount: 65 }); await overflow.browser();
   assert.equal(overflow.stops, 1); assert.equal(overflow.requests.length, 0);
-  assert.equal(overflow.timers.size, 0); assert.match(overflow.elements.status.textContent, /Candidate limit/);
+  assert.equal(overflow.timers.size, 0); assert.match(overflow.elements['status-detail'].textContent, /Candidate limit/);
 });
 
 for (const [status, error] of [[409, 'CAMERA_APPROVAL_MISMATCH'], [400, 'CAMERA_NOT_APPROVED'], [401, 'CAMERA_UNAUTHORIZED'], [410, 'CAMERA_REVOKED'], [500, 'private payload']]) {
@@ -177,7 +202,7 @@ for (const [status, error] of [[409, 'CAMERA_APPROVAL_MISMATCH'], [400, 'CAMERA_
     const f = await fixture(); await f.browser();
     f.override(() => ({ status, data: { error } })); await f.tick();
     assert.equal(f.stops, 1); assert.equal(f.timers.size, 0);
-    assert.ok(!f.elements.status.textContent.includes(error)); assert.deepEqual(f.logs, []);
+    assert.ok(!f.elements.status.textContent.includes(error)); assert.ok(!f.elements['status-detail'].textContent.includes(error)); assert.deepEqual(f.logs, []);
   });
 }
 
@@ -193,15 +218,15 @@ test('network failures stop without retries or raw diagnostic text', async () =>
   const f = await fixture(); await f.browser();
   f.override(() => { throw new Error('private transport diagnostic'); }); await f.tick();
   assert.equal(f.stops, 1); assert.equal(f.timers.size, 0);
-  assert.match(f.elements.status.textContent, /Camera signaling failed/);
-  assert.ok(!f.elements.status.textContent.includes('private')); assert.deepEqual(f.logs, []);
+  assert.match(f.elements['status-detail'].textContent, /Camera signaling failed/);
+  assert.ok(!f.elements['status-detail'].textContent.includes('private')); assert.deepEqual(f.logs, []);
 });
 
 test('numeric LAN ICE policy is unchanged: mDNS candidate rejection is terminal', async () => {
   const f = await fixture({ ice: { ...candidate, candidate: candidate.candidate.replace('192.0.2.8', 'phone.local') } });
   await f.browser(); await f.operator('approve', (await f.operator('status')).data); await f.tick();
   assert.equal(f.requests.at(-1).status, 400); assert.equal(f.stops, 1);
-  assert.match(f.elements.status.textContent, /numeric LAN ICE candidate/);
+  assert.match(f.elements['status-detail'].textContent, /numeric LAN ICE candidate/);
   assert.equal(f.store.get(f.room.id).candidates.publisher.length, 0);
 });
 

@@ -25,6 +25,7 @@ FILES = [f'server/src/{name}.js' for name in (
 FILES += ['server/package.json']
 FILES += [f'server/public/app.{ext}' for ext in ('html', 'js', 'css')]
 FILES += ['server/public/camera.html', 'server/public/camera.js']
+FILES += ['server/public/camera-inter.ttf', 'server/public/camera-inter-license.txt']
 FILES += ['assets/brand/favicon.svg', 'assets/brand/emberstage-logo.svg',
           'assets/brand/emberstage-wordmark.svg', 'assets/css/emberstage_brand.css']
 FILES += [f'server/deploy/personal-aws/{name}' for name in

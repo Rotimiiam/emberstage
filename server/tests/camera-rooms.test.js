@@ -39,7 +39,7 @@ async function request(url, { method = 'GET', body, headers = {}, native = false
   req.socket = { encrypted: !native, remoteAddress: peer };
   const res = { headers: {}, status: 0, body: '', setHeader(k, v) { this.headers[k.toLowerCase()] = v; },
     writeHead(status, headers = {}) { this.status = status; for (const [k, v] of Object.entries(headers)) this.setHeader(k, v); },
-    end(body = '') { this.body = String(body); } };
+    end(body = '') { this.body = String(body); this.bodyBytes = Buffer.from(body); } };
   await handler(req, res);
   return { ...res, data: res.headers['content-type']?.includes('json') ? JSON.parse(res.body) : null };
 }
@@ -187,6 +187,25 @@ test('static join page is uncredentialed, strict CSP, no secrets embedded; scrip
   for (const pattern of [/getUserMedia/, /video\/h264/, /redirect: 'error'/, /credentials: 'omit'/, /pagehide/, /track\.stop\(\)/, /history\.replaceState/, /iceServers: \[\]/]) assert.match(script.body, pattern);
   assert.ok(!script.body.includes(capability));
   await request(`/api/camera/rooms/${id}/revoke`, { method: 'POST', body: {}, headers: auth });
+});
+
+test('approved phone styling is hash-bound and fonts stay on the camera origin', async () => {
+  const f = guestHarness();
+  const created = await f.create();
+  const page = await f.send(`/camera/join/${created.data.room.id}`);
+  assert.equal(page.status, 200);
+  const style = page.body.match(/<style>([\s\S]*?)<\/style>/)?.[1]; assert.ok(style);
+  const hash = crypto.createHash('sha256').update(style).digest('base64');
+  assert.ok(page.headers['content-security-policy'].includes(`style-src 'sha256-${hash}'`));
+  assert.ok(!page.headers['content-security-policy'].includes('unsafe-inline'));
+  assert.match(page.headers['content-security-policy'], /font-src 'self'/);
+  assert.ok(!/fonts\.googleapis|fonts\.gstatic/.test(page.body));
+  for (const id of ['facing-rear', 'facing-front', 'status-detail', 'code-group', 'preview-placeholder']) assert.ok(page.body.includes(`id="${id}"`));
+  const font = await f.send('/camera/inter.ttf');
+  assert.equal(font.status, 200); assert.equal(font.headers['content-type'], 'font/ttf');
+  assert.deepEqual(font.bodyBytes, readFileSync(new URL('../public/camera-inter.ttf', import.meta.url)));
+  const license = await f.send('/camera/inter-license.txt');
+  assert.match(license.body, /SIL OPEN FONT LICENSE/);
 });
 test('marker-only failures, body limits, absent/cross origins and disabled gate do not leak input', async () => {
   const logs = []; const original = console.error; console.error = (...args) => logs.push(args);

@@ -211,11 +211,17 @@ export function cameraError(res, error, json) {
 export function installCameraRoutes({ addRoute, authAndAuthorize, json, config, deviceActive, store = new CameraRooms() }) {
   const page = fs.readFileSync(new URL('../public/camera.html', import.meta.url), 'utf8');
   const script = fs.readFileSync(new URL('../public/camera.js', import.meta.url), 'utf8');
+  const font = fs.readFileSync(new URL('../public/camera-inter.ttf', import.meta.url));
+  const fontLicense = fs.readFileSync(new URL('../public/camera-inter-license.txt', import.meta.url), 'utf8');
+  const style = page.match(/<style>([\s\S]*?)<\/style>/)?.[1];
+  if (!style) throw new Error('CAMERA_STYLE_MISSING');
+  const styleSource = `'sha256-${crypto.createHash('sha256').update(style).digest('base64')}'`;
   const wrap = (side, action, navigation = false) => async (req, res) => {
     try {
       if (process.env.CAMERA_ROOMS_ENABLED !== 'true') fail('CAMERA_DISABLED', 503);
       const room = req.params.id ? store.get(req.params.id) : undefined;
-      const origin = action === 'guest-create' ? guestCreateSecurity(req) : room?.guest ? guestCameraSecurity(req, navigation)
+      const guestStatic = ['script', 'font', 'font-license'].includes(action) && req.headers.host === new URL(GUEST_ORIGIN).host;
+      const origin = action === 'guest-create' ? guestCreateSecurity(req) : room?.guest || guestStatic ? guestCameraSecurity(req, navigation)
         : cameraSecurity(req, config.CAMERA_PUBLIC_ORIGIN, navigation, config.APP_BASE_URL);
       let device, guestOperator = false;
       if (room?.guest && side !== 'public') {
@@ -270,12 +276,13 @@ export function installCameraRoutes({ addRoute, authAndAuthorize, json, config, 
       const actor = device || guestOperator ? 'device' : 'publisher';
       if (action === 'guest-create') return json(res, store.createGuest(req), 200, { 'Cache-Control': 'no-store' });
       if (action === 'create') return json(res, store.create(device, origin), 200, { 'Cache-Control': 'no-store' });
-      if (action === 'page' || action === 'script') {
+      if (['page', 'script', 'font', 'font-license'].includes(action)) {
         if (room?.phase === 'revoked') fail('CAMERA_REVOKED', 410);
-        res.writeHead(200, { 'Content-Type': action === 'page' ? 'text/html; charset=utf-8' : 'text/javascript; charset=utf-8',
+        const types = { page: 'text/html; charset=utf-8', script: 'text/javascript; charset=utf-8', font: 'font/ttf', 'font-license': 'text/plain; charset=utf-8' };
+        res.writeHead(200, { 'Content-Type': types[action],
           'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer', 'X-Frame-Options': 'DENY', 'X-Content-Type-Options': 'nosniff',
-          'Permissions-Policy': 'camera=(self), microphone=()', 'Content-Security-Policy': "default-src 'none'; script-src 'self'; connect-src 'self'; media-src 'self' blob:; base-uri 'none'; frame-ancestors 'none'; form-action 'none'" });
-        return res.end(action === 'page' ? page : script);
+          'Permissions-Policy': 'camera=(self), microphone=()', 'Content-Security-Policy': `default-src 'none'; script-src 'self'; style-src ${styleSource}; font-src 'self'; connect-src 'self'; media-src 'self' blob:; base-uri 'none'; frame-ancestors 'none'; form-action 'none'` });
+        return res.end(action === 'page' ? page : action === 'script' ? script : action === 'font' ? font : fontLicense);
       }
       let data, status = 200;
       if (action === 'claim') data = store.claim(room, body.fingerprint);
@@ -297,6 +304,8 @@ export function installCameraRoutes({ addRoute, authAndAuthorize, json, config, 
   route('POST', '/api/camera/guest-rooms', 'public', 'guest-create');
   route('GET', '/camera/join/:id', 'public', 'page', true);
   route('GET', '/camera/camera.js', 'public', 'script', true);
+  route('GET', '/camera/inter.ttf', 'public', 'font', true);
+  route('GET', '/camera/inter-license.txt', 'public', 'font-license', true);
   for (const [method, action, side] of [['POST','claim','publisher'], ['POST','approve','device'], ['POST','offer','publisher'],
     ['GET','offer','device'], ['POST','answer','device'], ['GET','answer','publisher'], ['POST','candidate','both'],
     ['GET','candidates','both'], ['POST','revoke','device'], ['GET','status','both']]) route(method, `/api/camera/rooms/:id/${action}`, side, action);

@@ -25,6 +25,21 @@
   };
   const failureMessage = error => Object.hasOwn(messages, error?.message) ? messages[error.message]
     : 'Camera signaling failed. Ask the desk for a new room.';
+  function showStatus(title, detail, state) {
+    $('status').textContent = title; $('status-detail').textContent = detail;
+    document.body.dataset.state = state;
+  }
+  function facingDisabled(disabled) {
+    for (const name of ['facing', 'facing-rear', 'facing-front']) $(name).disabled = disabled;
+  }
+  for (const [name, value] of [['facing-rear', 'environment'], ['facing-front', 'user']]) {
+    $(name).addEventListener('click', () => {
+      if (running || stopped) return;
+      $('facing').value = value;
+      $('facing-rear').setAttribute('aria-pressed', String(value === 'environment'));
+      $('facing-front').setAttribute('aria-pressed', String(value === 'user'));
+    });
+  }
   async function api(action, body) {
     const response = await fetch(`/api/camera/rooms/${encodeURIComponent(id)}/${action}`, {
       method: body === undefined ? 'GET' : 'POST', credentials: 'omit', redirect: 'error', cache: 'no-store', signal: abort.signal,
@@ -46,7 +61,13 @@
   function stop(message = 'Stopped. Ask the desk for a new room to start again.') {
     stopped = true; running = false; clearTimeout(timer); abort.abort();
     stream?.getTracks().forEach(track => track.stop()); pc?.close(); $('preview').srcObject = null;
-    pendingCandidates = []; remoteCandidates = []; $('stop').disabled = true; $('start').disabled = true; $('status').textContent = message;
+    pendingCandidates = []; remoteCandidates = []; $('stop').disabled = true; $('start').disabled = true;
+    facingDisabled(true); $('code').textContent = ''; $('code-group').hidden = true; $('preview-placeholder').hidden = false;
+    const title = message === messages.CAMERA_PERMISSION_DENIED ? 'Camera access denied'
+      : message === messages.CAMERA_DEVICE_UNAVAILABLE ? 'Camera unavailable'
+      : message === messages.CAMERA_ROOM_UNAVAILABLE ? 'Room ended'
+      : message.startsWith('Stopped.') ? 'Stopped' : 'Connection failed';
+    showStatus(title, message, title === 'Room ended' || title === 'Stopped' ? 'ended' : 'error');
   }
   async function sendCandidate(candidate) {
     if (!stopped) await api('candidate', { candidate });
@@ -83,7 +104,9 @@
         await pc.addIceCandidate(candidate);
       }
       if (stopped) return;
-      $('status').textContent = pc.connectionState === 'connected' ? 'Connected to desk. Program selection stays on the desk.' : 'Approved. Connecting directly to desk…';
+      $('code-group').hidden = true; $('code').textContent = '';
+      showStatus(pc.connectionState === 'connected' ? 'Connected to desk' : 'Connecting to desk',
+        'Program stays on the desk.', pc.connectionState === 'connected' ? 'connected' : 'connecting');
       timer = setTimeout(poll, 1000);
     } catch (error) { if (!stopped) stop(failureMessage(error)); }
   }
@@ -92,7 +115,8 @@
   window.addEventListener('beforeunload', () => stop());
   $('start').addEventListener('click', async () => {
     if (running || stopped) return;
-    running = true; $('start').disabled = true; $('facing').disabled = true; $('stop').disabled = false;
+    running = true; $('start').disabled = true; facingDisabled(true); $('stop').disabled = false;
+    showStatus('Starting camera…', '', 'starting');
     try {
       if (location.protocol !== 'https:' || !window.isSecureContext || !capability || !/^[A-Za-z0-9_-]{43}$/.test(id)) throw new Error('CAMERA_HTTPS_REQUIRED');
       try {
@@ -102,6 +126,7 @@
       }
       if (stopped) { stream.getTracks().forEach(track => track.stop()); return; }
       $('preview').srcObject = stream;
+      $('preview-placeholder').hidden = true;
       // No hosted TURN/media relay. Host/srflx connectivity must be proven separately.
       pc = new RTCPeerConnection({ iceServers: [] });
       pc.addEventListener('connectionstatechange', () => { if (pc.connectionState === 'failed') stop('Direct connection failed.'); });
@@ -125,7 +150,9 @@
       if (!fingerprints.length || fingerprints.some(f => f !== fingerprints[0])) throw new Error('CAMERA_FINGERPRINT_INVALID');
       claim = await api('claim', { fingerprint: fingerprints[0] });
       if (stopped) return;
-      $('code').textContent = claim.code; $('status').textContent = 'Compare this code with your desk. Waiting for explicit approval…';
+      $('code').textContent = `${claim.code.slice(0, 3)} ${claim.code.slice(3)}`;
+      $('code-group').hidden = false;
+      showStatus('Waiting for desk approval', '', 'waiting');
       await poll();
     } catch (error) { if (!stopped) stop(failureMessage(error)); }
   });

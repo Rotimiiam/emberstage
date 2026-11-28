@@ -1,15 +1,47 @@
 <!doctype html>
 <html lang="en">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Emberstage Phone Camera</title><script src="/camera/camera.js" defer></script></head>
-<body>
-  <main>
-    <h1>Phone camera</h1>
-    <p>This phone sends video directly to your paired desk, not through this service. Compare the code with the desk before approving. Approval does not put this camera on Program.</p>
-    <label>Camera <select id="facing"><option value="environment">Rear</option><option value="user">Front</option></select></label>
-    <button id="start" type="button">Start</button><button id="stop" type="button" disabled>Stop</button>
-    <p id="status" role="status">Ready. Camera access starts only when you press Start.</p>
-    <p>Approval code: <strong id="code">—</strong></p>
-    <video id="preview" autoplay muted playsinline aria-label="Camera preview"></video>
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="dark"><title>Emberstage Phone Camera</title>
+  <style>
+@font-face{font-family:Inter;src:url('/camera/inter.ttf') format('truetype');font-weight:100 900;font-display:swap}
+*{box-sizing:border-box}body{margin:0;background:#0b0e14;color:#e6edf3;font-family:Inter,system-ui,sans-serif;min-height:100svh;display:flex;justify-content:center;align-items:center}
+.phone-frame{width:100%;max-width:390px;min-height:min(844px,100svh);padding:32px 24px 28px;display:flex;flex-direction:column;background:#13171f}
+.wordmark{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700;letter-spacing:.08em;margin-bottom:20px}.mark{width:10px;height:10px;background:#ff5500;border-radius:2px}
+h1{font-size:26px;line-height:1.2;letter-spacing:-.02em;margin:0 0 20px;font-weight:700}
+.segments{display:flex;height:38px;gap:3px;padding:3px;margin:0 0 16px;background:#0b0e14;border:1px solid #232730;border-radius:8px}.segments button{flex:1;border:0;border-radius:6px;background:transparent;color:#838c97;font:600 13px Inter,system-ui,sans-serif}.segments button[aria-pressed=true]{background:#232730;color:#e6edf3}
+.video-well{position:relative;width:100%;aspect-ratio:16/9;border:1px solid #232730;border-radius:12px;background:#05070a;overflow:hidden;display:grid;place-items:center}.video-well video{width:100%;height:100%;object-fit:contain;position:absolute;inset:0}.video-well p{color:#838c97;font-size:13px;padding:16px;text-align:center}
+.status-block{margin-top:20px}.status-block h2{font-size:15px;font-weight:600;line-height:1.4;margin:0}.status-block p,.code-group p{font-size:13px;color:#838c97;line-height:1.45;margin:6px 0 0}.code-group{margin-top:12px}.code-group strong{display:block;text-align:center;padding:12px 16px;border:1px solid #232730;border-radius:10px;background:#0b0e14;color:#ff5500;font:700 32px ui-monospace,monospace;letter-spacing:.12em}.code-group p{margin-top:12px}
+.actions{margin-top:auto;padding-top:24px;display:flex;flex-direction:column;gap:10px}.actions button{height:48px;width:100%;border:0;border-radius:10px;font:600 15px Inter,system-ui,sans-serif}#start{color:#fff;background:#ff5500}#stop{color:#e6edf3;background:#232730;border:1px solid #303640}
+button{cursor:pointer}button:focus-visible{outline:2px solid #ffaa00;outline-offset:3px}button:disabled{cursor:default;opacity:.45}.actions button:disabled{background:#1a1f27!important;color:#838c97!important;border:1px solid #232730}body[data-state=connected] #status{color:#3fb950}body[data-state=error] #status{color:#f06464}[hidden]{display:none!important}
+@media(min-width:440px){body{padding:24px}.phone-frame{border:1px solid #232730;border-radius:32px}}
+  </style>
+  <script src="/camera/camera.js" defer></script>
+</head>
+<body data-state="ready">
+  <main class="phone-frame" aria-labelledby="title">
+    <div class="wordmark"><span class="mark" aria-hidden="true"></span>EMBERSTAGE</div>
+    <h1 id="title">Phone camera</h1>
+    <div class="segments" role="group" aria-label="Camera">
+      <button id="facing-rear" type="button" aria-pressed="true">Rear</button>
+      <button id="facing-front" type="button" aria-pressed="false">Front</button>
+    </div>
+    <select id="facing" hidden aria-hidden="true" tabindex="-1"><option value="environment">Rear</option><option value="user">Front</option></select>
+    <div class="video-well">
+      <video id="preview" autoplay muted playsinline aria-label="Camera preview"></video>
+      <p id="preview-placeholder">Preview appears after Start.</p>
+    </div>
+    <section class="status-block" role="status" aria-live="polite">
+      <h2 id="status">Ready</h2>
+      <p id="status-detail">Camera starts only when you press Start.</p>
+    </section>
+    <div id="code-group" class="code-group" hidden>
+      <strong id="code" aria-label="Matching approval code"></strong>
+      <p>Compare this code with the desk.</p>
+    </div>
+    <div class="actions">
+      <button id="start" type="button">Start</button><button id="stop" type="button" disabled>Stop</button>
+    </div>
   </main>
 </body>
 </html>
